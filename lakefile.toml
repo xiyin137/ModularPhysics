@@ -1,0 +1,12 @@
+name = "ModularPhysics"
+version = "0.1.0"
+defaultTargets = ["ModularPhysics"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "master"
+
+# This section was missing!
+[[lean_lib]]
+name = "ModularPhysics"
