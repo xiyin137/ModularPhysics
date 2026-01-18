@@ -167,4 +167,3 @@ Requires Lean 4 and Mathlib4.
 ## Status
 
 Work in progress. Core axioms implemented, examples and theorems coming.
-Recent additions include a comprehensive Conformal Field Theory module.
