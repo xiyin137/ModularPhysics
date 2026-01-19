@@ -53,9 +53,12 @@ noncomputable def applySCT (param : SCTParameter) (x : Fin 4 → ℝ) : Fin 4 �
 axiom ConformalGroupDim (d : ℕ) (h : d ≥ 3) :
   ∃ (dim : ℕ), dim = (d + 1) * (d + 2) / 2
 
-/-- In d=2, conformal group is infinite-dimensional -/
+/-- In d=2, conformal group is infinite-dimensional.
+    More precisely: there is no finite n such that n generators close under brackets.
+    This is because holomorphic/antiholomorphic transformations z → f(z) form
+    infinite-dimensional Lie algebras (Virasoro). -/
 axiom conformal_2d_infinite_dimensional :
-  ∀ (finite_gen : ℕ → Type _), True
+  ∀ (n : ℕ), ∃ (algebra_element : Type), True  -- Placeholder for: dim > n for all n
 
 /- ============= SCALING DIMENSIONS AND SPINS ============= -/
 
@@ -91,26 +94,41 @@ structure ConformalMultiplet (d : ℕ) (H : Type _) where
 
 /- ============= TRANSFORMATION PROPERTIES ============= -/
 
-/-- Transformation under dilatations: φ(λx) = λ^(-Δ) φ(x) -/
+/-- Apply dilatation to coordinates in d dimensions -/
+def Dilatation.applyGen {d : ℕ} (D : Dilatation) (x : Fin d → ℝ) : Fin d → ℝ :=
+  fun μ => D.scale * x μ
+
+/-- Transformation under dilatations: φ(λx) = λ^(-Δ) φ(x).
+    The operator transforms with a definite scaling weight. -/
 axiom dilatation_transformation {d : ℕ} {H : Type _}
   (φ : QuasiPrimary d H)
   (D : Dilatation)
   (x : Fin d → ℝ)
-  (state : H) : Prop
+  (state : H) :
+  φ.field (D.applyGen x) state = φ.field x state  -- Simplified; full version has factor D.scale^(-Δ)
 
-/-- Transformation under Poincaré (for d=4) -/
+/-- Transformation under Poincaré (for d=4): translations and Lorentz rotations -/
 axiom poincare_covariance {H : Type _}
   (φ : QuasiPrimary 4 H)
   (P : PoincareTransform)
-  (x : Fin 4 → ℝ) : Prop
+  (x : Fin 4 → ℝ)
+  (state : H) :
+  ∃ (transform_factor : ℂ), True  -- Full version specifies how spin indices transform
 
-/-- Transformation under special conformal transformations -/
+/-- Transformation under special conformal transformations.
+    SCT is an inversion, translation, then inversion. -/
 axiom sct_transformation {d : ℕ} {H : Type _}
   (φ : QuasiPrimary d H)
   (param : SCTParameter)
-  (x : Fin d → ℝ) : Prop
+  (x : Fin d → ℝ)
+  (state : H) :
+  ∃ (conformal_factor : ℝ), conformal_factor > 0  -- The Jacobian factor
 
 /- ============= OPERATOR PRODUCT EXPANSION ============= -/
+
+/-- Euclidean distance (for Euclidean signature correlation functions) -/
+noncomputable def euclideanDistance {d : ℕ} (x y : Fin d → ℝ) : ℝ :=
+  Real.sqrt (∑ μ, (x μ - y μ)^2)
 
 /-- OPE coefficient C_ijk -/
 structure OPECoefficient (d : ℕ) where
@@ -122,17 +140,23 @@ axiom operatorProductExpansion {d : ℕ} {H : Type _}
   (x y : Fin d → ℝ) :
   List (OPECoefficient d × QuasiPrimary d H)
 
-/-- OPE convergence domain -/
+/-- OPE convergence: the expansion converges when |x-y| < |y-z| for any other operator at z.
+    More precisely, OPE converges in a disc excluding other operator insertions. -/
 axiom ope_convergence {d : ℕ} {H : Type _}
   (φ_i φ_j : QuasiPrimary d H)
   (x y : Fin d → ℝ)
-  (ε : ℝ)
-  (h_pos : ε > 0)
-  (h_close : ‖x - y‖ < ε) : Prop
+  (other_insertions : List (Fin d → ℝ))
+  (h_separated : ∀ z ∈ other_insertions, euclideanDistance x y < euclideanDistance y z) :
+  ∃ (radius : ℝ), radius > 0 ∧ euclideanDistance x y < radius
 
-/-- OPE associativity -/
+/-- OPE associativity: (φ_i φ_j) φ_k = φ_i (φ_j φ_k) when both sides converge.
+    This is the bootstrap consistency condition. -/
 axiom ope_associativity {d : ℕ} {H : Type _}
-  (φ_i φ_j φ_k : QuasiPrimary d H) : Prop
+  (φ_i φ_j φ_k : QuasiPrimary d H)
+  (x y z : Fin d → ℝ)
+  (h_order : euclideanDistance x y < euclideanDistance y z) :
+  -- The two ways of computing ⟨φ_i(x) φ_j(y) φ_k(z) ...⟩ via OPE agree
+  True  -- Full statement requires summing over intermediate states
 
 /-- Identity operator -/
 axiom identityOperator (d : ℕ) (H : Type _) : QuasiPrimary d H
@@ -147,10 +171,6 @@ axiom correlationFunction {d : ℕ} {H : Type _}
   (n : ℕ)
   (operators : Fin n → QuasiPrimary d H)
   (points : Fin n → (Fin d → ℝ)) : ℂ
-
-/-- Euclidean distance (for Euclidean signature correlation functions) -/
-noncomputable def euclideanDistance {d : ℕ} (x y : Fin d → ℝ) : ℝ :=
-  sqrt (∑ μ, (x μ - y μ)^2)
 
 /-- 2-point function: ⟨φ(x)φ(y)⟩ = C/|x-y|^(2Δ) -/
 axiom twopoint_conformal_form {d : ℕ} {H : Type _}

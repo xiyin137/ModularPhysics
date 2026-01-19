@@ -108,7 +108,8 @@ axiom generatingFunctional {F M V : Type _}
   (μ : FieldMeasure F)
   (source : M → V) : ℂ
 
-/-- Complex logarithm (axiomatized) -/
+/-- Complex logarithm for path integral applications.
+    NOTE: Axiomatized here for simplicity. In physics we use the principal branch. -/
 axiom complexLog : ℂ → ℂ
 
 /-- Connected generating functional W[J] = -iℏ log Z[J] -/

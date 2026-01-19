@@ -13,15 +13,23 @@ structure SpacetimeMetric where
   g : SpaceTimePoint → Fin 4 → Fin 4 → ℝ
   /-- Metric is symmetric -/
   symmetric : ∀ (x : SpaceTimePoint) (μ ν : Fin 4), g x μ ν = g x ν μ
-  /-- Metric is non-degenerate (determinant non-zero) -/
-  nondegenerate : ∀ (_ : SpaceTimePoint), True
 
-/-- Inverse metric g^μν -/
+/-- Inverse metric g^μν
+
+    Satisfies: g^μρ g_ρν = δ^μ_ν -/
 axiom inverseMetric (metric : SpacetimeMetric) (x : SpaceTimePoint)
     (μ ν : Fin 4) : ℝ
 
 /-- Metric determinant det(g_μν) -/
 axiom metricDeterminant (metric : SpacetimeMetric) (x : SpaceTimePoint) : ℝ
+
+/-- Non-degeneracy: determinant is non-zero everywhere -/
+axiom metric_nondegenerate (metric : SpacetimeMetric) (x : SpaceTimePoint) :
+  metricDeterminant metric x ≠ 0
+
+/-- Inverse metric satisfies g^μρ g_ρν = δ^μ_ν -/
+axiom inverse_metric_identity (metric : SpacetimeMetric) (x : SpaceTimePoint) (μ ν : Fin 4) :
+  ∑ ρ, inverseMetric metric x μ ρ * metric.g x ρ ν = if μ = ν then 1 else 0
 
 /-- Inner product of two vectors at a point -/
 def innerProduct (metric : SpacetimeMetric) (x : SpaceTimePoint)

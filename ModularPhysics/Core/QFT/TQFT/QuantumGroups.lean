@@ -12,8 +12,8 @@ axiom QuantumGroup (g : LieAlgebra) (q : ℂ) : Type
 /-- Representation of quantum group -/
 axiom QuantumRep {g : LieAlgebra} {q : ℂ} (Uq : QuantumGroup g q) : Type
 
-/-- Quantum dimension (modified dimension in semisimple category) -/
-noncomputable axiom quantumDimension {g : LieAlgebra} {q : ℂ} (Uq : QuantumGroup g q)
+/-- Quantum dimension of a representation (modified dimension in semisimple category) -/
+noncomputable axiom quantumRepDimension {g : LieAlgebra} {q : ℂ} (Uq : QuantumGroup g q)
   (V : QuantumRep Uq) : ℂ
 
 /-- Quantum trace -/

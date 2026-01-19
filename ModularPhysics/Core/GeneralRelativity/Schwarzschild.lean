@@ -49,10 +49,22 @@ axiom schwarzschild_horizon_location (M : ℝ) (hM : M > 0) :
     KillingHorizon (schwarzschildMetric M hM) ξ =
       {x : SpaceTimePoint | Real.sqrt ((x 1)^2 + (x 2)^2 + (x 3)^2) = schwarzschildRadius M}
 
-/-- Curvature singularity at r = 0 (coordinate-independent) -/
+/-- Curvature singularity at r = 0 (coordinate-independent)
+
+    The Kretschmann scalar K = R_μνρσ R^μνρσ diverges as r → 0.
+    For Schwarzschild: K = 48G²M²/r⁶ → ∞ as r → 0.
+
+    This is a true curvature singularity, not a coordinate artifact. -/
 axiom schwarzschild_singularity_at_origin (M : ℝ) (hM : M > 0) :
-  ∀ x : SpaceTimePoint, (x 1 = 0 ∧ x 2 = 0 ∧ x 3 = 0) →
-    ∃ μ ν, |ricciTensor (schwarzschildMetric M hM) x μ ν| = 1/0
+  ∀ (seq : ℕ → SpaceTimePoint),
+    (∀ n, Real.sqrt ((seq n 1)^2 + (seq n 2)^2 + (seq n 3)^2) > 0) →
+    (Filter.Tendsto (fun n => Real.sqrt ((seq n 1)^2 + (seq n 2)^2 + (seq n 3)^2))
+      Filter.atTop (nhds 0)) →
+    -- Kretschmann scalar diverges
+    Filter.Tendsto (fun n =>
+      ∑ μ, ∑ ν, ∑ ρ, ∑ σ,
+        (riemannTensor (schwarzschildMetric M hM) (seq n) μ ν ρ σ)^2)
+      Filter.atTop Filter.atTop
 
 /-- Birkhoff's theorem: Schwarzschild is unique spherically symmetric vacuum solution -/
 axiom birkhoff_theorem (metric : SpacetimeMetric) :

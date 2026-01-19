@@ -21,19 +21,40 @@ axiom relativistic_covariance {H : Type _} [QuantumStateSpace H] {d : ℕ} [NeZe
     wightmanFunction phi n (fun i μ => ∑ ν, Lambda.matrix μ ν * points i ν + a μ) =
     wightmanFunction phi n points
 
+/-- Momentum lies in forward lightcone: p⁰ ≥ 0 and p² = (p⁰)² - |p⃗|² ≥ 0 -/
+def inForwardLightcone {d : ℕ} [NeZero d] (p : Fin d → ℝ) : Prop :=
+  p 0 ≥ 0 ∧ (p 0)^2 ≥ ∑ i : Fin d, if i = 0 then 0 else (p i)^2
+
+/-- Momentum is on mass shell: (p⁰)² - |p⃗|² = m² -/
+def onMassShell {d : ℕ} [NeZero d] (p : Fin d → ℝ) (m : ℝ) : Prop :=
+  (p 0)^2 - (∑ i : Fin d, if i = 0 then 0 else (p i)^2) = m^2
+
 /-- Wightman Axiom W2: Spectrum condition (positivity of energy-momentum).
     The joint spectrum of the energy-momentum operators (P⁰, P¹,...) lies in the
     closed forward lightcone V⁺ = {p | p⁰ ≥ 0, p² ≥ 0} where p² = (p⁰)² - ∑ᵢ(pⁱ)².
 
-    Physical meaning: energy is bounded from below (stable vacuum). -/
-axiom spectrum_condition {H : Type _} [QuantumStateSpace H] {d : ℕ} [NeZero d] :
-  ∀ (p : Fin d → ℝ),
-    p 0 ≥ 0 ∧ (p 0)^2 ≥ ∑ i : Fin d, if i = 0 then 0 else (p i)^2
+    Physical meaning: energy is bounded from below (stable vacuum).
 
-/-- On-shell condition: free particles of mass m satisfy E² = p² + m² -/
-axiom mass_shell {d : ℕ} [NeZero d] (m : ℝ) (h_m : m ≥ 0) :
-  ∀ (p : Fin d → ℝ),
-    (p 0)^2 = m^2 + ∑ i : Fin d, if i = 0 then 0 else (p i)^2
+    This is formulated as: any momentum eigenstate |p⟩ in the Hilbert space
+    has momentum p in the forward lightcone. The vacuum has p = 0. -/
+axiom spectrum_condition {H : Type _} [QuantumStateSpace H] {d : ℕ} [NeZero d]
+  (phi : FieldDistribution H d) :
+  ∃ (spectrum : Set (Fin d → ℝ)),
+    (∀ p ∈ spectrum, inForwardLightcone p) ∧  -- All momenta in forward cone
+    (fun _ => 0) ∈ spectrum                    -- Vacuum has zero momentum
+
+/-- On-shell condition: a momentum p is on shell for mass m if E² - |p⃗|² = m².
+    This is a DEFINITION of what "on-shell" means, not a claim about all momenta. -/
+def isOnShell {d : ℕ} [NeZero d] (p : Fin d → ℝ) (m : ℝ) : Prop :=
+  onMassShell p m ∧ p 0 ≥ 0
+
+/-- Test function support is contained in a region -/
+axiom testFunctionSupport {d : ℕ} (f : SchwartzFunction d) : Set (Fin d → ℝ)
+
+/-- Two regions are spacelike separated: for all x in R₁, y in R₂, (x-y)² < 0 (spacelike) -/
+def spacelikeSeparated {d : ℕ} [NeZero d] (R₁ R₂ : Set (Fin d → ℝ)) : Prop :=
+  ∀ x ∈ R₁, ∀ y ∈ R₂,
+    (x 0 - y 0)^2 < ∑ i : Fin d, if i = 0 then 0 else (x i - y i)^2
 
 /-- Wightman Axiom W3: Locality (microcausality).
     For smeared field operators with spacelike separated supports:
@@ -41,27 +62,35 @@ axiom mass_shell {d : ℕ} [NeZero d] (m : ℝ) (h_m : m ≥ 0) :
 
     This is the mathematical expression of Einstein causality: measurements at
     spacelike separation cannot influence each other. -/
-axiom locality {H : Type _} [QuantumStateSpace H] {d : ℕ}
+axiom locality {H : Type _} [QuantumStateSpace H] {d : ℕ} [NeZero d]
   (phi psi : SmearedFieldOperator H d)
   (f g : SchwartzFunction d)
-  (h_spacelike : True) :  -- Simplified: supports are spacelike separated
+  (h_spacelike : spacelikeSeparated (testFunctionSupport f) (testFunctionSupport g)) :
   ∀ (state : H),
     smear phi f (smear psi g state) =
     smear psi g (smear phi f state)
 
+/-- Apply a sequence of smeared field operators to the vacuum:
+    φ(f₁) φ(f₂) ... φ(fₙ) |0⟩ -/
+axiom applyFieldsToVacuum {H : Type _} [QuantumStateSpace H] {d : ℕ}
+  (phi : SmearedFieldOperator H d)
+  (n : ℕ)
+  (test_funcs : Fin n → SchwartzFunction d) : H
+
 /-- Wightman Axiom W4: Vacuum properties.
-    - Uniqueness: |0⟩ is the unique Poincaré-invariant state
-    - Cyclicity: {φ(f₁)...φ(fₙ)|0⟩} is dense in H
+    - Uniqueness: |0⟩ is the unique Poincaré-invariant state (up to phase)
+    - Cyclicity: {φ(f₁)...φ(fₙ)|0⟩ : n ∈ ℕ, fᵢ ∈ S(ℝᵈ)} is dense in H
 
     This ensures the vacuum is the "ground state" and that all states can be
     created by applying field operators to the vacuum. -/
 axiom vacuum_properties {H : Type _} [QuantumStateSpace H] {d : ℕ}
   (phi : SmearedFieldOperator H d) :
-  -- Uniqueness: vacuum is Poincaré invariant
+  -- Uniqueness: vacuum is Poincaré invariant (for all Poincaré unitaries)
   (∀ (U : Quantum.UnitaryOp H), applyUnitary U (@vacuum H _) = @vacuum H _) ∧
   -- Cyclicity: polynomial algebra of fields acting on vacuum is dense
-  (∀ (state : H) (ε : ℝ), ε > 0 → ∃ (n : ℕ) (test_funcs : Fin n → SchwartzFunction d),
-    ∃ (approx : H), ‖state - approx‖ < ε)
+  (∀ (state : H) (ε : ℝ), ε > 0 →
+    ∃ (n : ℕ) (test_funcs : Fin n → SchwartzFunction d),
+      ‖state - applyFieldsToVacuum phi n test_funcs‖ < ε)
 
 /-- Reeh-Schlieder theorem: vacuum is cyclic and separating for local algebras.
     For any bounded region O, the set {φ(f)|0⟩ | supp(f) ⊂ O} is dense in H.
@@ -70,12 +99,14 @@ axiom vacuum_properties {H : Type _} [QuantumStateSpace H] {d : ℕ}
 
     This is a THEOREM (provable from W1-W4), not an axiom itself. -/
 theorem reeh_schlieder {H : Type _} [QuantumStateSpace H] {d : ℕ}
+  (phi : SmearedFieldOperator H d)
   (O : Set (Fin d → ℝ))
   (h_bounded : ∃ R : ℝ, ∀ x ∈ O, ‖x‖ < R)
   (h_nonempty : O.Nonempty) :
-  ∀ (state : H) (ε : ℝ), ε > 0 → ∃ (n : ℕ) (fields : Fin n → SmearedFieldOperator H d)
-    (test_funcs : Fin n → SchwartzFunction d),
-    ∃ (approx : H), ‖state - approx‖ < ε := by
+  ∀ (state : H) (ε : ℝ), ε > 0 →
+    ∃ (n : ℕ) (test_funcs : Fin n → SchwartzFunction d),
+      (∀ i, testFunctionSupport (test_funcs i) ⊆ O) ∧
+      ‖state - applyFieldsToVacuum phi n test_funcs‖ < ε := by
   sorry
 
 /-- Temperedness: Wightman functions are tempered distributions.

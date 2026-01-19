@@ -38,12 +38,23 @@ def ParallelTransport (metric : SpacetimeMetric) (γ : ℝ → SpaceTimePoint)
     deriv (fun s => V s μ) t +
     (∑ ν, ∑ ρ, christoffel metric (γ t) μ ν ρ * V t ν * deriv (fun s => γ s ρ) t) = 0
 
-/-- Levi-Civita connection is metric-compatible
+/-- Covariant derivative of a general tensor (simplified for scalars) -/
+axiom covariantDerivativeScalar (metric : SpacetimeMetric)
+    (f : SpaceTimePoint → ℝ)
+    (μ : Fin 4) : SpaceTimePoint → ℝ
 
-    ∇_ρ g_μν = 0
--/
+/-- Levi-Civita connection is metric-compatible: ∇_ρ g_μν = 0
+
+    The covariant derivative of the metric tensor vanishes.
+    This ensures that parallel transport preserves inner products.
+
+    Explicitly: ∂_ρ g_μν - Γ^σ_ρμ g_σν - Γ^σ_ρν g_μσ = 0 -/
 axiom metric_compatible (metric : SpacetimeMetric) (x : SpaceTimePoint)
-    (ρ μ ν : Fin 4) : Prop
+    (ρ μ ν : Fin 4) :
+  -- ∂_ρ g_μν = Γ^σ_ρμ g_σν + Γ^σ_ρν g_μσ
+  ∑ σ, christoffel metric x σ ρ μ * metric.g x σ ν +
+  ∑ σ, christoffel metric x σ ρ ν * metric.g x μ σ =
+  covariantDerivativeScalar metric (fun y => metric.g y μ ν) ρ x
 
 /-- Levi-Civita connection is torsion-free
 

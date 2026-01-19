@@ -3,7 +3,6 @@
 import ModularPhysics.Core.QFT.CFT.TwoDimensional.Virasoro
 import ModularPhysics.Core.QFT.Wightman.WightmanFunctions
 import ModularPhysics.Core.QFT.Wightman.Operators
-import ModularPhysics.Core.QFT.EFT
 import ModularPhysics.Core.Quantum
 import ModularPhysics.Core.SpaceTime.Basic
 import Mathlib.Analysis.Calculus.Deriv.Basic
@@ -62,9 +61,13 @@ proving dc/dt = ∑ᵢ βᵢ · (dc/dgᵢ) ≤ 0.
 namespace ModularPhysics.Papers.Zamolodchikov1986
 
 open ModularPhysics.Core.QFT Real
-open CFT.TwoDimensional Wightman EFT
+open CFT.TwoDimensional Wightman
 open ModularPhysics.Core.Quantum
 open ModularPhysics.Core.SpaceTime
+
+/-- Beta function β(g) = μ dg/dμ for a theory with coupling g.
+    The theory_id identifies the theory (determines the functional form of β). -/
+axiom theoryBetaFunction : (theory_id : Type) → ℝ → ℝ
 
 /-- 2D spacetime point (time, space) -/
 abbrev Point2D := Fin 2 → ℝ
@@ -372,7 +375,7 @@ axiom rg_flow_beta_evolution
   {H : Type _} [QuantumStateSpace H]
   (theory : QFT2D H)
   (i : Fin theory.n_couplings) :
-  theory.beta_functions i = betaFunction theory.theory_id (theory.couplings i)
+  theory.beta_functions i = theoryBetaFunction theory.theory_id (theory.couplings i)
 
 /-- Multivariable chain rule for c-function along RG trajectory.
     For a path g(t) in coupling space, dc/dt = ∑ᵢ (dgᵢ/dt) · (∂c/∂gᵢ) = ∑ᵢ βᵢ · (∂c/∂gᵢ) -/

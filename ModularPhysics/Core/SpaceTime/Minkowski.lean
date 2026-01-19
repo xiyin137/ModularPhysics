@@ -17,7 +17,6 @@ def minkowskiMetric : SpacetimeMetric where
     · by_cases h2 : ν = μ
       · simp [h2]
       · simp [h1, Ne.symm h1]
-  nondegenerate := by intro _; trivial
 
 /-- Minkowski inner product (constant across spacetime) -/
 noncomputable def minkowskiInnerProduct (v w : Fin 4 → ℝ) : ℝ :=

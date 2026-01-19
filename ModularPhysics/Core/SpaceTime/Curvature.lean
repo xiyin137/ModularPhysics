@@ -13,10 +13,27 @@ namespace ModularPhysics.Core.SpaceTime
 axiom riemannTensor (metric : SpacetimeMetric) (x : SpaceTimePoint)
     (μ ν ρ σ : Fin 4) : ℝ
 
-/-- Riemann tensor from Christoffel symbols -/
-axiom riemann_from_christoffel (metric : SpacetimeMetric) (x : SpaceTimePoint)
+/-- Riemann tensor from Christoffel symbols
+
+    R^μ_νρσ = ∂_ρ Γ^μ_νσ - ∂_σ Γ^μ_νρ + Γ^μ_λρ Γ^λ_νσ - Γ^μ_λσ Γ^λ_νρ
+
+    Note: The derivatives of Christoffel symbols are axiomatized implicitly
+    through the structure of riemannTensor. -/
+axiom riemann_antisymmetric_last_pair (metric : SpacetimeMetric) (x : SpaceTimePoint)
     (μ ν ρ σ : Fin 4) :
-  riemannTensor metric x μ ν ρ σ = sorry
+  riemannTensor metric x μ ν ρ σ = -riemannTensor metric x μ ν σ ρ
+
+axiom riemann_antisymmetric_first_pair (metric : SpacetimeMetric) (x : SpaceTimePoint)
+    (μ ν ρ σ : Fin 4) :
+  -- With lowered index: R_μνρσ = -R_νμρσ
+  ∑ l, metric.g x μ l * riemannTensor metric x l ν ρ σ =
+  -∑ l, metric.g x ν l * riemannTensor metric x l μ ρ σ
+
+axiom riemann_pair_symmetry (metric : SpacetimeMetric) (x : SpaceTimePoint)
+    (μ ν ρ σ : Fin 4) :
+  -- R_μνρσ = R_ρσμν (symmetry under exchange of pairs)
+  ∑ l, ∑ k, metric.g x μ l * metric.g x ν k * riemannTensor metric x l k ρ σ =
+  ∑ l, ∑ k, metric.g x ρ l * metric.g x σ k * riemannTensor metric x l k μ ν
 
 /-- Ricci tensor R_μν (contraction of Riemann tensor) -/
 noncomputable def ricciTensor (metric : SpacetimeMetric) (x : SpaceTimePoint)
@@ -55,11 +72,38 @@ axiom bianchi_first_identity (metric : SpacetimeMetric) (x : SpaceTimePoint)
   riemannTensor metric x ν ρ μ σ +
   riemannTensor metric x ρ μ ν σ = 0
 
-/-- Bianchi second identity (cyclic differential) -/
-axiom bianchi_second_identity (metric : SpacetimeMetric) (x : SpaceTimePoint) : Prop
+/-- Covariant derivative of Riemann tensor (axiomatized)
 
-/-- Contracted Bianchi identity -/
+    ∇_τ R^μ_νρσ -/
+axiom covariantDerivativeRiemann (metric : SpacetimeMetric)
+    (x : SpaceTimePoint) (mu nu rho sigma tau : Fin 4) : ℝ
+
+/-- Bianchi second identity (differential Bianchi identity)
+
+    ∇_[τ R^μ_νρσ] = 0
+
+    The cyclic sum of covariant derivatives of Riemann tensor vanishes:
+    ∇_τ R^μ_νρσ + ∇_ρ R^μ_νστ + ∇_σ R^μ_ντρ = 0 -/
+axiom bianchi_second_identity (metric : SpacetimeMetric) (x : SpaceTimePoint)
+    (mu nu rho sigma tau : Fin 4) :
+  covariantDerivativeRiemann metric x mu nu rho sigma tau +
+  covariantDerivativeRiemann metric x mu nu sigma tau rho +
+  covariantDerivativeRiemann metric x mu nu tau rho sigma = 0
+
+/-- Covariant divergence of a tensor (axiomatized for Einstein tensor) -/
+axiom covariantDivergenceEinstein (metric : SpacetimeMetric)
+    (x : SpaceTimePoint) (nu : Fin 4) : ℝ
+
+/-- Contracted Bianchi identity: ∇_μ G^μν = 0
+
+    The divergence of the Einstein tensor vanishes identically.
+    This is a consequence of the Bianchi identity and ensures
+    that Einstein's equations are consistent with energy-momentum conservation.
+
+    When combined with Einstein's equations G_μν = 8πG T_μν,
+    this implies ∇_μ T^μν = 0 (energy-momentum conservation). -/
 axiom contracted_bianchi (metric : SpacetimeMetric) (x : SpaceTimePoint)
-    (ν : Fin 4) : Prop
+    (nu : Fin 4) :
+  covariantDivergenceEinstein metric x nu = 0
 
 end ModularPhysics.Core.SpaceTime

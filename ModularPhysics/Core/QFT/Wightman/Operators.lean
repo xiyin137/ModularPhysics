@@ -37,10 +37,21 @@ axiom adjoint_smearing {H : Type _} [QuantumStateSpace H] {d : ℕ}
   ∀ ψ χ : H,
     innerProduct ψ (smear phi f χ) = innerProduct (smear (fieldAdjoint phi) f ψ) χ
 
-/-- Reality condition: φ† = φ for Hermitian (real) scalar fields -/
-axiom reality_condition {H : Type _} [QuantumStateSpace H] {d : ℕ}
-  (phi : SmearedFieldOperator H d) :
+/-- A field is Hermitian (real scalar) if φ† = φ.
+    This is a PROPERTY that some fields satisfy, not all fields.
+    Complex scalar fields, spinor fields, etc. are NOT Hermitian. -/
+def IsHermitianField {H : Type _} [QuantumStateSpace H] {d : ℕ}
+  (phi : SmearedFieldOperator H d) : Prop :=
   fieldAdjoint phi = phi
+
+/-- Reality condition: for a Hermitian field, φ† = φ.
+    NOTE: This is only for fields that ARE Hermitian (real scalar fields).
+    Do not use this for complex scalars, spinors, gauge fields, etc. -/
+theorem reality_condition {H : Type _} [QuantumStateSpace H] {d : ℕ}
+  (phi : SmearedFieldOperator H d)
+  (h_hermitian : IsHermitianField phi) :
+  fieldAdjoint phi = phi :=
+  h_hermitian
 
 /-- Formal notation: φ(x) as operator-valued distribution.
     This is NOT a function but a distribution - only makes sense when integrated

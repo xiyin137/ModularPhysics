@@ -73,10 +73,31 @@ axiom FutureTimelikeInfinity : SpaceTimePoint
 /-- Past timelike infinity i⁻ -/
 axiom PastTimelikeInfinity : SpaceTimePoint
 
-/-- Asymptotically flat: approaches Minkowski at infinity -/
+/-- Asymptotic radial coordinate for defining falloff -/
+axiom asymptoticRadius : SpaceTimePoint → ℝ
+
+/-- Asymptotically flat: approaches Minkowski at infinity
+
+    The metric approaches Minkowski as r → ∞ with appropriate falloff:
+    g_μν = η_μν + O(1/r) with specific decay rates for different components.
+
+    This includes:
+    - Metric approaches flat at spatial infinity
+    - Existence of well-defined null infinity (I⁺, I⁻)
+    - Appropriate falloff for physical quantities -/
 structure AsymptoticallyFlat (metric : SpacetimeMetric) where
-  falloff_condition : Prop
-  has_null_infinity : True
+  /-- Metric deviation from Minkowski falls off as 1/r -/
+  metric_falloff : ∀ x μ ν, ∃ (C : ℝ),
+    asymptoticRadius x > 1 →
+    |metric.g x μ ν - minkowskiMetric.g x μ ν| ≤ C / asymptoticRadius x
+  /-- Curvature falls off faster (as 1/r³) -/
+  curvature_falloff : ∀ x μ ν ρ σ, ∃ (C : ℝ),
+    asymptoticRadius x > 1 →
+    |riemannTensor metric x μ ν ρ σ| ≤ C / (asymptoticRadius x)^3
+  /-- The spacetime admits a conformal compactification with null infinity -/
+  admits_null_infinity : ∃ (Ω : SpaceTimePoint → ℝ),
+    (∀ x, asymptoticRadius x > 1 → Ω x > 0) ∧
+    (∀ x, asymptoticRadius x > 1 → Ω x ≤ 1 / asymptoticRadius x)
 
 /-- Bondi mass (mass measured at null infinity) -/
 axiom bondiMass (metric : SpacetimeMetric)

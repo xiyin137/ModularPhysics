@@ -7,7 +7,8 @@ open SpaceTime Quantum Complex
 
 /-- n-point Wightman function W_n(x₁,...,xₙ) = ⟨0|φ(x₁)...φ(xₙ)|0⟩.
     This is a tempered distribution in the variables (x₁,...,xₙ).
-    The ordering is chronological: x₁⁰ ≥ x₂⁰ ≥ ... ≥ xₙ⁰. -/
+    NOTE: The ordering is as written (operator ordering), NOT time-ordered.
+    Time-ordered products give the Feynman propagator instead. -/
 axiom wightmanFunction {H : Type _} [QuantumStateSpace H] {d : ℕ}
   (phi : FieldDistribution H d)
   (n : ℕ) :
@@ -26,18 +27,26 @@ axiom feynmanPropagator {H : Type _} [QuantumStateSpace H] {d : ℕ}
   (phi : FieldDistribution H d) :
   (Fin d → ℝ) → (Fin d → ℝ) → ℂ
 
-/-- Wightman positivity: For any test functions {fᵢ}, the matrix
-    ∑ᵢⱼ f̄ᵢ fⱼ W_n+m(...) is positive semidefinite.
-    This ensures the Hilbert space has positive-definite inner product. -/
+/-- Smeared two-point Wightman function: ∫∫ f̄(x) g(y) W₂(x,y) dx dy.
+    This represents the matrix element ⟨0|φ(f)† φ(g)|0⟩. -/
+axiom smearedTwoPointWightman {H : Type _} [QuantumStateSpace H] {d : ℕ}
+  (phi : FieldDistribution H d)
+  (f g : SchwartzFunction d) : ℂ
+
+/-- Wightman positivity (reflection positivity in Minkowski space):
+    For any finite collection of test functions {fᵢ} and complex coefficients {cᵢ},
+    the quadratic form ∑ᵢⱼ c̄ᵢ cⱼ ⟨0|φ(fᵢ)† φ(fⱼ)|0⟩ ≥ 0.
+
+    This ensures the reconstructed Hilbert space has positive-definite inner product.
+    It is equivalent to reflection positivity in the Euclidean formulation. -/
 axiom wightman_positivity {H : Type _} [QuantumStateSpace H] {d : ℕ}
   (phi : FieldDistribution H d)
-  (n m : ℕ)
+  (n : ℕ)
   (test_functions : Fin n → SchwartzFunction d)
-  (points_before points_after : Fin m → (Fin d → ℝ)) :
-  ∃ (matrix : Fin n → Fin n → ℂ),
-  ∀ i j, ∃ (w : ℂ), matrix i j = w ∧
-    (∀ c : Fin n → ℂ, (∑ i, ∑ j, (starRingEnd ℂ) (c i) * matrix i j * c j).re ≥ 0 ∧
-                       (∑ i, ∑ j, (starRingEnd ℂ) (c i) * matrix i j * c j).im = 0)
+  (coeffs : Fin n → ℂ) :
+  (∑ i : Fin n, ∑ j : Fin n,
+    (starRingEnd ℂ) (coeffs i) * coeffs j *
+    smearedTwoPointWightman phi (test_functions i) (test_functions j)).re ≥ 0
 
 /-- Cluster decomposition: At large spacelike separation, correlations factorize.
     W_{n+m}(x₁...xₙ, y₁+a...yₘ+a) → W_n(x₁...xₙ) · W_m(y₁...yₘ) as |a| → ∞ -/

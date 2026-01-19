@@ -34,12 +34,12 @@ structure SuperFieldRedefinition {F₁ F₂ : Type _} extends
   super_jacobian : Berezinian
 
 /-- Evaluate bosonic Jacobian -/
-axiom bosonicJacobianEval {F₁ F₂ : Type _}
-  (f : @BosonicFieldRedefinition F₁ F₂) : ℂ
+def bosonicJacobianEval {F₁ F₂ : Type _}
+  (f : @BosonicFieldRedefinition F₁ F₂) : ℂ := f.jacobian
 
 /-- Evaluate fermionic Berezinian -/
-axiom fermionicBerezinianEval {F₁ F₂ : Type _}
-  (f : @FermionicFieldRedefinition F₁ F₂) : ℂ
+noncomputable def fermionicBerezinianEval {F₁ F₂ : Type _}
+  (f : @FermionicFieldRedefinition F₁ F₂) : ℂ := berezinianEval f.berezinian
 
 /-- Action transforms under bosonic field redefinition -/
 axiom action_bosonic_redef {F₁ F₂ : Type _}
@@ -88,36 +88,99 @@ axiom observable_fermionic_redef {F₁ F₂ : Type _}
   (f : @FermionicFieldRedefinition F₁ F₂) :
   F₂ → ℂ
 
+/- ============= COMPOSITION OF FIELD REDEFINITIONS ============= -/
+
+/-- Compose two bosonic field redefinitions -/
+def composeBosonic {F₁ F₂ F₃ : Type _}
+  (f : @BosonicFieldRedefinition F₁ F₂)
+  (g : @BosonicFieldRedefinition F₂ F₃) : @BosonicFieldRedefinition F₁ F₃ where
+  map := g.map ∘ f.map
+  inverse := f.inverse ∘ g.inverse
+  left_inv := fun φ => by simp [f.left_inv, g.left_inv]
+  right_inv := fun φ' => by simp [f.right_inv, g.right_inv]
+  jacobian := f.jacobian * g.jacobian
+
+/-- Compose two fermionic field redefinitions -/
+def composeFermionic {F₁ F₂ F₃ : Type _}
+  (f : @FermionicFieldRedefinition F₁ F₂)
+  (g : @FermionicFieldRedefinition F₂ F₃) : @FermionicFieldRedefinition F₁ F₃ where
+  map := g.map ∘ f.map
+  inverse := f.inverse ∘ g.inverse
+  left_inv := fun φ => by simp [f.left_inv, g.left_inv]
+  right_inv := fun φ' => by simp [f.right_inv, g.right_inv]
+  berezinian := berezinianCompose f.berezinian g.berezinian
+
+/-- Identity bosonic field redefinition -/
+def idBosonic (F : Type _) : @BosonicFieldRedefinition F F where
+  map := id
+  inverse := id
+  left_inv := fun _ => rfl
+  right_inv := fun _ => rfl
+  jacobian := 1
+
+/-- Identity fermionic field redefinition -/
+def idFermionic (F : Type _) : @FermionicFieldRedefinition F F where
+  map := id
+  inverse := id
+  left_inv := fun _ => rfl
+  right_inv := fun _ => rfl
+  berezinian := berezinianId
+
+/-- Inverse of bosonic field redefinition -/
+noncomputable def inverseBosonic {F₁ F₂ : Type _}
+  (f : @BosonicFieldRedefinition F₁ F₂)
+  (h : f.jacobian ≠ 0) : @BosonicFieldRedefinition F₂ F₁ where
+  map := f.inverse
+  inverse := f.map
+  left_inv := f.right_inv
+  right_inv := f.left_inv
+  jacobian := f.jacobian⁻¹
+
+/-- Inverse of fermionic field redefinition -/
+noncomputable def inverseFermionic {F₁ F₂ : Type _}
+  (f : @FermionicFieldRedefinition F₁ F₂)
+  (h : f.berezinian.val ≠ 0) : @FermionicFieldRedefinition F₂ F₁ where
+  map := f.inverse
+  inverse := f.map
+  left_inv := f.right_inv
+  right_inv := f.left_inv
+  berezinian := berezinianInv f.berezinian
+
 /- ============= JACOBIAN PROPERTIES ============= -/
 
 /-- Bosonic Jacobian is multiplicative under composition -/
-axiom jacobian_composition {F₁ F₂ F₃ : Type _}
+theorem jacobian_composition {F₁ F₂ F₃ : Type _}
   (f : @BosonicFieldRedefinition F₁ F₂)
   (g : @BosonicFieldRedefinition F₂ F₃) :
-  bosonicJacobianEval (sorry : @BosonicFieldRedefinition F₁ F₃) =
-    bosonicJacobianEval f * bosonicJacobianEval g
+  bosonicJacobianEval (composeBosonic f g) =
+    bosonicJacobianEval f * bosonicJacobianEval g := rfl
 
 /-- Fermionic Berezinian is multiplicative -/
-axiom fermionic_berezinian_composition {F₁ F₂ F₃ : Type _}
+theorem fermionic_berezinian_composition {F₁ F₂ F₃ : Type _}
   (f : @FermionicFieldRedefinition F₁ F₂)
   (g : @FermionicFieldRedefinition F₂ F₃) :
-  fermionicBerezinianEval (sorry : @FermionicFieldRedefinition F₁ F₃) =
-    fermionicBerezinianEval f * fermionicBerezinianEval g
+  fermionicBerezinianEval (composeFermionic f g) =
+    fermionicBerezinianEval f * fermionicBerezinianEval g := rfl
 
 /-- Identity transformation has Jacobian 1 -/
-axiom jacobian_identity_bosonic {F : Type _} :
-  bosonicJacobianEval (sorry : @BosonicFieldRedefinition F F) = 1
+theorem jacobian_identity_bosonic {F : Type _} :
+  bosonicJacobianEval (idBosonic F) = 1 := rfl
 
-axiom jacobian_identity_fermionic {F : Type _} :
-  fermionicBerezinianEval (sorry : @FermionicFieldRedefinition F F) = 1
+theorem jacobian_identity_fermionic {F : Type _} :
+  fermionicBerezinianEval (idFermionic F) = 1 := rfl
 
 /-- Inverse transformation has inverse Jacobian -/
-axiom jacobian_inverse_bosonic {F₁ F₂ : Type _}
-  (f : @BosonicFieldRedefinition F₁ F₂) :
-  bosonicJacobianEval f * bosonicJacobianEval (sorry : @BosonicFieldRedefinition F₂ F₁) = 1
+theorem jacobian_inverse_bosonic {F₁ F₂ : Type _}
+  (f : @BosonicFieldRedefinition F₁ F₂)
+  (h : f.jacobian ≠ 0) :
+  bosonicJacobianEval f * bosonicJacobianEval (inverseBosonic f h) = 1 := by
+  simp only [bosonicJacobianEval, inverseBosonic]
+  exact mul_inv_cancel₀ h
 
-axiom jacobian_inverse_fermionic {F₁ F₂ : Type _}
-  (f : @FermionicFieldRedefinition F₁ F₂) :
-  fermionicBerezinianEval f * fermionicBerezinianEval (sorry : @FermionicFieldRedefinition F₂ F₁) = 1
+theorem jacobian_inverse_fermionic {F₁ F₂ : Type _}
+  (f : @FermionicFieldRedefinition F₁ F₂)
+  (h : f.berezinian.val ≠ 0) :
+  fermionicBerezinianEval f * fermionicBerezinianEval (inverseFermionic f h) = 1 :=
+  berezinian_inverse f.berezinian h
 
 end ModularPhysics.Core.QFT.PathIntegral

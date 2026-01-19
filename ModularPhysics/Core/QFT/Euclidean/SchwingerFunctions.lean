@@ -19,34 +19,36 @@ noncomputable def euclideanDistance {d : ℕ} (x y : EuclideanPoint d) : ℝ :=
 noncomputable def radialDistance {d : ℕ} (x : EuclideanPoint d) : ℝ :=
   euclideanDistance x (euclideanOrigin d)
 
-/-- Schwinger function S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E in d dimensions -/
+/-- Schwinger function S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E in d dimensions.
+    NOTE: This is a standalone axiom for simple examples. For full theories,
+    use the QFT.schwinger field which packages the n-point functions together
+    with their required properties (symmetry, translation invariance, etc.). -/
 axiom schwingerFunction {d : ℕ} (n : ℕ) : (Fin n → EuclideanPoint d) → ℝ
 
 /-- 2-point Schwinger function (Euclidean propagator) -/
 noncomputable def twoPointSchwinger {d : ℕ} (x y : EuclideanPoint d) : ℝ :=
   schwingerFunction 2 (fun i => if i = 0 then x else y)
 
-/-- Exponential decay of correlations (mass gap).
-    For a theory with mass gap m > 0, correlations decay exponentially
-    with characteristic length scale ξ = 1/m. -/
-axiom exponential_decay {d : ℕ} (m : ℝ) (hm : m > 0) (x y : EuclideanPoint d) :
-  schwingerFunction 2 (fun i => if i = 0 then x else y) ≤
-  exp (-m * euclideanDistance x y)
-
 /-- Correlation length ξ ~ 1/m -/
 noncomputable def correlationLength (m : ℝ) : ℝ := 1 / m
 
 /-- A quantum field theory in d dimensions, characterized by its Schwinger functions
-    satisfying the Osterwalder-Schrader axioms. -/
+    satisfying the Osterwalder-Schrader axioms.
+
+    NOTE: Some axioms (euclidean_invariant, reflection_positive) are stored as Prop
+    fields rather than proof obligations. This is because:
+    1. Full formalization would require defining rotation matrices, time reflection, etc.
+    2. In practice, these are verified separately for specific theories (e.g., φ⁴)
+    3. The structure focuses on the functional data (schwinger) with basic constraints -/
 structure QFT (d : ℕ) where
   /-- The n-point Schwinger functions ⟨φ(x₁)...φ(xₙ)⟩_E -/
   schwinger : (n : ℕ) → (Fin n → EuclideanPoint d) → ℝ
   /-- Translation invariance: correlations depend only on differences -/
   translation_invariant : ∀ n (points : Fin n → EuclideanPoint d) (a : EuclideanPoint d),
     schwinger n points = schwinger n (fun i μ => points i μ + a μ)
-  /-- Euclidean (rotation) invariance -/
+  /-- Euclidean (rotation) invariance - verified separately for specific theories -/
   euclidean_invariant : Prop
-  /-- Reflection positivity (Osterwalder-Schrader axiom ensuring unitarity) -/
+  /-- Reflection positivity (OS axiom ensuring unitarity) - verified separately -/
   reflection_positive : Prop
   /-- Permutation symmetry (bosonic fields) -/
   permutation_symmetric : ∀ n (points : Fin n → EuclideanPoint d) (σ : Equiv.Perm (Fin n)),
@@ -59,6 +61,23 @@ def vev {d : ℕ} (theory : QFT d) : ℝ :=
 /-- 2-point correlation function for a specific theory -/
 noncomputable def correlationFunction {d : ℕ} (theory : QFT d) (x y : EuclideanPoint d) : ℝ :=
   theory.schwinger 2 (fun i => if i = 0 then x else y)
+
+/-- A theory has a mass gap m > 0 if correlations decay exponentially
+    with rate m. NOT all theories have a mass gap (e.g., massless theories). -/
+structure HasMassGap {d : ℕ} (theory : QFT d) (m : ℝ) where
+  m_pos : m > 0
+  /-- Correlations decay exponentially: |⟨φ(x)φ(y)⟩| ≤ C e^{-m|x-y|} -/
+  decay_bound : ∃ C > 0, ∀ x y : EuclideanPoint d,
+    |correlationFunction theory x y| ≤ C * exp (-m * euclideanDistance x y)
+
+/-- Exponential decay of correlations (mass gap).
+    For a theory WITH mass gap m > 0, correlations decay exponentially.
+    NOTE: This is a property of specific theories, not a universal law. -/
+theorem exponential_decay {d : ℕ} (theory : QFT d) (m : ℝ) (h : HasMassGap theory m)
+  (x y : EuclideanPoint d) :
+  ∃ C > 0, |correlationFunction theory x y| ≤ C * exp (-m * euclideanDistance x y) := by
+  obtain ⟨C, hC_pos, hC_bound⟩ := h.decay_bound
+  exact ⟨C, hC_pos, hC_bound x y⟩
 
 /-- The massive Euclidean propagator K_d(m, r) in d dimensions.
     This is the Fourier transform of 1/(k² + m²). -/

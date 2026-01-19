@@ -11,12 +11,14 @@ set_option linter.unusedVariables false
 structure GrassmannAlgebra where
   carrier : Type _
   mul : carrier → carrier → carrier
+  add : carrier → carrier → carrier
+  neg : carrier → carrier
   zero : carrier
   /-- Grading: 0 = bosonic (even), 1 = fermionic (odd) -/
   grading : carrier → Fin 2
   /-- Anticommutativity: θᵢθⱼ = -θⱼθᵢ for odd elements -/
   anticommute : ∀ (θ₁ θ₂ : carrier),
-    grading θ₁ = 1 → grading θ₂ = 1 → mul θ₁ θ₂ ≠ mul θ₂ θ₁
+    grading θ₁ = 1 → grading θ₂ = 1 → mul θ₁ θ₂ = neg (mul θ₂ θ₁)
   /-- Nilpotency: θ² = 0 for fermionic generators -/
   nilpotent : ∀ (θ : carrier), grading θ = 1 → mul θ θ = zero
 
@@ -71,32 +73,52 @@ axiom fermionSupermanifold (M : Type _) (m n : ℕ) : Supermanifold m n
 
 /-- Berezinian (superdeterminant): replaces determinant for supermatrices
     Needed for change of variables involving fermions
-    For supermatrix [[A,B],[C,D]]: Ber = det(A - BD⁻¹C)/det(D) -/
-axiom Berezinian : Type _
+    For supermatrix [[A,B],[C,D]]: Ber = det(A - BD⁻¹C)/det(D)
 
-axiom berezinianEval (B : Berezinian) : ℂ
+    The Berezinian is the correct Jacobian for change of variables
+    involving both bosonic and fermionic coordinates. -/
+structure Berezinian where
+  /-- The complex value of the Berezinian -/
+  val : ℂ
+
+/-- Evaluate a Berezinian -/
+def berezinianEval (B : Berezinian) : ℂ := B.val
+
+/-- Identity Berezinian (for identity transformation) -/
+def berezinianId : Berezinian := ⟨1⟩
+
+/-- Compose two Berezinians (for composed transformations) -/
+def berezinianCompose (B₁ B₂ : Berezinian) : Berezinian := ⟨B₁.val * B₂.val⟩
+
+/-- Inverse Berezinian (for inverse transformation) -/
+noncomputable def berezinianInv (B : Berezinian) : Berezinian := ⟨B.val⁻¹⟩
 
 /-- Berezinian of identity is 1 -/
-axiom berezinian_identity : berezinianEval sorry = 1
+theorem berezinian_identity : berezinianEval berezinianId = 1 := rfl
 
 /-- Berezinian is multiplicative under composition
     Ber(AB) = Ber(A)Ber(B) -/
-axiom berezinian_multiplicative (B₁ B₂ : Berezinian) :
-  berezinianEval sorry = berezinianEval B₁ * berezinianEval B₂
+theorem berezinian_multiplicative (B₁ B₂ : Berezinian) :
+  berezinianEval (berezinianCompose B₁ B₂) = berezinianEval B₁ * berezinianEval B₂ := rfl
 
-/-- Berezinian of inverse
+/-- Berezinian of inverse (when B is invertible)
     Ber(A⁻¹) = 1/Ber(A) -/
-axiom berezinian_inverse (B : Berezinian) :
-  berezinianEval B * berezinianEval sorry = 1
+theorem berezinian_inverse (B : Berezinian) (h : B.val ≠ 0) :
+  berezinianEval B * berezinianEval (berezinianInv B) = 1 := by
+  simp only [berezinianEval, berezinianInv]
+  exact mul_inv_cancel₀ h
 
-/-- For purely bosonic block: Berezinian = determinant -/
-axiom berezinian_bosonic_limit (B : Berezinian)
-  (h_bosonic : True) :
-  berezinianEval B = sorry
+/-- For a purely bosonic transformation, Berezinian equals determinant -/
+axiom berezinianFromDet (det : ℂ) : Berezinian
 
-/-- For purely fermionic: Berezinian = 1/det(fermionic block) -/
-axiom berezinian_fermionic_limit (B : Berezinian)
-  (h_fermionic : True) :
-  berezinianEval B = 1 / sorry
+/-- Purely bosonic Berezinian equals the determinant -/
+axiom berezinian_bosonic_limit (det : ℂ) :
+  berezinianEval (berezinianFromDet det) = det
+
+/-- For purely fermionic transformation, Berezinian = 1/det(fermionic block) -/
+axiom berezinianFromFermionicDet (det : ℂ) (h : det ≠ 0) : Berezinian
+
+axiom berezinian_fermionic_limit (det : ℂ) (h : det ≠ 0) :
+  berezinianEval (berezinianFromFermionicDet det h) = 1 / det
 
 end ModularPhysics.Core.QFT.PathIntegral

@@ -34,7 +34,12 @@ def timeReflection {d : ℕ} [NeZero d] (x : EuclideanPoint d) : EuclideanPoint 
     where θ is time reflection: θ(x₀, x) = (-x₀, x).
 
     This is the key axiom ensuring that the reconstructed Hilbert space has
-    positive-definite inner product (unitarity of the quantum theory). -/
+    positive-definite inner product (unitarity of the quantum theory).
+
+    SIMPLIFICATION: This formulation only checks the 2-point function S₂(xᵢ, θxⱼ).
+    The full OS axiom requires positivity for all n-point functions with arbitrary
+    field insertions in the upper half-space. For a complete formalization, one would
+    need: ∑ᵢⱼ c̄ᵢ cⱼ S_{nᵢ+nⱼ}(f̄ᵢ, θfⱼ) ≥ 0 for sequences of smeared insertions. -/
 axiom reflection_positivity {d : ℕ} [NeZero d] (theory : QFT d)
   (n : ℕ)
   (points : Fin n → EuclideanPoint d)
@@ -45,11 +50,21 @@ axiom reflection_positivity {d : ℕ} [NeZero d] (theory : QFT d)
     theory.schwinger 2 (fun k => if k = 0 then points i else timeReflection (points j)) ≥ 0
 
 /-- OS Axiom E3: Symmetry (permutation invariance for bosonic fields).
-    Already included in the QFT structure as permutation_symmetric. -/
-axiom symmetry {d : ℕ} (theory : QFT d) (n : ℕ)
+    NOTE: This is already built into the QFT structure as permutation_symmetric.
+    This theorem just extracts that property. -/
+theorem symmetry {d : ℕ} (theory : QFT d) (n : ℕ)
   (sigma : Equiv.Perm (Fin n))
   (points : Fin n → EuclideanPoint d) :
-  theory.schwinger n points = theory.schwinger n (points ∘ sigma)
+  theory.schwinger n points = theory.schwinger n (points ∘ sigma) :=
+  theory.permutation_symmetric n points sigma
+
+/-- Combine two sets of points into one configuration for the (n+m)-point function -/
+def combinePoints {d : ℕ} {n m : ℕ}
+  (points_x : Fin n → EuclideanPoint d)
+  (points_y : Fin m → EuclideanPoint d) :
+  Fin (n + m) → EuclideanPoint d :=
+  fun i => if h : i.val < n then points_x ⟨i.val, h⟩
+           else points_y ⟨i.val - n, Nat.sub_lt_left_of_lt_add (Nat.not_lt.mp h) i.isLt⟩
 
 /-- OS Axiom E4: Cluster property (factorization at large separation).
 
@@ -64,10 +79,10 @@ axiom cluster_property {d : ℕ} (theory : QFT d) (n m : ℕ)
   (points_y : Fin m → EuclideanPoint d)
   (separation : EuclideanPoint d) :
   ∀ ε > 0, ∃ R : ℝ, ∀ a > R,
-    let shifted_y : Fin m → EuclideanPoint d :=
-      fun i μ => points_y i μ + a * separation μ
-    ∃ (combined_schwinger : ℝ),
-    |combined_schwinger - theory.schwinger n points_x * theory.schwinger m shifted_y| < ε
+    let shifted_y : Fin m → EuclideanPoint d := fun i μ => points_y i μ + a * separation μ
+    let combined := combinePoints points_x shifted_y
+    |theory.schwinger (n + m) combined -
+     theory.schwinger n points_x * theory.schwinger m shifted_y| < ε
 
 /-- OS Axiom E5: Growth bound on n-point functions (added in OS 1975 follow-up).
 

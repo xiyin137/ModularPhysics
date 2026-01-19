@@ -76,10 +76,23 @@ axiom minkowski_maximal_symmetry :
   ∃ (ξs : Fin 10 → SpaceTimePoint → Fin 4 → ℝ),
     ∀ i, KillingVector minkowskiMetric (ξs i)
 
-/-- Schwarzschild has 2 Killing vectors (time translation + axial rotation) -/
+/-- Schwarzschild metric (spherically symmetric vacuum solution)
+
+    In Schwarzschild coordinates (t, r, θ, φ):
+    ds² = -(1-2M/r)dt² + (1-2M/r)⁻¹dr² + r²(dθ² + sin²θ dφ²)
+
+    Axiomatized as a metric with appropriate structure. -/
+axiom schwarzschildMetric (M : ℝ) (h : M > 0) : SpacetimeMetric
+
+/-- Schwarzschild metric is spherically symmetric and static -/
+axiom schwarzschild_static (M : ℝ) (h : M > 0) :
+  Static (schwarzschildMetric M h)
+
+/-- Schwarzschild has 4 Killing vectors (time translation + 3 rotations from spherical symmetry) -/
 axiom schwarzschild_killing_vectors (M : ℝ) (h : M > 0) :
-  ∃ (ξ_t ξ_φ : SpaceTimePoint → Fin 4 → ℝ),
-    TimelikeKilling (sorry : SpacetimeMetric) ξ_t ∧
-    SpacelikeKilling (sorry : SpacetimeMetric) ξ_φ
+  ∃ (ξ_t : SpaceTimePoint → Fin 4 → ℝ)
+    (ξ_rot : Fin 3 → SpaceTimePoint → Fin 4 → ℝ),
+    TimelikeKilling (schwarzschildMetric M h) ξ_t ∧
+    ∀ i, SpacelikeKilling (schwarzschildMetric M h) (ξ_rot i)
 
 end ModularPhysics.Core.SpaceTime
