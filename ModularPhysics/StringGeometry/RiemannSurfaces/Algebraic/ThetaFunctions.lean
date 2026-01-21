@@ -84,13 +84,21 @@ noncomputable def riemannTheta (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelHg g) :
   -- This is a formal sum; convergence follows from Im(Ω) > 0
   Helpers.riemannThetaVal g z Ω.Ω
 
-/-- θ is holomorphic in z -/
-theorem theta_holomorphic (g : ℕ) (Ω : SiegelHg g) :
-    True := trivial  -- z ↦ θ(z, Ω) is holomorphic on ℂ^g
+/-- θ is holomorphic in z.
 
-/-- θ is holomorphic in Ω (on H_g) -/
+    The sum defining θ converges absolutely and uniformly on compact sets,
+    hence θ(·, Ω) is holomorphic on ℂ^g. -/
+theorem theta_holomorphic (g : ℕ) (Ω : SiegelHg g) :
+    Differentiable ℂ (fun z : Fin g → ℂ => riemannTheta g z Ω) := by
+  sorry  -- Requires uniform convergence of the theta series
+
+/-- θ is holomorphic in Ω (on H_g).
+
+    The theta function is also holomorphic in the period matrix Ω,
+    varying over the Siegel upper half space. -/
 theorem theta_holomorphic_in_omega (g : ℕ) (z : Fin g → ℂ) :
-    True := trivial  -- Ω ↦ θ(z, Ω) is holomorphic on H_g
+    Differentiable ℂ (fun Ω : Matrix (Fin g) (Fin g) ℂ => Helpers.riemannThetaVal g z Ω) := by
+  sorry  -- Requires uniform convergence in Ω
 
 /-!
 ## Quasi-periodicity
@@ -183,13 +191,14 @@ theorem odd_theta_null_zero (g : ℕ) (χ : ThetaCharacteristic g)
   unfold thetaNull thetaWithChar ThetaCharacteristic.odd at *
   exact Helpers.odd_theta_null_vanishes g χ.a χ.b hodd Ω.Ω
 
-/-- Number of even half-integer characteristics is 2^{g-1}(2^g + 1) -/
-theorem num_even_characteristics (g : ℕ) :
-    True := trivial  -- # even = 2^{g-1}(2^g + 1)
+/-- The set of half-integer characteristics (a, b) ∈ (½ℤ/ℤ)^g × (½ℤ/ℤ)^g -/
+def halfIntegerCharacteristics (g : ℕ) : Finset (ThetaCharacteristic g) :=
+  sorry  -- The 2^{2g} characteristics with a_i, b_i ∈ {0, 1/2}
 
-/-- Number of odd half-integer characteristics is 2^{g-1}(2^g - 1) -/
-theorem num_odd_characteristics (g : ℕ) :
-    True := trivial  -- # odd = 2^{g-1}(2^g - 1)
+/-- Number of half-integer characteristics is 2^{2g} -/
+theorem num_half_int_characteristics (g : ℕ) :
+    (halfIntegerCharacteristics g).card = 2 ^ (2 * g) := by
+  sorry  -- Combinatorics of (Z/2Z)^{2g}
 
 /-!
 ## Genus 1: Jacobi Theta Functions
@@ -266,31 +275,18 @@ noncomputable def riemannConstant (CRS : RiemannSurfaces.CompactRiemannSurface)
 Important functional equations for theta functions.
 -/
 
-/-- Fay's trisecant identity -/
+/-- Fay's trisecant identity.
+
+    This is one of the fundamental identities satisfied by theta functions,
+    relating products of theta functions at different points. It generalizes
+    the Jacobi triple product identity to higher genus. -/
 theorem fay_trisecant (g : ℕ) (Ω : SiegelHg g)
     (z₁ z₂ z₃ z₄ : Fin g → ℂ) :
-    True := trivial  -- θ(z₁+z₂)θ(z₃+z₄)θ(z₁+z₃)θ(z₂+z₄) + ... = 0
-
-/-- Riemann's addition formula -/
-theorem riemann_addition (g : ℕ) (Ω : SiegelHg g)
-    (z w : Fin g → ℂ) :
-    True := trivial  -- Relation between θ(z+w), θ(z-w), θ(z), θ(w)
-
-/-!
-## Theta Functions and Projective Embedding
-
-Theta functions embed the Jacobian into projective space.
--/
-
-/-- Level n theta functions give embedding J ↪ ℙ^{n^g - 1} -/
-structure ThetaEmbedding (g n : ℕ) (Ω : SiegelHg g) where
-  /-- The map to projective space -/
-  embed : True
-  /-- Is an embedding for n ≥ 3 -/
-  isEmbedding : n ≥ 3 → True
-
-/-- For n = 2, theta functions give a 2:1 map to Kummer variety -/
-theorem level2_kummer (g : ℕ) (Ω : SiegelHg g) :
-    True := trivial  -- J → J/(±1) ≅ Kummer variety
+    ∃ (c : ℂ), c ≠ 0 ∧
+      riemannTheta g (fun i => z₁ i + z₂ i) Ω *
+      riemannTheta g (fun i => z₃ i + z₄ i) Ω =
+      c * riemannTheta g (fun i => z₁ i + z₄ i) Ω *
+      riemannTheta g (fun i => z₂ i + z₃ i) Ω := by
+  sorry  -- Fay's trisecant identity - deep result in theta function theory
 
 end RiemannSurfaces.Algebraic

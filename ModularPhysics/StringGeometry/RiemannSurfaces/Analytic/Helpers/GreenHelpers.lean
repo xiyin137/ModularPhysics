@@ -142,14 +142,6 @@ theorem poissonKernel_pos (z ζ : ℂ) (hz : ‖z‖ < 1) (_ : ‖ζ‖ = 1) (hn
     rw [norm_pos_iff]
     exact sub_ne_zero.mpr (Ne.symm hne)
 
-/-- Poisson kernel integrates to 1 over the boundary -/
-theorem poissonKernel_integral_one (z : ℂ) (_ : ‖z‖ < 1) :
-    True := trivial  -- (1/2π) ∫_{|ζ|=1} P(z, ζ) |dζ| = 1
-
-/-- Poisson kernel is the normal derivative of Green's function -/
-theorem poissonKernel_from_green (z w : ℂ) (_ : ‖z‖ < 1) (_ : ‖w‖ = 1) :
-    True := trivial  -- P(z, w) = -∂G_D/∂n_w
-
 /-!
 ## Symmetry Properties
 

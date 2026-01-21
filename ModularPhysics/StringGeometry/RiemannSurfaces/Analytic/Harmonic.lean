@@ -196,16 +196,38 @@ def HarmonicOnSurface (RS : RiemannSurfaces.RiemannSurface) (f : RS.carrier → 
   -- In each coordinate chart, the function is harmonic
   True  -- Placeholder: needs chart structure
 
-/-- Harmonic 1-forms on a Riemann surface -/
-structure Harmonic1Form (RS : RiemannSurfaces.RiemannSurface) where
-  /-- The form in local coordinates: u dx + v dy -/
-  localForm : True
-  /-- Harmonicity: Δu = Δv = 0 and du/dy = dv/dx (closed) -/
-  isHarmonic : True
+/-- Harmonic 1-forms on a Riemann surface.
 
-/-- Space of harmonic 1-forms has dimension 2g -/
+    A harmonic 1-form ω is a 1-form that is both closed (dω = 0) and coclosed (d*ω = 0).
+    Equivalently, in local coordinates ω = u dx + v dy where Δu = Δv = 0. -/
+structure Harmonic1Form (RS : RiemannSurfaces.RiemannSurface) where
+  /-- The form components in local coordinates -/
+  u : RS.carrier → ℝ
+  v : RS.carrier → ℝ
+  /-- u is harmonic -/
+  u_harmonic : HarmonicOnSurface RS u
+  /-- v is harmonic -/
+  v_harmonic : HarmonicOnSurface RS v
+  /-- Cauchy-Riemann condition: ∂u/∂y = ∂v/∂x (closed condition) -/
+  closed : True  -- Requires differential forms infrastructure
+
+/-- The space of harmonic 1-forms on a compact Riemann surface -/
+def Harmonic1FormSpace (CRS : RiemannSurfaces.CompactRiemannSurface) : Type :=
+  Harmonic1Form CRS.toRiemannSurface
+
+/-- The dimension of the space of harmonic 1-forms on a genus g surface is 2g.
+
+    This is a fundamental result in Hodge theory. By the Hodge decomposition,
+    H¹_dR(Σ) ≅ H¹_harm(Σ), and dim H¹_dR(Σ) = 2g by topology.
+
+    The proof requires:
+    1. Hodge decomposition for compact Riemann surfaces
+    2. Identification of de Rham cohomology with harmonic forms
+    3. Topological computation of first Betti number -/
 theorem harmonic_1forms_dimension (CRS : RiemannSurfaces.CompactRiemannSurface) :
-    True := trivial  -- dim H¹_harm(Σ) = 2g
+    ∃ (basis : Fin (2 * CRS.genus) → Harmonic1Form CRS.toRiemannSurface),
+      Function.Injective basis := by
+  sorry  -- Requires Hodge theory
 
 /-!
 ## Poisson Equation

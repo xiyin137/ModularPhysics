@@ -1,5 +1,7 @@
 import ModularPhysics.StringGeometry.SuperRiemannSurfaces.Basic
 import Mathlib.Analysis.Complex.Conformal
+import Mathlib.Analysis.Calculus.FDeriv.Mul
+import Mathlib.Analysis.Calculus.Deriv.Comp
 
 /-!
 # Superconformal Maps
@@ -59,7 +61,11 @@ In superconformal coordinates (z|θ), superconformal maps have a specific form
 determined by the requirement to preserve the distribution D = span{D_θ}.
 -/
 
-/-- A local superconformal transformation in coordinates (z|θ) -/
+/-- A local superconformal transformation in coordinates (z|θ).
+
+    The functions f, ψ, η are required to be holomorphic (complex differentiable)
+    everywhere. This simplifies composition while still capturing the essential
+    structure. In practice, one works with germs of holomorphic functions. -/
 structure LocalSuperconformalMap where
   /-- The holomorphic function f(z) for the even transformation z' = f(z) + θψη -/
   f : ℂ → ℂ
@@ -67,12 +73,12 @@ structure LocalSuperconformalMap where
   ψ : ℂ → ℂ
   /-- The odd function η(z) -/
   η : ℂ → ℂ
-  /-- f is holomorphic -/
-  f_holomorphic : DifferentiableAt ℂ f 0  -- Simplified: at origin
+  /-- f is holomorphic (everywhere) -/
+  f_holomorphic : Differentiable ℂ f
   /-- ψ is holomorphic -/
-  ψ_holomorphic : DifferentiableAt ℂ ψ 0
+  ψ_holomorphic : Differentiable ℂ ψ
   /-- η is holomorphic -/
-  η_holomorphic : DifferentiableAt ℂ η 0
+  η_holomorphic : Differentiable ℂ η
   /-- The superconformal constraint: f' = η² -/
   superconformal_constraint : ∀ z : ℂ, deriv f z = (η z) ^ 2
 
@@ -108,21 +114,46 @@ def LocalSuperconformalMap.id : LocalSuperconformalMap where
   f := fun z => z
   ψ := fun _ => 0
   η := fun _ => 1
-  f_holomorphic := differentiableAt_id
-  ψ_holomorphic := differentiableAt_const 0
-  η_holomorphic := differentiableAt_const 1
+  f_holomorphic := differentiable_id
+  ψ_holomorphic := differentiable_const 0
+  η_holomorphic := differentiable_const 1
   superconformal_constraint := fun z => by simp [deriv_id'']
 
-/-- Composition of local superconformal maps (simplified) -/
+/-- Composition of local superconformal maps (simplified).
+
+    The composition of superconformal maps is superconformal. In coordinates:
+    - f₁₂ = f₁ ∘ f₂ (composition of body maps, ignoring odd corrections)
+    - ψ₁₂ = ψ₁(f₂) · η₂ + ψ₂ (chain rule for odd component)
+    - η₁₂ = η₁(f₂) · η₂ (chain rule)
+
+    The superconformal constraint (f' = η²) is preserved because:
+    (f₁ ∘ f₂)' = f₁'(f₂) · f₂' = η₁(f₂)² · η₂² = (η₁(f₂) · η₂)² = η₁₂²
+
+    **Note:** The differentiability proofs require compositionality lemmas
+    for holomorphic functions. The mathematical facts are standard:
+    - Composition of holomorphic functions is holomorphic
+    - Product of holomorphic functions is holomorphic
+    - Sum of holomorphic functions is holomorphic
+
+    These are theorems in complex analysis, but proving them requires
+    establishing differentiability at the correct points in the composition,
+    which needs careful point-wise reasoning. -/
 noncomputable def LocalSuperconformalMap.comp (φ₁ φ₂ : LocalSuperconformalMap) :
     LocalSuperconformalMap where
   f := φ₁.f ∘ φ₂.f  -- Simplified: ignoring odd corrections
   ψ := fun z => φ₁.ψ (φ₂.f z) * φ₂.η z + φ₂.ψ z  -- Chain rule for odd
   η := fun z => φ₁.η (φ₂.f z) * φ₂.η z  -- Chain rule
-  f_holomorphic := sorry
-  ψ_holomorphic := sorry
-  η_holomorphic := sorry
-  superconformal_constraint := sorry
+  f_holomorphic := Differentiable.comp φ₁.f_holomorphic φ₂.f_holomorphic
+  ψ_holomorphic := Differentiable.add
+    (Differentiable.mul (Differentiable.comp φ₁.ψ_holomorphic φ₂.f_holomorphic) φ₂.η_holomorphic)
+    φ₂.ψ_holomorphic
+  η_holomorphic := Differentiable.mul
+    (Differentiable.comp φ₁.η_holomorphic φ₂.f_holomorphic) φ₂.η_holomorphic
+  superconformal_constraint := fun z => by
+    -- (f₁ ∘ f₂)'(z) = f₁'(f₂(z)) · f₂'(z) = η₁(f₂(z))² · η₂(z)² = (η₁(f₂(z)) · η₂(z))²
+    rw [deriv_comp z (φ₁.f_holomorphic.differentiableAt) (φ₂.f_holomorphic.differentiableAt)]
+    rw [φ₁.superconformal_constraint, φ₂.superconformal_constraint]
+    ring
 
 /-!
 ## The Superconformal Algebra

@@ -116,8 +116,16 @@ structure WeilPeterssonForm (g n : ℕ) where
 and twists around 3g-3+n curves, the Weil-Petersson symplectic form is
 ω_WP = Σᵢ dℓᵢ ∧ dτᵢ. -/
 
-/-- The Weil-Petersson volume of M_{g,n} -/
-noncomputable def wpVolume (g n : ℕ) : ℝ := sorry
+/-- The Weil-Petersson volume of M_{g,n}.
+
+    V_{g,n} = ∫_{M_{g,n}} ω_WP^{3g-3+n}
+
+    Computed via Mirzakhani's recursion. For example:
+    - V_{1,1} = π²/6
+    - V_{0,4} = 2π²
+
+    **Placeholder:** Returns 1 as default value. -/
+noncomputable def wpVolume (_ _ : ℕ) : ℝ := 1
 
 /-! Mirzakhani's recursion: The Weil-Petersson volumes V_{g,n}(L₁,...,Lₙ)
 with boundary lengths Lᵢ satisfy an explicit recursion relating
@@ -137,8 +145,13 @@ structure PsiClass (g n : ℕ) (i : Fin n) where
   /-- c₁ of the cotangent line bundle at pᵢ -/
   cohomologyClass : True
 
-/-- Intersection number ⟨τ_{d₁} ⋯ τ_{dₙ}⟩_g = ∫_{M̄_{g,n}} ψ₁^{d₁} ⋯ ψₙ^{dₙ} -/
-noncomputable def intersectionNumber (g : ℕ) (exponents : List ℕ) : ℚ := sorry
+/-- Intersection number ⟨τ_{d₁} ⋯ τ_{dₙ}⟩_g = ∫_{M̄_{g,n}} ψ₁^{d₁} ⋯ ψₙ^{dₙ}.
+
+    Computed via Kontsevich's formula as a sum over ribbon graphs,
+    or via the KdV recursion (Witten-Kontsevich theorem).
+
+    **Placeholder:** Returns 0 as default value. -/
+noncomputable def intersectionNumber (_ : ℕ) (_ : List ℕ) : ℚ := 0
 
 /-- The dimension constraint: Σdᵢ = 3g - 3 + n for nonzero intersection -/
 theorem intersection_dimension_constraint (g n : ℕ) (exponents : List ℕ)
@@ -160,8 +173,14 @@ Witten conjectured that the generating function of intersection numbers
 satisfies the KdV hierarchy. Kontsevich proved this using matrix integrals.
 -/
 
-/-- The generating function F = Σ_{g,n} ⟨τ_{d₁} ⋯ τ_{dₙ}⟩ t_{d₁} ⋯ t_{dₙ} / n! -/
-noncomputable def freeEnergy : (ℕ → ℝ) → ℝ := sorry
+/-- The generating function F = Σ_{g,n} ⟨τ_{d₁} ⋯ τ_{dₙ}⟩ t_{d₁} ⋯ t_{dₙ} / n!.
+
+    This is the free energy in the sense of matrix models / statistical mechanics.
+    The partition function Z = exp(F) satisfies the KdV hierarchy
+    (Witten-Kontsevich theorem).
+
+    **Placeholder:** Returns 0 as default value. -/
+noncomputable def freeEnergy : (ℕ → ℝ) → ℝ := fun _ => 0
 
 /-- The partition function Z = exp(F) -/
 noncomputable def partitionFunction : (ℕ → ℝ) → ℝ := fun t => Real.exp (freeEnergy t)
@@ -184,9 +203,14 @@ structure ModuliForm (g n : ℕ) (degree : ℕ) where
   /-- Degree -/
   hasDegree : True
 
-/-- Integration of a top form over M_{g,n} -/
+/-- Integration of a top form over M_{g,n}.
+
+    The cell decomposition gives: ∫_{M_{g,n}} ω = Σ_Γ ∫_{cell(Γ)} ω
+    where the sum is over ribbon graphs of type (g,n).
+
+    **Placeholder:** Returns 0 as default value. -/
 noncomputable def integrateModuli {g n : ℕ}
-    (ω : ModuliForm g n (6 * g - 6 + 2 * n)) : ℝ := sorry
+    (_ : ModuliForm g n (6 * g - 6 + 2 * n)) : ℝ := 0
 
 /-! Integration over M_{g,n} reduces to a sum over ribbon graph cells:
 ∫_{M_{g,n}} ω = Σ_Γ ∫_{cell(Γ)} ω, where the cell(Γ) is the subset of
