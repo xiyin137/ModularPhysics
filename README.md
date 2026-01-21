@@ -6,9 +6,9 @@ Modular physics formalization in Lean 4 with Mathlib.
 
 This project has two distinct components with different methodological approaches:
 
-### Core/ — Physics with Axioms
+### Core/ and Papers/ — Physics Formalization
 
-The `Core/` module aims to formalize physical theories (quantum mechanics, QFT, general relativity, etc.) using **new axioms** that capture physical principles not derivable from pure mathematics. Currently in early stages with basic structures sketched out.
+The `Core/` and `Papers/` modules formalize physical theories (quantum mechanics, QFT, general relativity, etc.) using **structures with assumptions** to capture physical principles. Prefer structures over axioms where possible, as structures make assumptions explicit and can be instantiated with concrete implementations.
 
 ### StringGeometry/ — Rigorous Formalization (No New Axioms)
 
@@ -19,7 +19,7 @@ Currently developing basic definitions for:
 - Supermanifolds (Grassmann algebras, Berezinian structure)
 - Super Riemann surfaces (early stages)
 
-Many sorrys remain to be eliminated.
+Many `sorry`s remain to be eliminated.
 
 ## Structure
 
@@ -217,5 +217,5 @@ Requires Lean 4.27+ and Mathlib4.
 
 **Both components are work in progress.**
 
-- **Core/**: Axiomatic structure established for major physical theories. Proofs use `sorry` where full formalization is pending.
-- **StringGeometry/**: Mathematical foundations under active development. Sorrys are being systematically eliminated.
+- **Core/ and Papers/**: Structure-based formalization of major physical theories. Proofs use `sorry` where full formalization is pending.
+- **StringGeometry/**: Mathematical foundations under active development. `sorry`s are being systematically eliminated.
