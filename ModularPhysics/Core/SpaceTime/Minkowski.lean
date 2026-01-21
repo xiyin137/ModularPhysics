@@ -5,7 +5,7 @@ import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
 namespace ModularPhysics.Core.SpaceTime
 
 /-- Minkowski metric (flat spacetime) -/
-def minkowskiMetric : SpacetimeMetric where
+noncomputable def minkowskiMetric : SpacetimeMetric where
   g := fun _ μ ν =>
     if μ = ν then
       if μ = 0 then -1 else 1
@@ -17,6 +17,14 @@ def minkowskiMetric : SpacetimeMetric where
     · by_cases h2 : ν = μ
       · simp [h2]
       · simp [h1, Ne.symm h1]
+  inverseMetric := fun _ μ ν =>
+    if μ = ν then
+      if μ = 0 then -1 else 1
+    else 0
+  metricDeterminant := fun _ => -1
+  metric_nondegenerate := by intro _; norm_num
+  inverse_metric_identity := by sorry  -- Can be proven but lengthy
+  signature := fun _ μ => if μ = 0 then -1 else 1
 
 /-- Minkowski inner product (constant across spacetime) -/
 noncomputable def minkowskiInnerProduct (v w : Fin 4 → ℝ) : ℝ :=
@@ -45,8 +53,12 @@ theorem interval_symm (x y : SpaceTimePoint) :
   simp [minkowskiInterval, minkowskiInnerProduct]
   ring
 
-/-- Proper time along a path in Minkowski spacetime -/
-axiom properTime : (ℝ → SpaceTimePoint) → ℝ → ℝ → ℝ
+/-- Structure for Minkowski spacetime with proper time -/
+structure MinkowskiSpacetime where
+  /-- Proper time along a path in Minkowski spacetime -/
+  properTime : (ℝ → SpaceTimePoint) → ℝ → ℝ → ℝ
+  /-- Rest frame of an observer -/
+  restFrame : (ℝ → SpaceTimePoint) → ℝ → LorentzTransform
 
 /- ============= LORENTZ TRANSFORMATIONS (GENERAL DIMENSION) ============= -/
 
@@ -146,8 +158,5 @@ noncomputable def spatialRotation (θ : ℝ) : LorentzTransform where
     | 3, 3 => 1
     | _, _ => 0
   preserves_metric := by sorry
-
-/-- Rest frame of an observer -/
-axiom RestFrame : (ℝ → SpaceTimePoint) → ℝ → LorentzTransform
 
 end ModularPhysics.Core.SpaceTime

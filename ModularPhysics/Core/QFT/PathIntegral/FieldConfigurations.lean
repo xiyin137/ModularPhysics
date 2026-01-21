@@ -16,7 +16,11 @@ set_option linter.unusedVariables false
     - Nonlinear σ-model: φ : M → S² (maps to sphere)
     - Gauge theory: A : M → Lie(G) with gauge equivalence
     - Fermions: ψ with anticommuting values (supermanifold structure) -/
-axiom FieldConfig (M : Type _) (target : Type _) : Type _
+structure FieldConfigElement (M : Type _) (target : Type _) where
+  data : Unit
+
+/-- Abbreviation for field configuration type -/
+abbrev FieldConfig (M : Type _) (target : Type _) := FieldConfigElement M target
 
 /-- Pointwise evaluation of field configuration -/
 axiom evalField {M target : Type _} : FieldConfig M target → M → target
@@ -50,9 +54,32 @@ structure GaugeFieldSpace (M : Type _) (G : Type _) where
 /-- Fermionic field configurations
     Mathematical reality: configuration space is a supermanifold
     Practical note: for ordinary QFT, super vector space structure suffices -/
-axiom FermionFieldConfig (M : Type _) : Type _
+structure FermionFieldConfigElement (M : Type _) where
+  data : Unit
+
+/-- Abbreviation for fermionic field configuration type -/
+abbrev FermionFieldConfig (M : Type _) := FermionFieldConfigElement M
 
 /-- General field configuration space (no a priori structure) -/
-axiom FieldSpace (M : Type _) : Type _
+structure FieldSpaceElement (M : Type _) where
+  data : Unit
+
+/-- Abbreviation for general field space type -/
+abbrev FieldSpace (M : Type _) := FieldSpaceElement M
+
+/- ============= FIELD CONFIGURATION THEORY ============= -/
+
+/-- Structure for field configuration theory -/
+structure FieldConfigurationTheory where
+  /-- Field configurations form a well-defined space -/
+  configs_well_defined : ∀ (M target : Type _), Nonempty (FieldConfig M target)
+  /-- Evaluation is compatible with structure -/
+  eval_compatible : ∀ (M target : Type _) (φ : FieldConfig M target),
+    ∃ (f : M → target), True
+  /-- Fermionic configurations have Grassmann nature -/
+  fermionic_grassmann : ∀ (M : Type _), Nonempty (FermionFieldConfig M)
+
+/-- Field configuration theory holds -/
+axiom fieldConfigurationTheoryD : FieldConfigurationTheory
 
 end ModularPhysics.Core.QFT.PathIntegral

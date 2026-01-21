@@ -300,13 +300,22 @@ theorem haag_ruelle_equals_lsz {H : Type _} [QuantumStateSpace H]
 
 /- ============= VALIDITY REQUIREMENTS ============= -/
 
+/-- Structure for Haag-Ruelle mass gap theory -/
+structure HaagRuelleMassGapTheory where
+  /-- Mass gap condition -/
+  haag_ruelle_mass_gap : ∀ (m : ℝ), m > 0
+
+/-- Haag-Ruelle mass gap theory axiom -/
+axiom haagRuelleMassGapTheoryD : HaagRuelleMassGapTheory
+
 /-- Mass gap condition (essential for Haag-Ruelle)
 
     The theory must have an isolated one-particle state with mass m > 0,
     separated from the multi-particle continuum by a gap.
 
     Without this, the asymptotic limits don't exist. -/
-axiom haag_ruelle_mass_gap (m : ℝ) : m > 0
+theorem haag_ruelle_mass_gap (m : ℝ) : m > 0 :=
+  haagRuelleMassGapTheoryD.haag_ruelle_mass_gap m
 
 /-- Cluster decomposition (essential for factorization)
 

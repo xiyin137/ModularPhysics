@@ -14,12 +14,13 @@ open SpaceTime Quantum
     This is a fundamental consequence of Lorentz invariance + locality + spectrum condition.
 
     This is a THEOREM (provable from W1-W4), not an axiom itself. -/
-theorem pct_theorem {H : Type _} [QuantumStateSpace H] {d : ℕ}
+theorem pct_theorem {H : Type _} [QuantumStateSpace H] {d : ℕ} [NeZero d]
+  (qft : WightmanQFT H d)
   (phi : FieldDistribution H d) :
   ∃ (Theta : H → H),  -- Antiunitary PCT operator
   ∀ (n : ℕ) (points : Fin n → (Fin d → ℝ)),
-    wightmanFunction phi n (fun i μ => -points i μ) =
-    wightmanFunction phi n points := by  -- Simplified: actual statement involves operator conjugation
+    qft.wft.wightmanFunction phi n (fun i μ => -points i μ) =
+    qft.wft.wightmanFunction phi n points := by  -- Simplified: actual statement involves operator conjugation
   sorry
 
 /-- Spin-statistics theorem: Fields transforming under integer spin representations

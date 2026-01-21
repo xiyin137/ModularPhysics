@@ -32,10 +32,16 @@ invariance - see the BV formalism.
 
 open ModularPhysics.Core.QFT.RG
 
+set_option linter.unusedVariables false
+
 /- ============= WILSONIAN EFFECTIVE ACTION ============= -/
 
 /-- Field configuration space (abstractly, maps from spacetime to field values) -/
-axiom FieldSpace (d : ℕ) : Type
+structure FieldSpaceElement (d : ℕ) where
+  data : Unit
+
+/-- Field space type -/
+abbrev FieldSpace (d : ℕ) := FieldSpaceElement d
 
 /-- Wilsonian effective action at cutoff Λ
 
@@ -155,15 +161,32 @@ structure ModeIntegration (d : ℕ) where
   /-- The IR action is obtained by integrating out modes -/
   integration_condition : Prop
 
+/- ============= WILSONIAN RG THEORY ============= -/
+
+/-- Structure for Wilsonian RG theory -/
+structure WilsonianRGTheory where
+  /-- Power counting for irrelevant operators
+      An operator of dimension Δ > d has Wilson coefficient that scales as
+      g(Λ_IR) ~ g(Λ_UV) · (Λ_IR/Λ_UV)^(Δ-d) -/
+  irrelevant_suppression : ∀ {d : ℕ} (mi : ModeIntegration d)
+    (O : LocalOperator d) (h : Irrelevant O),
+    ∃ C : ℝ, |wilsonCoeff mi.ir_action O| ≤
+      C * |wilsonCoeff mi.uv_action O| *
+      (mi.ir_action.cutoff.Λ / mi.uv_action.cutoff.Λ) ^ (massDimension O - d)
+
+/-- Wilsonian RG theory holds -/
+axiom wilsonianRGTheoryD : WilsonianRGTheory
+
 /-- Power counting for irrelevant operators
 
     An operator of dimension Δ > d has Wilson coefficient that scales as
     g(Λ_IR) ~ g(Λ_UV) · (Λ_IR/Λ_UV)^(Δ-d) -/
-axiom irrelevant_suppression {d : ℕ} (mi : ModeIntegration d)
+theorem irrelevant_suppression {d : ℕ} (mi : ModeIntegration d)
     (O : LocalOperator d) (h : Irrelevant O) :
   ∃ C : ℝ, |wilsonCoeff mi.ir_action O| ≤
     C * |wilsonCoeff mi.uv_action O| *
-    (mi.ir_action.cutoff.Λ / mi.uv_action.cutoff.Λ) ^ (massDimension O - d)
+    (mi.ir_action.cutoff.Λ / mi.uv_action.cutoff.Λ) ^ (massDimension O - d) :=
+  wilsonianRGTheoryD.irrelevant_suppression mi O h
 
 /- ============= UNIVERSALITY ============= -/
 

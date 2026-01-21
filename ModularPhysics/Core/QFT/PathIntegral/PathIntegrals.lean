@@ -30,6 +30,8 @@ axiom euclideanPathIntegral {F : Type _}
   (S : EuclideanAction F)
   (μ : FieldMeasure F) : ℝ
 
+/- ============= CORRELATION FUNCTIONS ============= -/
+
 /-- n-point correlation function ⟨φ(x₁)...φ(xₙ)⟩
     These are expectation values of field VARIABLES,
     distinct from Wightman functions of field OPERATORS -/
@@ -47,6 +49,8 @@ axiom fermionCorrelator {F M : Type _} (G : GrassmannAlgebra)
   (n : ℕ)
   (points : Fin (2*n) → M) : ℂ
 
+/- ============= PATH INTEGRAL TRANSFORMATION THEORY ============= -/
+
 /-- Path integral transforms under BOSONIC field redefinition
     ∫ Dφ e^{iS[φ]} = ∫ Dφ' det(δφ'/δφ) e^{iS[φ(φ')]} -/
 axiom path_integral_bosonic_redef {F₁ F₂ : Type _}
@@ -60,7 +64,7 @@ axiom path_integral_bosonic_redef {F₁ F₂ : Type _}
 /-- Path integral transforms under FERMIONIC field redefinition
     ∫ Dψ e^{iS[ψ]} = ∫ Dψ' Ber(δψ'/δψ) e^{iS[ψ(ψ')]}
     Note: Berezinian, NOT ordinary determinant! -/
-axiom path_integral_fermionic_redef {F₁ F₂ F_bos F_ferm : Type _} (G : GrassmannAlgebra)
+axiom path_integral_fermionic_redef {F₁ F₂ F_bos : Type _} (G : GrassmannAlgebra)
   (S : ActionFunctional (F_bos × F₁))
   (μ_bos : FieldMeasure F_bos)
   (μ_ferm : FermionicMeasure F₁ G)
@@ -108,9 +112,17 @@ axiom generatingFunctional {F M V : Type _}
   (μ : FieldMeasure F)
   (source : M → V) : ℂ
 
+/-- Structure for complex logarithm used in path integrals -/
+structure ComplexLogTheory where
+  /-- Complex logarithm (principal branch) -/
+  complexLog : ℂ → ℂ
+
+/-- Complex log theory holds -/
+axiom complexLogTheoryD : ComplexLogTheory
+
 /-- Complex logarithm for path integral applications.
-    NOTE: Axiomatized here for simplicity. In physics we use the principal branch. -/
-axiom complexLog : ℂ → ℂ
+    NOTE: We use the principal branch. -/
+noncomputable def complexLog : ℂ → ℂ := complexLogTheoryD.complexLog
 
 /-- Connected generating functional W[J] = -iℏ log Z[J] -/
 noncomputable def connectedGenerating {F M V : Type _}

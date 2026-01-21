@@ -6,45 +6,54 @@ namespace ModularPhysics.Core.QuantumInformation
 
 open Quantum
 
-/-- Quantum channel (CPTP map) -/
-axiom QuantumChannel (H1 H2 : Type _) [QuantumStateSpace H1] [QuantumStateSpace H2] : Type _
+/-- Structure for quantum channel theory between two Hilbert spaces -/
+structure ChannelTheory (H1 H2 : Type _)
+    [QuantumStateSpace H1] [QuantumStateSpace H2] where
+  /-- Type of quantum channels (CPTP maps) -/
+  QuantumChannel : Type _
+  /-- Apply quantum channel -/
+  applyChannel : QuantumChannel → DensityOperator H1 → DensityOperator H2
+  /-- Classical capacity of a quantum channel -/
+  classicalCapacity : QuantumChannel → ℝ
+  /-- Quantum capacity of a channel -/
+  quantumCapacity : QuantumChannel → ℝ
 
-/-- Apply quantum channel -/
-axiom applyChannel {H1 H2 : Type _} [QuantumStateSpace H1] [QuantumStateSpace H2] :
-  QuantumChannel H1 H2 → DensityOperator H1 → DensityOperator H2
+/-- Structure for channel operations on a single Hilbert space -/
+structure SingleSpaceChannelTheory (H : Type _) [QuantumStateSpace H] where
+  /-- Channel theory from H to H -/
+  theory : ChannelTheory H H
+  /-- Identity channel -/
+  identityChannel : theory.QuantumChannel
+  /-- Maximally mixed state -/
+  maximallyMixed : ℕ → DensityOperator H
+  /-- Completely dephased state -/
+  dephase : DensityOperator H → DensityOperator H
 
-/-- Identity channel -/
-axiom identityChannel {H : Type _} [QuantumStateSpace H] : QuantumChannel H H
+/-- Structure for composable channels -/
+structure ComposableChannels {H1 H2 H3 : Type _}
+    [QuantumStateSpace H1] [QuantumStateSpace H2] [QuantumStateSpace H3]
+    (ct12 : ChannelTheory H1 H2)
+    (ct23 : ChannelTheory H2 H3)
+    (ct13 : ChannelTheory H1 H3) where
+  /-- Composition of channels -/
+  composeChannels : ct23.QuantumChannel → ct12.QuantumChannel → ct13.QuantumChannel
 
-/-- Composition of channels -/
-axiom composeChannels {H1 H2 H3 : Type _}
-  [QuantumStateSpace H1] [QuantumStateSpace H2] [QuantumStateSpace H3] :
-  QuantumChannel H2 H3 → QuantumChannel H1 H2 → QuantumChannel H1 H3
+/-- Structure for partial trace as quantum channel -/
+structure PartialTraceChannel {H1 H2 : Type _}
+    [QuantumStateSpace H1] [QuantumStateSpace H2]
+    (T : TensorProductSpace H1 H2)
+    (ct : ChannelTheory T.carrier H1) where
+  /-- Partial trace is a quantum channel -/
+  partialTrace_channel : ct.QuantumChannel
 
-/-- Partial trace is a quantum channel -/
-axiom partialTrace_is_channel {H1 H2 : Type _} [QuantumStateSpace H1] [QuantumStateSpace H2] :
-  QuantumChannel (TensorProduct H1 H2) H1
-
-/-- Maximally mixed state -/
-axiom maximallyMixed {H : Type _} [QuantumStateSpace H] (dim : ℕ) : DensityOperator H
-
-/-- Completely dephased state -/
-axiom dephase {H : Type _} [QuantumStateSpace H] : DensityOperator H → DensityOperator H
-
-/-- Classical capacity of a quantum channel -/
-axiom classicalCapacity {H1 H2 : Type _} [QuantumStateSpace H1] [QuantumStateSpace H2] :
-  QuantumChannel H1 H2 → ℝ
-
-/-- Quantum capacity of a channel -/
-axiom quantumCapacity {H1 H2 : Type _} [QuantumStateSpace H1] [QuantumStateSpace H2] :
-  QuantumChannel H1 H2 → ℝ
+variable {H : Type _} [QuantumStateSpace H]
 
 /-- Holevo bound: classical capacity limited by von Neumann entropy.
 
     This is a THEOREM (provable from quantum information theory), not an axiom itself. -/
-theorem holevo_bound {H : Type _} [QuantumStateSpace H]
-  (channel : QuantumChannel H H) (dim : ℕ) :
-  classicalCapacity channel ≤ Real.log dim := by
+theorem holevo_bound
+  (sct : SingleSpaceChannelTheory H) (dim : ℕ) :
+  sct.theory.classicalCapacity sct.identityChannel ≤ Real.log dim := by
   sorry
 
 end ModularPhysics.Core.QuantumInformation

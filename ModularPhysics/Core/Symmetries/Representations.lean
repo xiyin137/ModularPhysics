@@ -25,20 +25,6 @@ def isIrreducible {G V : Type _} [Group G] [AddCommGroup V] [Module ℝ V]
     (ρ : Representation G V) : Prop :=
   ∀ (W : Submodule ℝ V), (∀ g : G, W.map (ρ.toFun g) ≤ W) → W = ⊥ ∨ W = ⊤
 
-/-- Tensor product of representations (axiomatized - use product as placeholder) -/
-axiom tensorRep {G V W : Type _} [Group G] [AddCommGroup V] [Module ℝ V]
-    [AddCommGroup W] [Module ℝ W] :
-  Representation G V → Representation G W → Representation G (V × W)
-
-/-- Direct sum of representations (axiomatized) -/
-axiom directSumRep {G V W : Type _} [Group G] [AddCommGroup V] [Module ℝ V]
-    [AddCommGroup W] [Module ℝ W] :
-  Representation G V → Representation G W → Representation G (V × W)
-
-/-- Dual representation (axiomatized) -/
-axiom dualRep {G V : Type _} [Group G] [AddCommGroup V] [Module ℝ V] :
-  Representation G V → Representation G (V →ₗ[ℝ] ℝ)
-
 /-- Intertwiner (equivariant map between representations) -/
 structure Intertwiner {G V W : Type _} [Group G] [AddCommGroup V] [Module ℝ V]
     [AddCommGroup W] [Module ℝ W]
@@ -46,21 +32,34 @@ structure Intertwiner {G V W : Type _} [Group G] [AddCommGroup V] [Module ℝ V]
   toLinearMap : V →ₗ[ℝ] W
   equivariant : ∀ g : G, toLinearMap.comp (ρ.toFun g) = (σ.toFun g).comp toLinearMap
 
-/-- Schur's lemma: intertwiners between irreps are isomorphisms or zero -/
-axiom schur_lemma {G V W : Type _} [Group G] [AddCommGroup V] [Module ℝ V]
+/-- Structure for representation theory operations -/
+structure RepresentationOps (G : Type _) [Group G] where
+  /-- Tensor product of representations -/
+  tensorRep : {V W : Type _} → [AddCommGroup V] → [Module ℝ V] →
+    [AddCommGroup W] → [Module ℝ W] →
+    Representation G V → Representation G W → Representation G (V × W)
+  /-- Direct sum of representations -/
+  directSumRep : {V W : Type _} → [AddCommGroup V] → [Module ℝ V] →
+    [AddCommGroup W] → [Module ℝ W] →
+    Representation G V → Representation G W → Representation G (V × W)
+  /-- Dual representation -/
+  dualRep : {V : Type _} → [AddCommGroup V] → [Module ℝ V] →
+    Representation G V → Representation G (V →ₗ[ℝ] ℝ)
+  /-- Schur's lemma: intertwiners between irreps are isomorphisms or zero -/
+  schur_lemma : ∀ {V W : Type _} [AddCommGroup V] [Module ℝ V]
     [AddCommGroup W] [Module ℝ W]
     (ρ : Representation G V) (σ : Representation G W)
     (hρ : isIrreducible ρ) (hσ : isIrreducible σ)
-    (f : Intertwiner ρ σ) :
+    (f : Intertwiner ρ σ),
     Function.Bijective f.toLinearMap ∨ f.toLinearMap = 0
 
-/-- Poincaré representation on scalar fields -/
-axiom scalarFieldRep : Representation PoincareTransform (SpaceTimePoint → ℝ)
-
-/-- Poincaré representation on vector fields -/
-axiom vectorFieldRep : Representation PoincareTransform (SpaceTimePoint → Fin 4 → ℝ)
-
-/-- Lorentz representation on spinors -/
-axiom spinorRep : Representation LorentzTransform (Fin 2 → ℂ)
+/-- Structure for physics field representations -/
+structure PhysicsRepresentations where
+  /-- Poincaré representation on scalar fields -/
+  scalarFieldRep : Representation PoincareTransform (SpaceTimePoint → ℝ)
+  /-- Poincaré representation on vector fields -/
+  vectorFieldRep : Representation PoincareTransform (SpaceTimePoint → Fin 4 → ℝ)
+  /-- Lorentz representation on spinors -/
+  spinorRep : Representation LorentzTransform (Fin 2 → ℂ)
 
 end ModularPhysics.Core.Symmetries

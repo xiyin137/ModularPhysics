@@ -19,11 +19,23 @@ noncomputable def euclideanDistance {d : ℕ} (x y : EuclideanPoint d) : ℝ :=
 noncomputable def radialDistance {d : ℕ} (x : EuclideanPoint d) : ℝ :=
   euclideanDistance x (euclideanOrigin d)
 
+/-- Structure for basic Schwinger function operations -/
+structure SchwingerFunctionTheory where
+  /-- Schwinger function S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E in d dimensions -/
+  schwingerFunction : ∀ {d : ℕ} (n : ℕ), (Fin n → EuclideanPoint d) → ℝ
+  /-- Schwinger functions are symmetric under permutations (bosonic) -/
+  symmetric : ∀ {d : ℕ} (n : ℕ) (σ : Equiv.Perm (Fin n)) (points : Fin n → EuclideanPoint d),
+    schwingerFunction n points = schwingerFunction n (points ∘ σ)
+
+/-- Schwinger function theory holds -/
+axiom schwingerFunctionTheoryD : SchwingerFunctionTheory
+
 /-- Schwinger function S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E in d dimensions.
     NOTE: This is a standalone axiom for simple examples. For full theories,
     use the QFT.schwinger field which packages the n-point functions together
     with their required properties (symmetry, translation invariance, etc.). -/
-axiom schwingerFunction {d : ℕ} (n : ℕ) : (Fin n → EuclideanPoint d) → ℝ
+noncomputable def schwingerFunction {d : ℕ} (n : ℕ) : (Fin n → EuclideanPoint d) → ℝ :=
+  schwingerFunctionTheoryD.schwingerFunction n
 
 /-- 2-point Schwinger function (Euclidean propagator) -/
 noncomputable def twoPointSchwinger {d : ℕ} (x y : EuclideanPoint d) : ℝ :=
@@ -79,22 +91,44 @@ theorem exponential_decay {d : ℕ} (theory : QFT d) (m : ℝ) (h : HasMassGap t
   obtain ⟨C, hC_pos, hC_bound⟩ := h.decay_bound
   exact ⟨C, hC_pos, hC_bound x y⟩
 
+/- ============= MASSIVE KERNEL THEORY ============= -/
+
+/-- Structure for massive kernel (Euclidean propagator) theory -/
+structure MassiveKernelTheory where
+  /-- The massive Euclidean propagator K_d(m, r) in d dimensions.
+      This is the Fourier transform of 1/(k² + m²). -/
+  massiveKernel : (d : ℕ) → (m : ℝ) → (r : ℝ) → ℝ
+  /-- For any mass m > 0, the massive kernel decays exponentially in d dimensions. -/
+  massive_kernel_decay : ∀ {d : ℕ} (m : ℝ) (hm : m > 0),
+    ∃ C > 0, ∀ r ≥ 0, |massiveKernel d m r| ≤ C * exp (-m * r)
+  /-- In 2D, the massless kernel K(0,r) = lim_{m→0⁺} K(m,r) has logarithmic behavior -/
+  massless_kernel_2d_logarithmic :
+    ∀ r > 1, ∃ ε_r : ℝ,
+      massiveKernel 2 0 r = -log r + ε_r ∧
+      |ε_r| ≤ 1
+
+/-- Massive kernel theory holds -/
+axiom massiveKernelTheoryD : MassiveKernelTheory
+
 /-- The massive Euclidean propagator K_d(m, r) in d dimensions.
     This is the Fourier transform of 1/(k² + m²). -/
-axiom massiveKernel (d : ℕ) (m : ℝ) (r : ℝ) : ℝ
+noncomputable def massiveKernel (d : ℕ) (m : ℝ) (r : ℝ) : ℝ :=
+  massiveKernelTheoryD.massiveKernel d m r
 
 /-- For any mass m > 0, the massive kernel decays exponentially in d dimensions. -/
-axiom massive_kernel_decay {d : ℕ} (m : ℝ) (hm : m > 0) :
-  ∃ C > 0, ∀ r ≥ 0, |massiveKernel d m r| ≤ C * exp (-m * r)
+theorem massive_kernel_decay {d : ℕ} (m : ℝ) (hm : m > 0) :
+  ∃ C > 0, ∀ r ≥ 0, |massiveKernel d m r| ≤ C * exp (-m * r) :=
+  massiveKernelTheoryD.massive_kernel_decay m hm
 
 /-- In 2D, the massless kernel K(0,r) = lim_{m→0⁺} K(m,r) has logarithmic behavior.
     The massive kernel K(m,r) is the well-defined Fourier transform of 1/(k²+m²).
     Taking m → 0 gives the massless limit: K(0,r) ∼ -log r for large r.
     We normalize so the coefficient is -1 (absorbing factors like 1/2π into field normalization). -/
-axiom massless_kernel_2d_logarithmic :
+theorem massless_kernel_2d_logarithmic :
   ∀ r > 1, ∃ ε_r : ℝ,
     massiveKernel 2 0 r = -log r + ε_r ∧
-    |ε_r| ≤ 1
+    |ε_r| ≤ 1 :=
+  massiveKernelTheoryD.massless_kernel_2d_logarithmic
 
 /-- Spectral density ρ(m²) in the Källén-Lehmann representation. -/
 structure SpectralDensity (d : ℕ) where

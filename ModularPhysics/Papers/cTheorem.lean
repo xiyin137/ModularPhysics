@@ -92,6 +92,8 @@ noncomputable def radialPoint_2d (r : ℝ) : Point2D :=
 structure QFT2D (H : Type _) [QuantumStateSpace H] where
   /-- Number of coupling constants in the theory -/
   n_couplings : ℕ
+  /-- Wightman function theory for the 2D theory -/
+  wft : WightmanFunctionTheory H 2
   /-- Trace of stress tensor θ = T^μ_μ as operator-valued distribution.
       Vanishes at CFT fixed points, nonzero under RG flow. -/
   theta_field : FieldDistribution H 2
@@ -165,7 +167,7 @@ axiom ward_identity_two_point
   two_point_real theory x y =
     ∑ i : Fin theory.n_couplings,
       theory.beta_functions i *
-      (twoPointWightman (operator_insertion_field theory i) x y).re
+      (twoPointWightman theory.wft (operator_insertion_field theory i) x y).re
 
 /-- Spectral density ρᵢ(p²) from inserting complete set of momentum eigenstates.
     By unitarity (Wightman positivity), ρᵢ(p²) ≥ 0 for all i and p². -/
@@ -273,7 +275,7 @@ axiom operator_correlator_spectral
   (theory : QFT2D H)
   (i : Fin theory.n_couplings)
   (r : ℝ) :
-  (twoPointWightman (theta theory) (radialPoint_2d r) origin_2d).re =
+  (twoPointWightman theory.wft (theta theory) (radialPoint_2d r) origin_2d).re =
   integrate_2d (fun p =>
     Real.cos (sqrt (p 0^2 + p 1^2) * r) * spectral_density_wightman theory i p)
 

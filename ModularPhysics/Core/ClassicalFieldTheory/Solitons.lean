@@ -3,31 +3,32 @@ import ModularPhysics.Core.ClassicalFieldTheory.YangMills
 
 namespace ModularPhysics.Core.ClassicalFieldTheory
 
-/-- Kink solution (φ⁴ in 1+1D) -/
-axiom kinkSolution : ScalarField
+/-- Structure for soliton solutions in field theory -/
+structure SolitonTheory (F : Type*) (at : ActionTheory F)
+    (emt : EnergyMomentumTheory F at (eom : EquationsOfMotion F at) (fd : FieldDerivatives F)) where
+  /-- Topological charge for solitons -/
+  solitonCharge : ClassicalField F → ℤ
+  /-- Soliton stability from topology -/
+  soliton_stable : ∀ (phi : ClassicalField F) (h : solitonCharge phi ≠ 0),
+    ∃ (E_min : ℝ), ∀ (psi : ClassicalField F),
+      solitonCharge psi = solitonCharge phi → emt.totalEnergy psi ≥ E_min
 
-/-- Domain wall -/
-axiom domainWall : ScalarField
+/-- Structure for scalar solitons -/
+structure ScalarSolitons where
+  /-- Kink solution (φ⁴ in 1+1D) -/
+  kinkSolution : ScalarField
+  /-- Domain wall -/
+  domainWall : ScalarField
+  /-- Cosmic string -/
+  cosmicString : ScalarField
 
-/-- Vortex solution (Abrikosov-Nielsen-Olesen) -/
-axiom vortexSolution : ComplexScalarField × EMPotential
-
-/-- Monopole solution ('t Hooft-Polyakov) -/
-axiom magneticMonopole : YMField
-
-/-- Skyrmion -/
-axiom skyrmion : VectorField
-
-/-- Cosmic string -/
-axiom cosmicString : ScalarField
-
-/-- Topological charge for solitons -/
-axiom solitonCharge {F : Type*} (phi : ClassicalField F) : ℤ
-
-/-- Soliton stability from topology -/
-axiom soliton_stable {F : Type*} (phi : ClassicalField F)
-    (h : solitonCharge phi ≠ 0) :
-  ∃ (E_min : ℝ), ∀ (psi : ClassicalField F),
-    solitonCharge psi = solitonCharge phi → totalEnergy psi ≥ E_min
+/-- Structure for gauge solitons -/
+structure GaugeSolitons (ymt : YangMillsTheory) where
+  /-- Vortex solution (Abrikosov-Nielsen-Olesen) -/
+  vortexSolution : ComplexScalarField × EMPotential
+  /-- Monopole solution ('t Hooft-Polyakov) -/
+  magneticMonopole : ymt.YMField
+  /-- Skyrmion -/
+  skyrmion : VectorField
 
 end ModularPhysics.Core.ClassicalFieldTheory

@@ -155,8 +155,17 @@ noncomputable def liouville_dual (lft : LiouvilleCFT) : LiouvilleCFT where
     · norm_num
     · exact lft.b_positive
 
+/-- Structure for Liouville structure constants -/
+structure LiouvilleStructureConstantsTheory where
+  /-- DOZZ formula (structure constants for Liouville theory) -/
+  dozz_formula : LiouvilleCFT → ℝ → ℝ → ℝ → ℂ
+
+/-- Liouville structure constants theory axiom -/
+axiom liouvilleStructureConstantsTheoryD : LiouvilleStructureConstantsTheory
+
 /-- DOZZ formula (axiomatized, very technical to prove) -/
-axiom dozz_formula (lft : LiouvilleCFT) (α₁ α₂ α₃ : ℝ) : ℂ
+noncomputable def dozz_formula (lft : LiouvilleCFT) (α₁ α₂ α₃ : ℝ) : ℂ :=
+  liouvilleStructureConstantsTheoryD.dozz_formula lft α₁ α₂ α₃
 
 /-- Primary operators exist (axiomatized) -/
 axiom liouville_primary (lft : LiouvilleCFT) (α : ℝ) (H : Type _) : Primary2D H

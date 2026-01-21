@@ -7,8 +7,16 @@ set_option autoImplicit false
 
 /- ============= COMPRESSIBLE FLOW ============= -/
 
-/-- Speed of sound -/
-axiom speedOfSound (p : PressureField) (ρ : DensityField) : ScalarField
+variable (ops : DifferentialOperators)
+variable (md : MaterialDerivative ops)
+
+/-- Structure for compressible flow thermodynamics -/
+structure CompressibleFlowTheory where
+  /-- Speed of sound c = √(∂p/∂ρ)|_s -/
+  speedOfSound : PressureField → DensityField → ScalarField
+  /-- Speed of sound is positive -/
+  sound_speed_positive : ∀ (p : PressureField) (ρ : DensityField) (x : SpatialPoint) (t : ℝ),
+    speedOfSound p ρ x t > 0
 
 /-- Subsonic: V < c -/
 def isSubsonic (v : VelocityField) (c : ScalarField) : Prop :=
@@ -17,6 +25,11 @@ def isSubsonic (v : VelocityField) (c : ScalarField) : Prop :=
 /-- Supersonic: V > c -/
 def isSupersonic (v : VelocityField) (c : ScalarField) : Prop :=
   ∀ x t, Real.sqrt (∑ i : Fin 3, (v x t i)^2) > c x t
+
+/-- Transonic flow: some regions subsonic, some supersonic -/
+def isTransonic (v : VelocityField) (c : ScalarField) : Prop :=
+  (∃ x t, Real.sqrt (∑ i : Fin 3, (v x t i)^2) < c x t) ∧
+  (∃ x t, Real.sqrt (∑ i : Fin 3, (v x t i)^2) > c x t)
 
 /-- Rankine-Hugoniot jump conditions across shock -/
 def rankineHugoniotConditions
@@ -31,17 +44,25 @@ def rankineHugoniotConditions
 
 /-- Isentropic: Ds/Dt = 0 -/
 def isIsentropic (v : VelocityField) (s : ScalarField) : Prop :=
-  ∀ x t, materialDerivativeScalar v s x t = 0
+  ∀ x t, md.materialDerivativeScalar v s x t = 0
 
 /- ============= FLOW REGIMES ============= -/
 
-/-- Laminar flow -/
-axiom isLaminar (v : VelocityField) : Prop
-
-/-- Turbulent flow -/
-axiom isTurbulent (v : VelocityField) : Prop
-
-/-- Laminar-turbulent transition Reynolds number -/
-axiom transitionReynolds : ℝ
+/-- Structure for flow regime classification -/
+structure FlowRegimeTheory where
+  /-- Laminar flow classification -/
+  isLaminar : VelocityField → Prop
+  /-- Turbulent flow classification -/
+  isTurbulent : VelocityField → Prop
+  /-- Critical Reynolds number for laminar-turbulent transition -/
+  transitionReynolds : ℝ
+  /-- Laminar and turbulent are mutually exclusive -/
+  laminar_turbulent_exclusive : ∀ (v : VelocityField),
+    isLaminar v → ¬isTurbulent v
+  /-- Flow below critical Re is laminar -/
+  subcritical_is_laminar : ∀ (v : VelocityField) (Re : ℝ),
+    Re < transitionReynolds → isLaminar v ∨ isTurbulent v  -- at least one regime
+  /-- Transition Reynolds is positive -/
+  transition_reynolds_positive : transitionReynolds > 0
 
 end ModularPhysics.Core.FluidMechanics

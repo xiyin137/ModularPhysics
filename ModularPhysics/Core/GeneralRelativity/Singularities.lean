@@ -5,19 +5,21 @@ namespace ModularPhysics.Core.GeneralRelativity
 
 open SpaceTime
 
+variable {metric : SpacetimeMetric}
+
 /-- Curvature singularity: curvature scalar diverges -/
-def CurvatureSingularity (metric : SpacetimeMetric) (x : SpaceTimePoint) : Prop :=
-  |ricciScalar metric x| = 1/0 ∨
-  ∃ μ ν ρ σ, |riemannTensor metric x μ ν ρ σ| = 1/0
+def CurvatureSingularity (curv : CurvatureTheory metric) (x : SpaceTimePoint) : Prop :=
+  |ricciScalar curv x| = 1/0 ∨
+  ∃ μ ν ρ σ, |curv.riemannTensor x μ ν ρ σ| = 1/0
 
 /-- Singularity set: all singular points -/
-def Singularity (metric : SpacetimeMetric) : Set SpaceTimePoint :=
-  {x | CurvatureSingularity metric x}
+def Singularity (curv : CurvatureTheory metric) : Set SpaceTimePoint :=
+  {x | CurvatureSingularity curv x}
 
 /-- Coordinate singularity: artifact of coordinate choice (removable) -/
-def CoordinateSingularity (metric : SpacetimeMetric) (x : SpaceTimePoint) : Prop :=
-  (∃ μ ν, metric.g x μ ν = 1/0 ∨ inverseMetric metric x μ ν = 1/0) ∧
-  ¬CurvatureSingularity metric x
+def CoordinateSingularity (curv : CurvatureTheory metric) (x : SpaceTimePoint) : Prop :=
+  (∃ μ ν, metric.g x μ ν = 1/0 ∨ metric.inverseMetric x μ ν = 1/0) ∧
+  ¬CurvatureSingularity curv x
 
 /-- Geodesically incomplete: geodesics cannot be extended -/
 def GeodesicallyIncomplete (metric : SpacetimeMetric) : Prop :=
@@ -30,44 +32,39 @@ structure GenericityCondition (metric : SpacetimeMetric) where
                          ∃ t₁ t₂, t₁ ≠ t₂ ∧ γ t₁ = γ t₂
   ricci_condition : True
 
-/-- Weak cosmic censorship conjecture: singularities hidden behind horizons -/
-axiom weak_cosmic_censorship (bh : BlackHole) :
-  Singularity bh.metric ⊆ BlackHoleRegion bh
+/-- Structure for cosmic censorship conjectures -/
+structure CosmicCensorshipTheory (consts : GRConstants) where
+  /-- Weak cosmic censorship conjecture: singularities hidden behind horizons -/
+  weak_cosmic_censorship : ∀ (bh : BlackHole consts) (asymp : AsymptoticStructure bh.metric),
+    Singularity bh.curvature ⊆ BlackHoleRegion consts bh asymp
+  /-- Strong cosmic censorship: spacetime is "maximal" -/
+  strong_cosmic_censorship : ∀ (metric : SpacetimeMetric) (curv : CurvatureTheory metric),
+    GloballyHyperbolic metric →
+    ∀ (γ : Curve), TimelikeGeodesic metric γ →
+      (∃ t_max, ∀ t > t_max, γ t ∈ Singularity curv) ∨
+      (∀ (t : ℝ), ∃ (t' : ℝ), t' > t)
 
-/-- Strong cosmic censorship: spacetime is "maximal" -/
-axiom strong_cosmic_censorship (metric : SpacetimeMetric)
-    (h : GloballyHyperbolic metric) :
-  ∀ (γ : Curve), TimelikeGeodesic metric γ →
-    (∃ t_max, ∀ t > t_max, γ t ∈ Singularity metric) ∨
-    (∀ (t : ℝ), ∃ (t' : ℝ), t' > t)
+/-- Structure for singularity structure analysis -/
+structure SingularityAnalysis (consts : GRConstants) where
+  /-- BKL conjecture: generic singularity oscillates chaotically -/
+  bkl_conjecture : ∀ (metric : SpacetimeMetric) (curv : CurvatureTheory metric)
+    (x : SpaceTimePoint),
+    CurvatureSingularity curv x →
+    ∃ (_ : ℝ → ℝ), True  -- Kasner dynamics
+  /-- Schwarzschild singularity at r=0 is spacelike -/
+  schwarzschild_spacelike_singularity : ∀ (M : ℝ) (hM : M > 0)
+    (st : SchwarzschildTheory consts M hM) (x : SpaceTimePoint),
+    CurvatureSingularity st.curvature x → True
+  /-- Kerr ring singularity -/
+  kerr_ring_singularity : ∀ (M a : ℝ) (kt : KerrTheory consts M a),
+    ∃ (ring : Set SpaceTimePoint),
+      (∀ x ∈ ring, CurvatureSingularity kt.curvature x)
 
-/-- BKL conjecture: generic singularity oscillates chaotically -/
-axiom bkl_conjecture (metric : SpacetimeMetric)
-    (x : SpaceTimePoint)
-    (h : CurvatureSingularity metric x) :
-  ∃ (_ : ℝ → ℝ), True
-
-/-- Schwarzschild singularity at r=0 is spacelike -/
-axiom schwarzschild_spacelike_singularity (M : ℝ) (hM : M > 0) :
-  ∀ x, CurvatureSingularity (schwarzschildMetric M hM) x → True
-
-/-- Big Bang singularity is spacelike -/
-axiom big_bang_spacelike :
-  ∀ (_ : ℝ → ℝ) (_ : ℤ), True
-
-/-- Reissner-Nordström timelike singularity (naked if Q² > M²) -/
-axiom reissner_nordstrom_singularity (M Q : ℝ) :
-  Q^2 > (G * M / c^2)^2 →
-  ∃ x metric, CurvatureSingularity metric x
-
-/-- Kerr ring singularity -/
-axiom kerr_ring_singularity (M a : ℝ) :
-  ∃ (ring : Set SpaceTimePoint),
-    (∀ x ∈ ring, CurvatureSingularity (kerrMetric M a) x)
-
-/-- Penrose diagram compactification reveals singularity structure -/
-axiom penrose_compactification (metric : SpacetimeMetric) :
-  ∃ (conformal_metric : SpacetimeMetric),
-    ConformallyRelated metric conformal_metric
+/-- Structure for conformal compactification (Penrose diagrams) -/
+structure ConformalCompactification where
+  /-- Penrose diagram compactification reveals singularity structure -/
+  penrose_compactification : ∀ (metric : SpacetimeMetric),
+    ∃ (conformal_metric : SpacetimeMetric),
+      ConformallyRelated metric conformal_metric
 
 end ModularPhysics.Core.GeneralRelativity

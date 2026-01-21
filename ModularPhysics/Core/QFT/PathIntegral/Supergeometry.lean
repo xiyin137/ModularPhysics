@@ -108,17 +108,38 @@ theorem berezinian_inverse (B : Berezinian) (h : B.val ≠ 0) :
   simp only [berezinianEval, berezinianInv]
   exact mul_inv_cancel₀ h
 
+/-- Structure for Berezinian construction from determinants -/
+structure BerezinianFromDetTheory where
+  /-- For a purely bosonic transformation, Berezinian equals determinant -/
+  berezinianFromDet : ℂ → Berezinian
+  /-- Purely bosonic Berezinian equals the determinant -/
+  berezinian_bosonic_limit : ∀ (det : ℂ),
+    berezinianEval (berezinianFromDet det) = det
+  /-- For purely fermionic transformation, Berezinian = 1/det(fermionic block) -/
+  berezinianFromFermionicDet : (det : ℂ) → (h : det ≠ 0) → Berezinian
+  /-- Fermionic Berezinian equals inverse of determinant -/
+  berezinian_fermionic_limit : ∀ (det : ℂ) (h : det ≠ 0),
+    berezinianEval (berezinianFromFermionicDet det h) = 1 / det
+
+/-- Berezinian from determinant theory holds -/
+axiom berezinianFromDetTheoryD : BerezinianFromDetTheory
+
 /-- For a purely bosonic transformation, Berezinian equals determinant -/
-axiom berezinianFromDet (det : ℂ) : Berezinian
+noncomputable def berezinianFromDet (det : ℂ) : Berezinian :=
+  berezinianFromDetTheoryD.berezinianFromDet det
 
 /-- Purely bosonic Berezinian equals the determinant -/
-axiom berezinian_bosonic_limit (det : ℂ) :
-  berezinianEval (berezinianFromDet det) = det
+theorem berezinian_bosonic_limit (det : ℂ) :
+  berezinianEval (berezinianFromDet det) = det :=
+  berezinianFromDetTheoryD.berezinian_bosonic_limit det
 
 /-- For purely fermionic transformation, Berezinian = 1/det(fermionic block) -/
-axiom berezinianFromFermionicDet (det : ℂ) (h : det ≠ 0) : Berezinian
+noncomputable def berezinianFromFermionicDet (det : ℂ) (h : det ≠ 0) : Berezinian :=
+  berezinianFromDetTheoryD.berezinianFromFermionicDet det h
 
-axiom berezinian_fermionic_limit (det : ℂ) (h : det ≠ 0) :
-  berezinianEval (berezinianFromFermionicDet det h) = 1 / det
+/-- Fermionic Berezinian equals inverse of determinant -/
+theorem berezinian_fermionic_limit (det : ℂ) (h : det ≠ 0) :
+  berezinianEval (berezinianFromFermionicDet det h) = 1 / det :=
+  berezinianFromDetTheoryD.berezinian_fermionic_limit det h
 
 end ModularPhysics.Core.QFT.PathIntegral

@@ -6,19 +6,24 @@ set_option autoImplicit false
 
 /- ============= CONSERVATION LAWS ============= -/
 
+variable (ops : DifferentialOperators)
+variable (md : MaterialDerivative ops)
+
 /-- Continuity equation (mass conservation): Dρ/Dt + ρ∇·v = 0 -/
 def satisfiesContinuity (ρ : DensityField) (v : VelocityField) : Prop :=
-  ∀ x t, materialDerivativeScalar v ρ x t + ρ x t * divergence v x t = 0
+  ∀ x t, md.materialDerivativeScalar v ρ x t + ρ x t * ops.divergence v x t = 0
 
 /-- Incompressibility condition: ∇·v = 0 -/
 def isIncompressible (v : VelocityField) : Prop :=
-  ∀ x t, divergence v x t = 0
+  ∀ x t, ops.divergence v x t = 0
 
-/-- For incompressible flow, continuity implies Dρ/Dt = 0 -/
-axiom incompressible_implies_constant_density (v : VelocityField) (ρ : DensityField) :
-  isIncompressible v →
-  satisfiesContinuity ρ v →
-  (∀ x t, materialDerivativeScalar v ρ x t = 0)
+/-- Structure for conservation laws -/
+structure ConservationLaws (ops : DifferentialOperators) (md : MaterialDerivative ops) where
+  /-- For incompressible flow, continuity implies Dρ/Dt = 0 -/
+  incompressible_implies_constant_density : ∀ (v : VelocityField) (ρ : DensityField),
+    isIncompressible ops v →
+    satisfiesContinuity ops md ρ v →
+    (∀ x t, md.materialDerivativeScalar v ρ x t = 0)
 
 /-- Momentum conservation (Cauchy equation): ρDv/Dt = ∇·σ + f -/
 def satisfiesMomentumEquation
@@ -26,8 +31,8 @@ def satisfiesMomentumEquation
   (v : VelocityField)
   (σ : StressTensor)
   (f : VectorField3D) : Prop :=
-  ∀ x t i, ρ x t * materialDerivativeVector v v x t i =
-           divergenceTensor σ x t i + f x t i
+  ∀ x t i, ρ x t * md.materialDerivativeVector v v x t i =
+           ops.divergenceTensor σ x t i + f x t i
 
 /-- Energy equation: ρ De/Dt = -∇·q + σ:∇v + Q -/
 def satisfiesEnergyEquation
@@ -37,9 +42,9 @@ def satisfiesEnergyEquation
   (q : VectorField3D)
   (σ : StressTensor)
   (Q : ScalarField) : Prop :=
-  ∀ x t, ρ x t * materialDerivativeScalar v e x t =
-         -(divergence q x t) +
-         (∑ i : Fin 3, ∑ j : Fin 3, σ x t i j * gradient (fun y s => v y s j) x t i) +
+  ∀ x t, ρ x t * md.materialDerivativeScalar v e x t =
+         -(ops.divergence q x t) +
+         (∑ i : Fin 3, ∑ j : Fin 3, σ x t i j * ops.gradient (fun y s => v y s j) x t i) +
          Q x t
 
 end ModularPhysics.Core.FluidMechanics

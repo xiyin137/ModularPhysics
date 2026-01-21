@@ -42,16 +42,6 @@ def NullWorldline (γ : Worldline) : Prop :=
 noncomputable def FourVelocity (γ : Worldline) (t : ℝ) : SpaceTimePoint :=
   tangentVector γ t
 
-/-- Four-velocity is normalized for timelike worldlines -/
-axiom fourVelocity_normalized (metric : SpacetimeMetric) (γ : Worldline) (t : ℝ)
-    (h : TimelikeCurve metric γ) :
-  innerProduct metric (γ t) (FourVelocity γ t) (FourVelocity γ t) = -1
-
-/-- Four-velocity normalization in Minkowski space (backward compatibility) -/
-axiom fourVelocity_timelike (γ : Worldline) (t : ℝ)
-    (h : TimelikeWorldline γ) :
-  minkowskiInnerProduct (FourVelocity γ t) (FourVelocity γ t) = -1
-
 /-- Four-acceleration -/
 noncomputable def FourAcceleration (γ : Worldline) (t : ℝ) : SpaceTimePoint :=
   fun μ => deriv (fun s => FourVelocity γ s μ) t
@@ -61,8 +51,20 @@ def InertialObserver (γ : Worldline) : Prop :=
   TimelikeWorldline γ ∧
   ∀ t, deriv (FourVelocity γ) t = fun _ => 0
 
-/-- Proper time along timelike curve -/
-axiom properTimeAlongCurve (metric : SpacetimeMetric) (γ : Curve)
-    (h : TimelikeCurve metric γ) : ℝ → ℝ → ℝ
+/-- Structure for worldline theory bundling normalization properties -/
+structure WorldlineTheory (metric : SpacetimeMetric) where
+  /-- Proper time along timelike curve -/
+  properTimeAlongCurve : (γ : Curve) → TimelikeCurve metric γ → ℝ → ℝ → ℝ
+  /-- Four-velocity is normalized for timelike worldlines -/
+  fourVelocity_normalized : ∀ (γ : Worldline) (t : ℝ) (h : TimelikeCurve metric γ),
+    innerProduct metric (γ t) (FourVelocity γ t) (FourVelocity γ t) = -1
+
+/-- Structure for Minkowski worldline theory -/
+structure MinkowskiWorldlineTheory where
+  /-- Underlying worldline theory for Minkowski metric -/
+  theory : WorldlineTheory minkowskiMetric
+  /-- Four-velocity normalization in Minkowski space -/
+  fourVelocity_timelike : ∀ (γ : Worldline) (t : ℝ) (h : TimelikeWorldline γ),
+    minkowskiInnerProduct (FourVelocity γ t) (FourVelocity γ t) = -1
 
 end ModularPhysics.Core.SpaceTime

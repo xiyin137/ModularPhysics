@@ -6,58 +6,47 @@ set_option linter.unusedVariables false
 
 /- ============= BORDISM CATEGORY ============= -/
 
-/-- Bordism (d-dimensional manifold with boundary) -/
-axiom Bordism (d : ℕ) : Type _
+/-- Structure for bordism theory in dimension d -/
+structure BordismTheory (d : ℕ) where
+  /-- Bordism (d-dimensional manifold with boundary) -/
+  Bordism : Type _
+  /-- Boundary of bordism: list of connected components with orientations -/
+  bordismBoundary : Bordism → List Bordism
+  /-- Empty bordism (unit for disjoint union) -/
+  emptyBordism : Bordism
+  /-- Disjoint union of bordisms (monoidal product) -/
+  disjointUnion : Bordism → Bordism → Bordism
+  /-- Disjoint union is associative -/
+  disjointUnion_assoc : ∀ (M₁ M₂ M₃ : Bordism),
+    disjointUnion (disjointUnion M₁ M₂) M₃ =
+    disjointUnion M₁ (disjointUnion M₂ M₃)
+  /-- Empty bordism is unit for disjoint union (left) -/
+  disjointUnion_empty_left : ∀ (M : Bordism),
+    disjointUnion emptyBordism M = M
+  /-- Empty bordism is unit for disjoint union (right) -/
+  disjointUnion_empty_right : ∀ (M : Bordism),
+    disjointUnion M emptyBordism = M
+  /-- Orientation reversal -/
+  reverseOrientation : Bordism → Bordism
+  /-- Orientation reversal is involutive -/
+  reverseOrientation_involutive : ∀ (M : Bordism),
+    reverseOrientation (reverseOrientation M) = M
 
-/-- Boundary of bordism: list of connected components with orientations -/
-axiom bordismBoundary (d : ℕ) : Bordism d → List (Bordism (d-1))
+/-- Structure for closed manifolds as special bordisms -/
+structure ClosedManifoldTheory (d : ℕ) (bt : BordismTheory d) where
+  /-- Closed manifold (no boundary) -/
+  ClosedManifold : Type _
+  /-- Coercion from closed manifold to bordism -/
+  closedToBordism : ClosedManifold → bt.Bordism
+  /-- Closed manifolds have no boundary -/
+  closed_no_boundary : ∀ (M : ClosedManifold),
+    bt.bordismBoundary (closedToBordism M) = []
 
-/-- Empty bordism (unit for disjoint union) -/
-axiom emptyBordism (d : ℕ) : Bordism d
-
-/-- Closed manifold (no boundary) -/
-axiom ClosedManifold (d : ℕ) : Type _
-
-/-- Closed manifolds correspond to bordisms with empty boundary -/
-axiom closedManifold_equiv (d : ℕ) :
-  ClosedManifold d ≃ {M : Bordism d // bordismBoundary d M = ([] : List (Bordism (d-1)))}
-
-/-- Coercion from closed manifold to bordism -/
-axiom closedToBordism {d : ℕ} : ClosedManifold d → Bordism d
-
-noncomputable instance {d : ℕ} : Coe (ClosedManifold d) (Bordism d) where
-  coe := closedToBordism
-
-/-- Closed manifolds have no boundary -/
-axiom closed_no_boundary {d : ℕ} (M : ClosedManifold d) :
-  bordismBoundary d (closedToBordism M) = []
-
-/-- Disjoint union of bordisms (monoidal product) -/
-axiom disjointUnion (d : ℕ) : Bordism d → Bordism d → Bordism d
-
-/-- Disjoint union is associative -/
-axiom disjointUnion_assoc (d : ℕ) (M₁ M₂ M₃ : Bordism d) :
-  disjointUnion d (disjointUnion d M₁ M₂) M₃ =
-  disjointUnion d M₁ (disjointUnion d M₂ M₃)
-
-/-- Empty bordism is unit for disjoint union -/
-axiom disjointUnion_empty_left (d : ℕ) (M : Bordism d) :
-  disjointUnion d (emptyBordism d) M = M
-
-axiom disjointUnion_empty_right (d : ℕ) (M : Bordism d) :
-  disjointUnion d M (emptyBordism d) = M
-
-/-- Orientation reversal -/
-axiom reverseOrientation (d : ℕ) : Bordism d → Bordism d
-
-/-- Orientation reversal is involutive -/
-axiom reverseOrientation_involutive (d : ℕ) (M : Bordism d) :
-  reverseOrientation d (reverseOrientation d M) = M
-
-/-- Cylinder (identity bordism) M × [0,1] -/
-axiom cylinder (d : ℕ) : Bordism (d-1) → Bordism d
-
-/-- Gluing of bordisms along common boundary -/
-axiom glueBordisms (d : ℕ) (M₁ M₂ : Bordism d) (Sig : Bordism (d-1)) : Bordism d
+/-- Structure for bordism gluing operations -/
+structure BordismGluing (d : ℕ) (bt : BordismTheory d) (bt_lower : BordismTheory (d-1)) where
+  /-- Cylinder (identity bordism) M × [0,1] -/
+  cylinder : bt_lower.Bordism → bt.Bordism
+  /-- Gluing of bordisms along common boundary -/
+  glueBordisms : bt.Bordism → bt.Bordism → bt_lower.Bordism → bt.Bordism
 
 end ModularPhysics.Core.QFT.KontsevichSegal

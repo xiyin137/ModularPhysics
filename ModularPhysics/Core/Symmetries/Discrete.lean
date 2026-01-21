@@ -4,12 +4,13 @@ namespace ModularPhysics.Core.Symmetries
 
 open SpaceTime
 
-/-- Charge conjugation C (particle ↔ antiparticle)
+/-- Structure for charge conjugation C (particle ↔ antiparticle)
     Abstract operator - acts on quantum states, fields, etc. -/
-axiom ChargeConjugation : Type
-axiom C_op : ChargeConjugation → ∀ {H : Type*}, H → H
-axiom C_involutive (C : ChargeConjugation) {H : Type*} (ψ : H) :
-  C_op C (C_op C ψ) = ψ
+structure ChargeConjugation (H : Type*) where
+  /-- Charge conjugation operator -/
+  op : H → H
+  /-- C is involutive: C² = 1 -/
+  involutive : ∀ (ψ : H), op (op ψ) = ψ
 
 /-- Parity P (spatial inversion: x → -x) -/
 structure Parity where
@@ -18,22 +19,30 @@ structure Parity where
   preserves_time : ∀ (x : SpaceTimePoint), (op x) 0 = x 0
   inverts_space : ∀ (x : SpaceTimePoint) (i : Fin 3), (op x) i.succ = -(x i.succ)
 
-/-- Time reversal T (t → -t, antiunitary) -/
-axiom TimeReversal : Type
-axiom T_op : TimeReversal → ∀ {H : Type*}, H → H
-axiom T_involutive (T : TimeReversal) {H : Type*} (ψ : H) :
-  T_op T (T_op T ψ) = ψ
-axiom T_op_spacetime : TimeReversal → SpaceTimePoint → SpaceTimePoint
-axiom T_reverses_time (T : TimeReversal) (x : SpaceTimePoint) :
-  (T_op_spacetime T x) 0 = -(x 0)
+/-- Structure for time reversal T (t → -t, antiunitary) -/
+structure TimeReversal (H : Type*) where
+  /-- Time reversal operator on Hilbert space -/
+  op : H → H
+  /-- T is involutive: T² = 1 -/
+  involutive : ∀ (ψ : H), op (op ψ) = ψ
+  /-- Time reversal on spacetime -/
+  op_spacetime : SpaceTimePoint → SpaceTimePoint
+  /-- T reverses time: t → -t -/
+  reverses_time : ∀ (x : SpaceTimePoint), (op_spacetime x) 0 = -(x 0)
+  /-- T preserves space: x → x -/
+  preserves_space : ∀ (x : SpaceTimePoint) (i : Fin 3), (op_spacetime x) i.succ = x i.succ
 
 /-- Combined CPT symmetry -/
-structure CPT where
-  C : ChargeConjugation
+structure CPTSymmetry (H : Type*) where
+  C : ChargeConjugation H
   P : Parity
-  T : TimeReversal
+  T : TimeReversal H
 
 /-- CPT theorem: all Lorentz-invariant local QFTs respect CPT -/
-axiom cpt_theorem : True
+structure CPTTheorem (H : Type*) where
+  /-- CPT symmetry instance -/
+  cpt : CPTSymmetry H
+  /-- All physical observables are invariant under CPT -/
+  cpt_invariance : True  -- Statement that Lorentz-invariant local QFTs respect CPT
 
 end ModularPhysics.Core.Symmetries

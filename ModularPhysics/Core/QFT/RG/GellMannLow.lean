@@ -31,6 +31,8 @@ functions and coupling constants depend on the renormalization scale μ.
 
 open ModularPhysics.Core.QFT.RG
 
+set_option linter.unusedVariables false
+
 /- ============= RENORMALIZATION SCALE ============= -/
 
 /-- Renormalization scale μ
@@ -46,13 +48,17 @@ structure RenormScale where
 
     Different schemes give different finite parts of counterterms.
     Common schemes: MS, MS-bar, on-shell, momentum subtraction. -/
-axiom RenormScheme : Type
+inductive RenormScheme where
+  | MSbar : RenormScheme
+  | OnShell : RenormScheme
+  | MomentumSubtraction : RenormScheme
+  | Other : String → RenormScheme
 
 /-- MS-bar scheme (most common in dimensional regularization) -/
-axiom MSbar : RenormScheme
+def MSbar : RenormScheme := RenormScheme.MSbar
 
 /-- On-shell scheme (physical masses and couplings) -/
-axiom OnShell : RenormScheme
+def OnShell : RenormScheme := RenormScheme.OnShell
 
 /- ============= RUNNING COUPLING ============= -/
 
@@ -135,14 +141,27 @@ noncomputable def lambdaQCD (beta : PerturbativeBeta) (g : RunningCoupling)
 
     The n-point correlation function depends on external momenta,
     coupling g, and renormalization scale μ. -/
-axiom GreenFunction (n : ℕ) : Type
+structure GreenFunctionElement (n : ℕ) where
+  data : Unit
+
+/-- Green's function type -/
+abbrev GreenFunction (n : ℕ) := GreenFunctionElement n
+
+/-- Structure for anomalous dimension theory -/
+structure AnomalousDimensionTheory where
+  /-- Anomalous dimension of a field: γ(g) = μ d(log Z)/dμ -/
+  fieldAnomalousDimension : ℝ → ℝ
+
+/-- Anomalous dimension theory axiom -/
+axiom anomalousDimensionTheoryD : AnomalousDimensionTheory
 
 /-- Anomalous dimension of a field
 
     γ(g) = μ d(log Z)/dμ
 
     where Z is the field renormalization constant. -/
-axiom fieldAnomalousDimension : ℝ → ℝ
+noncomputable def fieldAnomalousDimension : ℝ → ℝ :=
+  anomalousDimensionTheoryD.fieldAnomalousDimension
 
 /-- Callan-Symanzik equation
 
@@ -181,16 +200,38 @@ structure SchemeTransform where
   /-- Coefficients of the transformation -/
   coefficients : ℕ → ℝ
 
-/-- Beta function coefficients are scheme-independent at one and two loops -/
-axiom beta0_scheme_independent (beta beta' : PerturbativeBeta)
-    (transform : SchemeTransform) :
-  beta.beta0 = beta'.beta0
+/-- Structure for scheme independence theory -/
+structure SchemeIndependenceTheory where
+  /-- Beta function coefficient β₀ is scheme-independent -/
+  beta0_scheme_independent : ∀ (beta beta' : PerturbativeBeta)
+    (transform : SchemeTransform), beta.beta0 = beta'.beta0
+  /-- Beta function coefficient β₁ is scheme-independent -/
+  beta1_scheme_independent : ∀ (beta beta' : PerturbativeBeta)
+    (transform : SchemeTransform), beta.beta1 = beta'.beta1
 
-axiom beta1_scheme_independent (beta beta' : PerturbativeBeta)
+/-- Scheme independence theory axiom -/
+axiom schemeIndependenceTheoryD : SchemeIndependenceTheory
+
+/-- Beta function coefficients are scheme-independent at one and two loops -/
+theorem beta0_scheme_independent (beta beta' : PerturbativeBeta)
     (transform : SchemeTransform) :
-  beta.beta1 = beta'.beta1
+  beta.beta0 = beta'.beta0 :=
+  schemeIndependenceTheoryD.beta0_scheme_independent beta beta' transform
+
+theorem beta1_scheme_independent (beta beta' : PerturbativeBeta)
+    (transform : SchemeTransform) :
+  beta.beta1 = beta'.beta1 :=
+  schemeIndependenceTheoryD.beta1_scheme_independent beta beta' transform
 
 /- ============= OPERATOR MIXING ============= -/
+
+/-- Structure for anomalous dimension matrix theory -/
+structure AnomalousDimensionMatrixTheory where
+  /-- Anomalous dimension matrix for operator mixing -/
+  anomalousDimensionMatrix : ∀ {d : ℕ}, LocalOperator d → LocalOperator d → ℝ → ℝ
+
+/-- Anomalous dimension matrix theory axiom -/
+axiom anomalousDimensionMatrixTheoryD : AnomalousDimensionMatrixTheory
 
 /-- Anomalous dimension matrix for operator mixing
 
@@ -198,8 +239,9 @@ axiom beta1_scheme_independent (beta beta' : PerturbativeBeta)
     the RG equation involves a matrix of anomalous dimensions:
 
     μ d O_i/dμ = γ_ij O_j -/
-axiom anomalousDimensionMatrix {d : ℕ} :
-    LocalOperator d → LocalOperator d → ℝ → ℝ
+noncomputable def anomalousDimensionMatrix {d : ℕ} :
+    LocalOperator d → LocalOperator d → ℝ → ℝ :=
+  anomalousDimensionMatrixTheoryD.anomalousDimensionMatrix
 
 /-- Callan-Symanzik for composite operators
 

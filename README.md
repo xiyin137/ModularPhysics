@@ -1,221 +1,54 @@
 # ModularPhysics
 
-Modular physics formalization in Lean 4 with Mathlib.
+A work-in-progress formalization of physics in Lean 4 with Mathlib.
 
 ## Philosophy
 
-This project has two distinct components with different methodological approaches:
+The project explores how physical theories can be expressed in a formal proof assistant. The `Core/` module captures the logical structure of physics using Lean's type system, while `StringGeometry/` pursues rigorous mathematical foundations without new axioms.
 
-### Core/ and Papers/ — Physics Formalization
+In `Core/`, physical principles are encoded as axioms bundled into structures. For example, the Haag-Kastler axioms for algebraic QFT, the Osterwalder-Schrader axioms for Euclidean field theory, or the properties of modular tensor categories are declared axiomatically, and theorems are derived from these axioms. This approach captures the deductive structure of physical theories without requiring complete mathematical foundations for objects like path integral measures. The axioms are not meant to be provable from first principles; rather, they formalize what physicists assume to be true, allowing one to explore the logical consequences and interrelations between different physical frameworks.
 
-The `Core/` and `Papers/` modules formalize physical theories (quantum mechanics, QFT, general relativity, etc.) using **structures with assumptions** to capture physical principles. Prefer structures over axioms where possible, as structures make assumptions explicit and can be instantiated with concrete implementations.
+The use of axioms carries a risk: inconsistent axioms would allow proving anything. To mitigate this, axioms are organized into structures that bundle related assumptions together, making dependencies explicit. When possible, axioms are formulated to match well-established physics results (theorems from constructive QFT, categorical equivalences, etc.) rather than ad hoc assumptions. The goal is not foundational certainty but a useful formal framework for exploring the logical structure of physics.
 
-### StringGeometry/ — Rigorous Formalization (No New Axioms)
-
-The `StringGeometry/` module is a project of **rigorous mathematical formalization** that does **not introduce any new axioms**. All definitions and theorems build purely on Mathlib's foundations. Incomplete proofs use `sorry` rather than introducing axioms.
-
-Currently developing basic definitions for:
-- Riemann surfaces (basic definitions, some helper lemmas)
-- Supermanifolds (Grassmann algebras, Berezinian structure)
-- Super Riemann surfaces (early stages)
-
-Many `sorry`s remain to be eliminated.
+In `StringGeometry/`, the goal is different: all definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs rather than new axioms.
 
 ## Structure
 
 ```
 ModularPhysics/
-├── Basic.lean
 ├── Core/
-│   ├── SpaceTime.lean
 │   ├── SpaceTime/
-│   │   ├── Basic.lean
-│   │   ├── Minkowski.lean
-│   │   ├── Causality.lean
-│   │   ├── Metrics.lean
-│   │   ├── Connections.lean
-│   │   ├── Curvature.lean
-│   │   ├── Geodesics.lean
-│   │   ├── Curves.lean
-│   │   ├── Hypersurfaces.lean
-│   │   ├── Conformal.lean
-│   │   └── Symmetries.lean
-│   │
-│   ├── Symmetries.lean
 │   ├── Symmetries/
-│   │   ├── Lorentz.lean
-│   │   ├── Poincare.lean
-│   │   ├── LieAlgebras.lean
-│   │   ├── Representations.lean
-│   │   └── Discrete.lean
-│   │
-│   ├── Quantum.lean
 │   ├── Quantum/
-│   │   ├── Basic.lean
-│   │   ├── Operators.lean
-│   │   ├── Measurement.lean
-│   │   └── Composite.lean
-│   │
-│   ├── QuantumInformation.lean
 │   ├── QuantumInformation/
-│   │   ├── Entropy.lean
-│   │   ├── Entanglement.lean
-│   │   ├── Channels.lean
-│   │   ├── Correlations.lean
-│   │   ├── PartialTrace.lean
-│   │   └── InformationTheorems.lean
-│   │
-│   ├── ClassicalMechanics.lean
 │   ├── ClassicalMechanics/
-│   │   ├── PhaseSpace.lean
-│   │   ├── Lagrangian.lean
-│   │   ├── Hamiltonian.lean
-│   │   ├── Symmetries.lean
-│   │   ├── CanonicalTransforms.lean
-│   │   ├── Constraints.lean
-│   │   ├── Integrable.lean
-│   │   ├── HamiltonJacobi.lean
-│   │   ├── Perturbation.lean
-│   │   └── Chaos.lean
-│   │
-│   ├── ClassicalFieldTheory.lean
 │   ├── ClassicalFieldTheory/
-│   │   ├── Fields.lean
-│   │   ├── Action.lean
-│   │   ├── EulerLagrange.lean
-│   │   ├── Noether.lean
-│   │   ├── EnergyMomentum.lean
-│   │   ├── Scalar.lean
-│   │   ├── Electromagnetic.lean
-│   │   ├── YangMills.lean
-│   │   └── Solitons.lean
-│   │
-│   ├── FluidMechanics.lean
 │   ├── FluidMechanics/
-│   │   ├── Basic.lean
-│   │   ├── Conservation.lean
-│   │   ├── Euler.lean
-│   │   ├── NavierStokes.lean
-│   │   ├── Vorticity.lean
-│   │   └── Compressible.lean
-│   │
-│   ├── GeneralRelativity.lean
 │   ├── GeneralRelativity/
-│   │   ├── EinsteinEquations.lean
-│   │   ├── Schwarzschild.lean
-│   │   ├── ReissnerNordstrom.lean
-│   │   ├── Kerr.lean
-│   │   ├── BlackHoles.lean
-│   │   ├── Singularities.lean
-│   │   ├── EnergyConditions.lean
-│   │   ├── GravitationalWaves.lean
-│   │   └── Cosmology.lean
-│   │
-│   ├── QuantumFieldTheory.lean
 │   └── QFT/
-│       ├── Wightman.lean
 │       ├── Wightman/
-│       │   ├── Axioms.lean
-│       │   ├── Operators.lean
-│       │   ├── WightmanFunctions.lean
-│       │   └── Theorems.lean
-│       │
-│       ├── AQFT.lean
 │       ├── AQFT/
-│       │   ├── Axioms.lean
-│       │   ├── LocalAlgebras.lean
-│       │   ├── Representations.lean
-│       │   └── Superselection.lean
-│       │
-│       ├── PathIntegral.lean
 │       ├── PathIntegral/
-│       │   ├── FieldConfigurations.lean
-│       │   ├── ActionAndMeasure.lean
-│       │   ├── PathIntegrals.lean
-│       │   ├── FieldRedefinitions.lean
-│       │   ├── Symmetries.lean
-│       │   ├── Regularization.lean
-│       │   ├── Semiclassical.lean
-│       │   └── Supergeometry.lean
-│       │
-│       ├── Euclidean.lean
 │       ├── Euclidean/
-│       │   ├── SchwingerFunctions.lean
-│       │   ├── OsterwalderSchrader.lean
-│       │   ├── WickRotation.lean
-│       │   └── Lattice.lean
-│       │
-│       ├── CFT.lean
 │       ├── CFT/
-│       │   ├── Basic.lean
-│       │   ├── Bootstrap.lean
 │       │   ├── Bootstrap/
-│       │   │   ├── BootstrapEquations.lean
-│       │   │   ├── CrossingSymmetry.lean
-│       │   │   └── UnitarityBounds.lean
-│       │   ├── TwoDimensional.lean
 │       │   └── TwoDimensional/
-│       │       ├── Virasoro.lean
-│       │       ├── OPE.lean
-│       │       ├── ConformalBlocks.lean
-│       │       ├── ModularInvariance.lean
-│       │       └── Examples.lean
-│       │
-│       ├── TQFT.lean
 │       ├── TQFT/
-│       │   ├── Axioms.lean
-│       │   ├── Bordisms.lean
-│       │   ├── ChernSimons.lean
-│       │   ├── KnotInvariants.lean
-│       │   ├── ModularTensorCategories.lean
-│       │   └── QuantumGroups.lean
-│       │
-│       ├── KontsevichSegal.lean
 │       ├── KontsevichSegal/
-│       │   ├── Axioms.lean
-│       │   ├── Bordisms.lean
-│       │   └── StateSpaces.lean
-│       │
-│       ├── Smatrix.lean
 │       ├── Smatrix/
-│       │   ├── AsymptoticStates.lean
-│       │   ├── LSZ.lean
-│       │   └── HaagRuelle.lean
-│       │
-│       ├── RG.lean
 │       ├── RG/
-│       │   ├── Basic.lean
-│       │   ├── WilsonianRG.lean
-│       │   ├── GellMannLow.lean
-│       │   └── EffectiveAction.lean
-│       │
-│       ├── BV.lean
 │       └── BV/
-│           ├── BRST.lean
-│           ├── BatalinVilkovisky.lean
-│           └── LInfinityAlgebra.lean
-│
-└── Papers/
-    ├── Bell.lean
-    ├── Coleman2D.lean
-    ├── cTheorem.lean
-    ├── Vafa-Witten.lean
-    ├── Kolmogorov.lean
-    ├── AMPS.lean
-    └── Phi4_2D.lean
+├── Papers/
+└── StringGeometry/
+    ├── RiemannSurfaces/
+    │   ├── Algebraic/
+    │   ├── Analytic/
+    │   ├── Combinatorial/
+    │   └── Moduli/
+    ├── Supermanifolds/
+    └── SuperRiemannSurfaces/
 ```
-
-## Build
-
-```
-lake build
-```
-
-Requires Lean 4.27+ and Mathlib4.
 
 ## Status
 
-**Both components are work in progress.**
-
-- **Core/ and Papers/**: Structure-based formalization of major physical theories. Proofs use `sorry` where full formalization is pending.
-- **StringGeometry/**: Mathematical foundations under active development. `sorry`s are being systematically eliminated.
+This is an early-stage project. The formalization is incomplete and many parts are placeholders or sketches.

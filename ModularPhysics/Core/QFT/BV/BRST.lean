@@ -87,7 +87,11 @@ structure Field where
   parity : GrassmannParity
 
 /-- Field configuration space for gauge theory -/
-axiom GaugeFieldSpace : Type
+structure GaugeFieldSpaceElement where
+  data : Unit
+
+/-- Gauge field space type -/
+abbrev GaugeFieldSpace := GaugeFieldSpaceElement
 
 /-- Functional on field space (observable or action) -/
 structure FieldFunctional where

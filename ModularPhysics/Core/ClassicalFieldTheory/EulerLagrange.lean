@@ -3,19 +3,18 @@ import Mathlib.Analysis.Calculus.Deriv.Basic
 
 namespace ModularPhysics.Core.ClassicalFieldTheory
 
-/-- Euler-Lagrange equations: ∂L/∂φ - ∂_μ(∂L/∂(∂_μφ)) = 0 -/
-axiom eulerLagrange {F : Type*} : ClassicalField F → Prop
-
-/-- Field satisfies EL equations iff action is stationary -/
-axiom euler_lagrange_stationary {F : Type*} (phi : ClassicalField F) :
-  eulerLagrange phi ↔
-  ∀ (_ : ClassicalField F), True  -- Simplified: variations preserve action
-
-/-- Hamilton's equations: φ̇ = δH/δπ, π̇ = -δH/δφ -/
-axiom hamiltonEquations {F : Type*} : ClassicalField F → Prop
-
-/-- Equivalence of Lagrangian and Hamiltonian formulations -/
-axiom lagrangian_hamiltonian_equivalence {F : Type*} (phi : ClassicalField F) :
-  eulerLagrange phi ↔ hamiltonEquations phi
+/-- Structure for Euler-Lagrange equations and Hamilton's equations -/
+structure EquationsOfMotion (F : Type*) (actionTheory : ActionTheory F) where
+  /-- Euler-Lagrange equations: ∂L/∂φ - ∂_μ(∂L/∂(∂_μφ)) = 0 -/
+  eulerLagrange : ClassicalField F → Prop
+  /-- Hamilton's equations: φ̇ = δH/δπ, π̇ = -δH/δφ -/
+  hamiltonEquations : ClassicalField F → Prop
+  /-- Field satisfies EL equations iff action is stationary -/
+  euler_lagrange_stationary : ∀ (phi : ClassicalField F),
+    eulerLagrange phi ↔
+    ∀ (_ : ClassicalField F), True  -- Simplified: variations preserve action
+  /-- Equivalence of Lagrangian and Hamiltonian formulations -/
+  lagrangian_hamiltonian_equivalence : ∀ (phi : ClassicalField F),
+    eulerLagrange phi ↔ hamiltonEquations phi
 
 end ModularPhysics.Core.ClassicalFieldTheory

@@ -13,11 +13,25 @@ structure AnalyticWightmanFunction (d : ℕ) (n : ℕ) where
   /-- Wightman functions extend to analytic functions in a tuboid domain -/
   analytic_in_tuboid : Prop
 
+/- ============= WICK ROTATION THEORY ============= -/
+
+/-- Structure for Wick rotation theory -/
+structure WickRotationTheory where
+  /-- Wick rotation: analytic continuation t → -iτ from Minkowski to Euclidean.
+      Only well-defined when the Wightman function satisfies analyticity conditions. -/
+  wickRotation : ∀ {d : ℕ} (n : ℕ)
+    (W_analytic : AnalyticWightmanFunction d n),
+    (Fin n → EuclideanPoint d) → ℝ
+
+/-- Wick rotation theory holds -/
+axiom wickRotationTheoryD : WickRotationTheory
+
 /-- Wick rotation: analytic continuation t → -iτ from Minkowski to Euclidean.
     Only well-defined when the Wightman function satisfies analyticity conditions. -/
-axiom wickRotation {d : ℕ} (n : ℕ)
+noncomputable def wickRotation {d : ℕ} (n : ℕ)
   (W_analytic : AnalyticWightmanFunction d n) :
-  (Fin n → EuclideanPoint d) → ℝ
+  (Fin n → EuclideanPoint d) → ℝ :=
+  wickRotationTheoryD.wickRotation n W_analytic
 
 /-- Osterwalder-Schrader reconstruction theorem (corrected version):
     A Euclidean QFT satisfying the OS axioms E1-E5 can be analytically continued

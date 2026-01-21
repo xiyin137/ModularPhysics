@@ -5,6 +5,42 @@ namespace ModularPhysics.Core.QuantumInformation
 
 open Quantum QuantumInformation
 
+/-- Structure for quantum information protocols -/
+structure InformationProtocols (H : Type _) [QuantumStateSpace H]
+    (T : TensorProductSpace H H) where
+  /-- Reference ancilla state -/
+  ancilla : H
+  /-- Quantum teleportation protocol -/
+  teleportation : PureState H → DensityOperator T.carrier → H
+  /-- Dense coding protocol -/
+  denseCoding : DensityOperator T.carrier → ℝ
+
+/-- Structure for qubit information protocols with capacity results -/
+structure QubitInformationProtocols
+    (ip : InformationProtocols Qubit qubitTensorProduct) where
+  /-- Dense coding achieves 2 bits per qubit with maximally entangled state -/
+  dense_coding_capacity :
+    ∃ (rho : DensityOperator QubitPair), ip.denseCoding rho = 2
+
+/-- Structure for quantum error correction -/
+structure QECCTheory (H : Type _) [QuantumStateSpace H] where
+  /-- Type of quantum error correction codes [[n,k,d]] -/
+  QECC : ℕ → ℕ → Type _
+  /-- Quantum Hamming bound -/
+  quantum_hamming_bound : ℕ → ℕ → ℕ → Prop
+
+/-- Structure for black hole information theory -/
+structure BlackHoleInformation where
+  /-- Page curve for evaporating black hole -/
+  page_curve : ℝ → ℝ → ℝ
+  /-- Page time: when radiation entropy equals black hole entropy -/
+  page_time : ℝ → ℝ
+
+/-- Teleportation classical cost (2 classical bits for qubits) -/
+def teleportation_classical_cost : ℝ := 2
+
+variable {H : Type _} [QuantumStateSpace H]
+
 /-- Strong subadditivity (SSA).
 
     This is a THEOREM (Lieb-Ruskai 1973), not an axiom itself. -/
@@ -14,23 +50,21 @@ theorem strong_subadditivity {HA HB HC : Type _}
   S_ABC + S_B ≤ S_AB + S_BC := by
   sorry
 
-/-- Reference ancilla state -/
-axiom ancilla {H : Type _} [QuantumStateSpace H] : H
-
 /-- No-cloning theorem (Wootters-Zurek 1982, Dieks 1982).
 
     This is a THEOREM (provable from linearity of quantum mechanics), not an axiom itself.
     Takes a tensor product structure as parameter. -/
-theorem no_cloning {H : Type _} [QuantumStateSpace H]
-  (T : TensorProductSpace H H) :
+theorem no_cloning
+  (T : TensorProductSpace H H)
+  (ip : InformationProtocols H T) :
   ¬∃ (cloning : T.carrier → T.carrier),
-    ∀ (psi : H), cloning (T.tensor psi ancilla) = T.tensor psi psi := by
+    ∀ (psi : H), cloning (T.tensor psi ip.ancilla) = T.tensor psi psi := by
   sorry
 
 /-- No-deleting theorem (Pati-Braunstein 2000).
 
     This is a THEOREM (provable from unitarity), not an axiom itself. -/
-theorem no_deleting {H : Type _} [QuantumStateSpace H]
+theorem no_deleting
   (T : TensorProductSpace H H) :
   ¬∃ (deleting : T.carrier → H),
     ∀ (psi : H), deleting (T.tensor psi psi) = psi := by
@@ -39,40 +73,11 @@ theorem no_deleting {H : Type _} [QuantumStateSpace H]
 /-- No-broadcasting theorem (Barnum et al. 1996).
 
     This is a THEOREM (provable from quantum mechanics), not an axiom itself. -/
-theorem no_broadcasting {H : Type _} [QuantumStateSpace H]
+theorem no_broadcasting
   (T : TensorProductSpace H H) :
   ¬∃ (broadcast : H → T.carrier),
     ∀ (psi phi : H), orthogonal psi phi →
       broadcast psi = T.tensor psi psi := by
   sorry
-
-/-- Quantum teleportation -/
-axiom teleportation {H : Type _} [QuantumStateSpace H]
-  (T : TensorProductSpace H H) :
-  PureState H → DensityOperator T.carrier → H
-
-/-- Teleportation classical cost (2 classical bits for qubits) -/
-def teleportation_classical_cost : ℝ := 2
-
-/-- Dense coding capacity -/
-axiom denseCoding {H : Type _} [QuantumStateSpace H]
-  (T : TensorProductSpace H H) :
-  DensityOperator T.carrier → ℝ
-
-/-- Dense coding achieves 2 bits per qubit with maximally entangled state -/
-axiom dense_coding_capacity :
-  ∃ (rho : DensityOperator QubitPair), denseCoding qubitTensorProduct rho = 2
-
-/-- Quantum error correction code -/
-axiom QECC (H : Type _) [QuantumStateSpace H] (k n : ℕ) : Type _
-
-/-- Quantum Hamming bound -/
-axiom quantum_hamming_bound (n k d : ℕ) : Prop
-
-/-- Page curve for evaporating black hole -/
-axiom page_curve (time : ℝ) (initial_entropy : ℝ) : ℝ
-
-/-- Page time: when radiation entropy equals black hole entropy -/
-axiom page_time_qi (initial_mass : ℝ) : ℝ
 
 end ModularPhysics.Core.QuantumInformation

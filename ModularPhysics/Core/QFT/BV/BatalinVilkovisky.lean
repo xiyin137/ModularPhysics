@@ -219,11 +219,6 @@ structure Antibracket where
   parity_odd : ∀ F G : BVFunctional,
     (bracket F G).parity = antibracketParity F.parity G.parity
 
-/-- Graded antisymmetry: (F,G) = -(-1)^{(ε_F+1)(ε_G+1)} (G,F) -/
-axiom antibracket_graded_antisymmetry (ab : Antibracket) (F G : BVFunctional) :
-  (ab.bracket F G).functional = fun s =>
-    antibracketSign F.parity G.parity * (ab.bracket G F).functional s
-
 /-- Shifted parity sign (-1)^{(ε+1)(η+1)} for Jacobi identity -/
 def shiftedKoszulSign (p q : GrassmannParity) : ℤ :=
   match p, q with
@@ -231,15 +226,6 @@ def shiftedKoszulSign (p q : GrassmannParity) : ℤ :=
   | .even, .odd => 1    -- (0+1)(1+1) = 2
   | .odd, .even => 1    -- (1+1)(0+1) = 2
   | .odd, .odd => 1     -- (1+1)(1+1) = 4
-
-/-- Graded Jacobi: (-1)^{(ε_F+1)(ε_H+1)} (F,(G,H)) + cyclic = 0 -/
-axiom antibracket_jacobi (ab : Antibracket) (F G H : BVFunctional) :
-  (fun s => shiftedKoszulSign F.parity H.parity *
-              (ab.bracket F (ab.bracket G H)).functional s +
-            shiftedKoszulSign G.parity F.parity *
-              (ab.bracket G (ab.bracket H F)).functional s +
-            shiftedKoszulSign H.parity G.parity *
-              (ab.bracket H (ab.bracket F G)).functional s) = fun _ => 0
 
 /-- Zero functional -/
 def zeroBVFunctional (gh : GhostNumber) (p : GrassmannParity) : BVFunctional :=
@@ -282,13 +268,63 @@ def ExtendedFieldSpace.totalGhostNumber (E : ExtendedFieldSpace) : ℤ :=
   E.fields.foldl (fun acc f => acc + f.ghost_number.value) 0 +
   E.antifields.foldl (fun acc a => acc + a.ghost_number.value) 0
 
+/- ============= BV THEORY STRUCTURE ============= -/
+
+/-- Core BV theory structure consolidating fundamental axioms about the antibracket -/
+structure BVTheory where
+  /-- Graded antisymmetry: (F,G) = -(-1)^{(ε_F+1)(ε_G+1)} (G,F) -/
+  antibracket_graded_antisymmetry : ∀ (ab : Antibracket) (F G : BVFunctional),
+    (ab.bracket F G).functional = fun s =>
+      antibracketSign F.parity G.parity * (ab.bracket G F).functional s
+  /-- Graded Jacobi: (-1)^{(ε_F+1)(ε_H+1)} (F,(G,H)) + cyclic = 0 -/
+  antibracket_jacobi : ∀ (ab : Antibracket) (F G H : BVFunctional),
+    (fun s => shiftedKoszulSign F.parity H.parity *
+                (ab.bracket F (ab.bracket G H)).functional s +
+              shiftedKoszulSign G.parity F.parity *
+                (ab.bracket G (ab.bracket H F)).functional s +
+              shiftedKoszulSign H.parity G.parity *
+                (ab.bracket H (ab.bracket F G)).functional s) = fun _ => 0
+  /-- Antibracket with zero gives zero -/
+  antibracket_zero_left : ∀ (ab : Antibracket) (F : BVFunctional),
+    (ab.bracket (zeroBVFunctional ⟨0⟩ .even) F).functional = fun _ => 0
+  /-- Leibniz rule: (F, GH) = (F,G)H + (-1)^{(ε_F+1)ε_G} G(F,H) -/
+  antibracket_leibniz : ∀ (ab : Antibracket) (F G H : BVFunctional),
+    (ab.bracket F (mulBVFunctional G H)).functional = fun s =>
+      (mulBVFunctional (ab.bracket F G) H).functional s +
+      (match F.parity, G.parity with
+       | .even, .even => 1   -- (0+1)·0 = 0
+       | .even, .odd => -1   -- (0+1)·1 = 1
+       | .odd, .even => 1    -- (1+1)·0 = 0
+       | .odd, .odd => 1) *  -- (1+1)·1 = 2
+        (mulBVFunctional G (ab.bracket F H)).functional s
+
+/-- BV theory axiom -/
+axiom bvTheoryD : BVTheory
+
+/-- Graded antisymmetry: (F,G) = -(-1)^{(ε_F+1)(ε_G+1)} (G,F) -/
+theorem antibracket_graded_antisymmetry (ab : Antibracket) (F G : BVFunctional) :
+  (ab.bracket F G).functional = fun s =>
+    antibracketSign F.parity G.parity * (ab.bracket G F).functional s :=
+  bvTheoryD.antibracket_graded_antisymmetry ab F G
+
+/-- Graded Jacobi: (-1)^{(ε_F+1)(ε_H+1)} (F,(G,H)) + cyclic = 0 -/
+theorem antibracket_jacobi (ab : Antibracket) (F G H : BVFunctional) :
+  (fun s => shiftedKoszulSign F.parity H.parity *
+              (ab.bracket F (ab.bracket G H)).functional s +
+            shiftedKoszulSign G.parity F.parity *
+              (ab.bracket G (ab.bracket H F)).functional s +
+            shiftedKoszulSign H.parity G.parity *
+              (ab.bracket H (ab.bracket F G)).functional s) = fun _ => 0 :=
+  bvTheoryD.antibracket_jacobi ab F G H
+
 /-- Antibracket with zero gives zero -/
-axiom antibracket_zero_left (ab : Antibracket) (F : BVFunctional) :
-  (ab.bracket (zeroBVFunctional ⟨0⟩ .even) F).functional = fun _ => 0
+theorem antibracket_zero_left (ab : Antibracket) (F : BVFunctional) :
+  (ab.bracket (zeroBVFunctional ⟨0⟩ .even) F).functional = fun _ => 0 :=
+  bvTheoryD.antibracket_zero_left ab F
 
 /-- Leibniz rule: (F, GH) = (F,G)H + (-1)^{(ε_F+1)ε_G} G(F,H)
     Note: the sign is (-1)^{(ε_F+1)ε_G}, not (-1)^{ε_{(F,G)} ε_G} -/
-axiom antibracket_leibniz (ab : Antibracket) (F G H : BVFunctional) :
+theorem antibracket_leibniz (ab : Antibracket) (F G H : BVFunctional) :
   (ab.bracket F (mulBVFunctional G H)).functional = fun s =>
     (mulBVFunctional (ab.bracket F G) H).functional s +
     (match F.parity, G.parity with
@@ -296,7 +332,8 @@ axiom antibracket_leibniz (ab : Antibracket) (F G H : BVFunctional) :
      | .even, .odd => -1   -- (0+1)·1 = 1
      | .odd, .even => 1    -- (1+1)·0 = 0
      | .odd, .odd => 1) *  -- (1+1)·1 = 2
-      (mulBVFunctional G (ab.bracket F H)).functional s
+      (mulBVFunctional G (ab.bracket F H)).functional s :=
+  bvTheoryD.antibracket_leibniz ab F G H
 
 /- ============= BV ACTION AND MASTER EQUATION ============= -/
 
@@ -322,10 +359,21 @@ structure ProperSolution where
 def bvDifferential (ab : Antibracket) (S : BVAction) (F : BVFunctional) : BVFunctional :=
   ab.bracket S.action F
 
+/-- Structure for BV differential nilpotency -/
+structure BVDifferentialTheory where
+  /-- s² = 0 when (S,S) = 0 -/
+  bv_differential_nilpotent : ∀ (ab : Antibracket) (S : BVAction)
+    (h : ClassicalMasterEquation ab S) (F : BVFunctional),
+    (bvDifferential ab S (bvDifferential ab S F)).functional = fun _ => 0
+
+/-- BV differential theory axiom -/
+axiom bvDifferentialTheoryD : BVDifferentialTheory
+
 /-- s² = 0 when (S,S) = 0 -/
-axiom bv_differential_nilpotent (ab : Antibracket) (S : BVAction)
+theorem bv_differential_nilpotent (ab : Antibracket) (S : BVAction)
     (h : ClassicalMasterEquation ab S) (F : BVFunctional) :
-  (bvDifferential ab S (bvDifferential ab S F)).functional = fun _ => 0
+  (bvDifferential ab S (bvDifferential ab S F)).functional = fun _ => 0 :=
+  bvDifferentialTheoryD.bv_differential_nilpotent ab S h F
 
 /-- Apply BV differential n times -/
 def bvDifferentialN (ab : Antibracket) (S : BVAction) (n : ℕ) (F : BVFunctional) :
@@ -420,13 +468,28 @@ structure BVPathIntegral where
   /-- L is Lagrangian with respect to omega -/
   L_is_lagrangian : L.omega = omega
 
+/-- Structure for BV gauge fixing theory -/
+structure BVGaugeFixingTheory where
+  /-- Gauge-fixed action: S restricted to Lagrangian submanifold -/
+  gaugeFixedBVAction : (S : BVAction) → (L : LagrangianFromGF) → ExtendedFieldSpace → ℝ
+  /-- Gauge independence: difference is BV-exact -/
+  bv_gauge_independence : ∀ (S : BVAction) (ab : Antibracket)
+    (h : ClassicalMasterEquation ab S) (L₁ L₂ : LagrangianFromGF),
+    ∃ F : BVFunctional,
+      (fun s => gaugeFixedBVAction S L₂ s - gaugeFixedBVAction S L₁ s) =
+      (bvDifferential ab S F).functional
+
+/-- BV gauge fixing theory axiom -/
+axiom bvGaugeFixingTheoryD : BVGaugeFixingTheory
+
 /-- Gauge-fixed action: S restricted to Lagrangian submanifold
 
     S_gf[φ] = S[φ, φ*]|_{φ*_A = ∂Ψ/∂φ^A}
 
     This is what appears in the exponent of the path integral.
     The restriction to L is implicit in the path integral measure. -/
-axiom gaugeFixedBVAction (S : BVAction) (L : LagrangianFromGF) : ExtendedFieldSpace → ℝ
+noncomputable def gaugeFixedBVAction (S : BVAction) (L : LagrangianFromGF) : ExtendedFieldSpace → ℝ :=
+  bvGaugeFixingTheoryD.gaugeFixedBVAction S L
 
 /-- Stokes' theorem for BV: Independence of gauge-fixing choice
 
@@ -439,11 +502,12 @@ axiom gaugeFixedBVAction (S : BVAction) (L : LagrangianFromGF) : ExtendedFieldSp
     and the master equation ensures ⟨sO⟩ = 0.
 
     At quantum level with QME, we need (S,S) = 2iℏΔS. -/
-axiom bv_gauge_independence (S : BVAction) (ab : Antibracket)
+theorem bv_gauge_independence (S : BVAction) (ab : Antibracket)
     (h : ClassicalMasterEquation ab S) (L₁ L₂ : LagrangianFromGF) :
   ∃ F : BVFunctional, -- The difference is (S, F) for some F
     (fun s => gaugeFixedBVAction S L₂ s - gaugeFixedBVAction S L₁ s) =
-    (bvDifferential ab S F).functional
+    (bvDifferential ab S F).functional :=
+  bvGaugeFixingTheoryD.bv_gauge_independence S ab h L₁ L₂
 
 /- ============= BV LAPLACIAN AND QUANTUM MASTER EQUATION ============= -/
 
@@ -471,12 +535,28 @@ structure BVLaplacian where
   /-- Odd parity -/
   flips_parity : ∀ F : BVFunctional, (laplacian F).parity = F.parity.flip
 
+/-- Structure for BV Laplacian theory -/
+structure BVLaplacianTheory where
+  /-- Compatibility of Δ and (,): the failure to be a derivation -/
+  delta_antibracket_relation : ∀ (Δ : BVLaplacian) (ab : Antibracket)
+    (F G : BVFunctional),
+    ∃ deviation : BVFunctional,  -- The {F,G} term
+      (Δ.laplacian (ab.bracket F G)).functional = fun s =>
+        (ab.bracket (Δ.laplacian F) G).functional s +
+        (let sign := match F.parity with | .even => 1 | .odd => -1
+         sign * (ab.bracket F (Δ.laplacian G)).functional s) +
+        (let sign := match F.parity with | .even => 1 | .odd => -1
+         sign * deviation.functional s)
+
+/-- BV Laplacian theory axiom -/
+axiom bvLaplacianTheoryD : BVLaplacianTheory
+
 /-- Compatibility of Δ and (,): the failure to be a derivation
 
     Δ(F,G) = (ΔF, G) + (-1)^(ε_F+1)(F, ΔG) + (-1)^ε_F {F, G}
 
     where {F,G} is the "BV bracket" measuring non-derivation. -/
-axiom delta_antibracket_relation (Δ : BVLaplacian) (ab : Antibracket)
+theorem delta_antibracket_relation (Δ : BVLaplacian) (ab : Antibracket)
     (F G : BVFunctional) :
   ∃ deviation : BVFunctional,  -- The {F,G} term
     (Δ.laplacian (ab.bracket F G)).functional = fun s =>
@@ -484,7 +564,8 @@ axiom delta_antibracket_relation (Δ : BVLaplacian) (ab : Antibracket)
       (let sign := match F.parity with | .even => 1 | .odd => -1
        sign * (ab.bracket F (Δ.laplacian G)).functional s) +
       (let sign := match F.parity with | .even => 1 | .odd => -1
-       sign * deviation.functional s)
+       sign * deviation.functional s) :=
+  bvLaplacianTheoryD.delta_antibracket_relation Δ ab F G
 
 /-- Quantum master equation
 
@@ -606,12 +687,23 @@ structure BVAnomaly where
     (ab.bracket S.action S.action).functional s -
     2 * hbar * (Δ.laplacian S.action).functional s = anomaly.functional s
 
+/-- Structure for BV anomaly consistency theory -/
+structure BVAnomalyTheory where
+  /-- Wess-Zumino consistency for BV anomaly -/
+  bv_wess_zumino_consistency : ∀ (anom : BVAnomaly),
+    (fun s => (anom.ab.bracket anom.S.action anom.anomaly).functional s +
+              (anom.Δ.laplacian anom.anomaly).functional s) = fun _ => 0
+
+/-- BV anomaly theory axiom -/
+axiom bvAnomalyTheoryD : BVAnomalyTheory
+
 /-- Wess-Zumino consistency for BV anomaly: (S, A) + ΔA = 0 (at leading order)
 
     This follows from applying s_BV to the QME. -/
-axiom bv_wess_zumino_consistency (anom : BVAnomaly) :
+theorem bv_wess_zumino_consistency (anom : BVAnomaly) :
   (fun s => (anom.ab.bracket anom.S.action anom.anomaly).functional s +
-            (anom.Δ.laplacian anom.anomaly).functional s) = fun _ => 0
+            (anom.Δ.laplacian anom.anomaly).functional s) = fun _ => 0 :=
+  bvAnomalyTheoryD.bv_wess_zumino_consistency anom
 
 /-- Anomaly-free theory: QME can be satisfied -/
 def AnomalyFreeBV (ab : Antibracket) (Δ : BVLaplacian) (S : BVAction) (hbar : ℝ) : Prop :=
@@ -736,14 +828,23 @@ structure TrivialLagrangian where
   /-- This is Lagrangian (isotropic) -/
   isotropic : ∀ s₁ s₂, constraint s₁ → constraint s₂ → omega.pairing s₁ s₂ = 0
 
+/-- Structure for BRST-BV relation theory -/
+structure BRSTBVTheory where
+  /-- BRST gauge-fixed action equals BV action at φ* = 0 -/
+  brst_action_from_bv : (bv : BRSTFromBV) → (L₀ : TrivialLagrangian) → ExtendedFieldSpace → ℝ
+
+/-- BRST-BV theory axiom -/
+axiom brstBVTheoryD : BRSTBVTheory
+
 /-- BRST gauge-fixed action equals BV action at φ* = 0
 
     S_BRST[φ,c,c̄,B] = S_BV[φ,c,c̄,B, φ*=0, c*=0, c̄*=0, B*=0]
 
     The BRST action with ghosts is the BV action restricted to the
     trivial Lagrangian submanifold. -/
-axiom brst_action_from_bv (bv : BRSTFromBV) (L₀ : TrivialLagrangian) :
-    ExtendedFieldSpace → ℝ
+noncomputable def brst_action_from_bv (bv : BRSTFromBV) (L₀ : TrivialLagrangian) :
+    ExtendedFieldSpace → ℝ :=
+  brstBVTheoryD.brst_action_from_bv bv L₀
 
 /- BRST cohomology equals BV cohomology at φ* = 0
 

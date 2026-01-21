@@ -41,6 +41,8 @@ def bosonicJacobianEval {F₁ F₂ : Type _}
 noncomputable def fermionicBerezinianEval {F₁ F₂ : Type _}
   (f : @FermionicFieldRedefinition F₁ F₂) : ℂ := berezinianEval f.berezinian
 
+/- ============= FIELD REDEFINITION TRANSFORMATIONS ============= -/
+
 /-- Action transforms under bosonic field redefinition -/
 axiom action_bosonic_redef {F₁ F₂ : Type _}
   (S : ActionFunctional F₁)
@@ -53,40 +55,43 @@ axiom action_fermionic_redef {F₁ F₂ : Type _}
   (f : @FermionicFieldRedefinition F₁ F₂) :
   ActionFunctional F₂
 
-/-- Action evaluated on redefined field -/
+/-- Measure transforms under bosonic field redefinition -/
+axiom measure_bosonic_redef {F₁ F₂ : Type _}
+  (μ : FieldMeasure F₁)
+  (f : @BosonicFieldRedefinition F₁ F₂) :
+  FieldMeasure F₂
+
+/-- Measure transforms under fermionic field redefinition -/
+axiom measure_fermionic_redef {F₁ F₂ : Type _} (G : GrassmannAlgebra)
+  (μ : FermionicMeasure F₁ G)
+  (f : @FermionicFieldRedefinition F₁ F₂) :
+  FermionicMeasure F₂ G
+
+/-- Observable transforms under bosonic field redefinition -/
+axiom observable_bosonic_redef {F₁ F₂ : Type _}
+  (O : F₁ → ℂ)
+  (f : @BosonicFieldRedefinition F₁ F₂) :
+  F₂ → ℂ
+
+/-- Observable transforms under fermionic field redefinition -/
+axiom observable_fermionic_redef {F₁ F₂ : Type _}
+  (O : F₁ → ℂ)
+  (f : @FermionicFieldRedefinition F₁ F₂) :
+  F₂ → ℂ
+
+/-- Action evaluated on redefined field (bosonic) -/
 axiom action_redef_eval_bosonic {F₁ F₂ : Type _}
   (S : ActionFunctional F₁)
   (f : @BosonicFieldRedefinition F₁ F₂)
   (φ : F₁) :
   (action_bosonic_redef S f).eval (f.map φ) = S.eval φ
 
+/-- Action evaluated on redefined field (fermionic) -/
 axiom action_redef_eval_fermionic {F₁ F₂ : Type _}
   (S : ActionFunctional F₁)
   (f : @FermionicFieldRedefinition F₁ F₂)
   (φ : F₁) :
   (action_fermionic_redef S f).eval (f.map φ) = S.eval φ
-
-/-- Measure transforms under field redefinition -/
-axiom measure_bosonic_redef {F₁ F₂ : Type _}
-  (μ : FieldMeasure F₁)
-  (f : @BosonicFieldRedefinition F₁ F₂) :
-  FieldMeasure F₂
-
-axiom measure_fermionic_redef {F₁ F₂ : Type _} (G : GrassmannAlgebra)
-  (μ : FermionicMeasure F₁ G)
-  (f : @FermionicFieldRedefinition F₁ F₂) :
-  FermionicMeasure F₂ G
-
-/-- Observable transforms under field redefinition -/
-axiom observable_bosonic_redef {F₁ F₂ : Type _}
-  (O : F₁ → ℂ)
-  (f : @BosonicFieldRedefinition F₁ F₂) :
-  F₂ → ℂ
-
-axiom observable_fermionic_redef {F₁ F₂ : Type _}
-  (O : F₁ → ℂ)
-  (f : @FermionicFieldRedefinition F₁ F₂) :
-  F₂ → ℂ
 
 /- ============= COMPOSITION OF FIELD REDEFINITIONS ============= -/
 

@@ -33,88 +33,85 @@ abbrev VectorField3D := SpatialPoint → ℝ → Fin 3 → ℝ
 /-- Stress tensor σᵢⱼ(x,t) -/
 abbrev StressTensor := SpatialPoint → ℝ → Matrix (Fin 3) (Fin 3) ℝ
 
-/- ============= DIFFERENTIAL OPERATORS ============= -/
+/- ============= DIFFERENTIAL OPERATORS STRUCTURE ============= -/
 
-/-- Gradient of scalar field: ∇f -/
-axiom gradient (f : ScalarField) : VectorField3D
+/-- Structure for differential operators on 3D fields -/
+structure DifferentialOperators where
+  /-- Gradient of scalar field: ∇f -/
+  gradient : ScalarField → VectorField3D
+  /-- Divergence of vector field: ∇·v -/
+  divergence : VectorField3D → ScalarField
+  /-- Curl of vector field: ∇×v -/
+  curl : VectorField3D → VectorField3D
+  /-- Laplacian of scalar field: ∇²f -/
+  laplacian : ScalarField → ScalarField
+  /-- Vector Laplacian: ∇²v applied componentwise -/
+  vectorLaplacian : VectorField3D → VectorField3D
+  /-- Divergence of tensor field: (∇·σ)ᵢ = ∂ⱼσᵢⱼ -/
+  divergenceTensor : StressTensor → VectorField3D
+  /-- Vector calculus identity: curl of gradient is zero -/
+  curl_of_gradient : ∀ (f : ScalarField) (x : SpatialPoint) (t : ℝ),
+    curl (gradient f) x t = fun _ => 0
+  /-- Vector calculus identity: divergence of curl is zero -/
+  div_of_curl : ∀ (v : VectorField3D) (x : SpatialPoint) (t : ℝ),
+    divergence (curl v) x t = 0
+  /-- Vector identity: ∇×(∇×v) = ∇(∇·v) - ∇²v -/
+  curl_curl_identity : ∀ (v : VectorField3D) (x : SpatialPoint) (t : ℝ) (i : Fin 3),
+    curl (curl v) x t i = gradient (divergence v) x t i - vectorLaplacian v x t i
 
-/-- Divergence of vector field: ∇·v -/
-axiom divergence (v : VectorField3D) : ScalarField
-
-/-- Curl of vector field: ∇×v -/
-axiom curl (v : VectorField3D) : VectorField3D
-
-/-- Laplacian of scalar field: ∇²f -/
-axiom laplacian (f : ScalarField) : ScalarField
-
-/-- Vector Laplacian: ∇²v applied componentwise -/
-axiom vectorLaplacian (v : VectorField3D) : VectorField3D
-
-/-- Divergence of tensor field: (∇·σ)ᵢ = ∂ⱼσᵢⱼ -/
-axiom divergenceTensor (σ : StressTensor) : VectorField3D
+variable (ops : DifferentialOperators)
 
 /-- Vorticity: ω = ∇×v -/
-noncomputable def vorticity (v : VelocityField) : VectorField3D := curl v
+noncomputable def vorticity (v : VelocityField) : VectorField3D := ops.curl v
 
-/-- Vector calculus identity: curl of gradient is zero -/
-axiom curl_of_gradient (f : ScalarField) :
-  ∀ x t, curl (gradient f) x t = fun _ => 0
+/- ============= MATERIAL DERIVATIVE STRUCTURE ============= -/
 
-/-- Vector calculus identity: divergence of curl is zero -/
-axiom div_of_curl (v : VectorField3D) :
-  ∀ x t, divergence (curl v) x t = 0
+/-- Structure for material derivative operations -/
+structure MaterialDerivative (ops : DifferentialOperators) where
+  /-- Material (Lagrangian) derivative of scalar: D/Dt = ∂/∂t + v·∇ -/
+  materialDerivativeScalar : VelocityField → ScalarField → ScalarField
+  /-- Material derivative of vector field -/
+  materialDerivativeVector : VelocityField → VectorField3D → VectorField3D
+  /-- Material derivative definition for scalars -/
+  material_derivative_scalar_def : ∀ (v : VelocityField) (f : ScalarField) (x : SpatialPoint) (t : ℝ),
+    materialDerivativeScalar v f x t =
+    deriv (f x) t + (∑ i : Fin 3, v x t i * ops.gradient f x t i)
+  /-- Material derivative definition for vectors -/
+  material_derivative_vector_def : ∀ (v : VelocityField) (u : VectorField3D) (x : SpatialPoint) (t : ℝ) (i : Fin 3),
+    materialDerivativeVector v u x t i =
+    deriv (fun s => u x s i) t + (∑ j : Fin 3, v x t j * ops.gradient (fun y s => u y s i) x t j)
 
-/-- Vector identity: ∇×(∇×v) = ∇(∇·v) - ∇²v -/
-axiom curl_curl_identity (v : VectorField3D) :
-  ∀ x t i, curl (curl v) x t i =
-           gradient (divergence v) x t i - vectorLaplacian v x t i
+/- ============= STRAIN RATE AND STRESS STRUCTURE ============= -/
 
-/- ============= MATERIAL DERIVATIVE ============= -/
+/-- Structure for strain rate and constitutive relations -/
+structure ConstitutiveRelations (ops : DifferentialOperators) where
+  /-- Strain rate tensor: εᵢⱼ = (1/2)(∂ᵢvⱼ + ∂ⱼvᵢ) -/
+  strainRateTensor : VelocityField → StressTensor
+  /-- Dynamic viscosity (may depend on temperature) -/
+  dynamicViscosity : TemperatureField → SpatialPoint → ℝ → ℝ
+  /-- Equation of state: p = p(ρ, T) -/
+  equationOfState : DensityField → TemperatureField → PressureField
+  /-- Definition of strain rate tensor -/
+  strain_rate_def : ∀ (v : VelocityField) (x : SpatialPoint) (t : ℝ) (i j : Fin 3),
+    strainRateTensor v x t i j =
+    (1/2) * (ops.gradient (fun y s => v y s j) x t i + ops.gradient (fun y s => v y s i) x t j)
 
-/-- Material (Lagrangian) derivative of scalar: D/Dt = ∂/∂t + v·∇ -/
-axiom materialDerivativeScalar (v : VelocityField) (f : ScalarField) : ScalarField
-
-/-- Material derivative of vector field -/
-axiom materialDerivativeVector (v : VelocityField) (u : VectorField3D) : VectorField3D
-
-/-- Material derivative definition for scalars -/
-axiom material_derivative_scalar_def (v : VelocityField) (f : ScalarField) (x : SpatialPoint) (t : ℝ) :
-  materialDerivativeScalar v f x t =
-  deriv (f x) t + (∑ i : Fin 3, v x t i * gradient f x t i)
-
-/-- Material derivative definition for vectors -/
-axiom material_derivative_vector_def (v : VelocityField) (u : VectorField3D) (x : SpatialPoint) (t : ℝ) (i : Fin 3) :
-  materialDerivativeVector v u x t i =
-  deriv (fun s => u x s i) t + (∑ j : Fin 3, v x t j * gradient (fun y s => u y s i) x t j)
-
-/- ============= STRAIN RATE AND STRESS ============= -/
-
-/-- Strain rate tensor: εᵢⱼ = (1/2)(∂ᵢvⱼ + ∂ⱼvᵢ) -/
-axiom strainRateTensor (v : VelocityField) : StressTensor
-
-/-- Definition of strain rate tensor -/
-axiom strain_rate_def (v : VelocityField) (x : SpatialPoint) (t : ℝ) (i j : Fin 3) :
-  strainRateTensor v x t i j =
-  (1/2) * (gradient (fun y s => v y s j) x t i + gradient (fun y s => v y s i) x t j)
+variable {ops : DifferentialOperators}
 
 /-- Newtonian fluid stress: σᵢⱼ = -pδᵢⱼ + 2μεᵢⱼ + λδᵢⱼ(∇·v) -/
 noncomputable def newtonianStressTensor
+  (cr : ConstitutiveRelations ops)
   (p : PressureField)
   (v : VelocityField)
   (μ : ℝ)
   (lam : ℝ) : StressTensor :=
   fun x t i j =>
     -(if i = j then p x t else 0) +
-    2 * μ * strainRateTensor v x t i j +
-    (if i = j then lam * divergence v x t else 0)
+    2 * μ * cr.strainRateTensor v x t i j +
+    (if i = j then lam * ops.divergence v x t else 0)
 
 /-- Stokes hypothesis: λ = -2μ/3 -/
 def stokesHypothesis (μ lam : ℝ) : Prop := lam = -(2/3) * μ
-
-/- ============= CONSTITUTIVE RELATIONS ============= -/
-
-/-- Dynamic viscosity (may depend on temperature) -/
-axiom dynamicViscosity (T : TemperatureField) : SpatialPoint → ℝ → ℝ
 
 /-- Kinematic viscosity: ν = μ/ρ -/
 noncomputable def kinematicViscosity
@@ -123,9 +120,6 @@ noncomputable def kinematicViscosity
   (x : SpatialPoint)
   (t : ℝ) : ℝ :=
   μ / ρ x t
-
-/-- Equation of state: p = p(ρ, T) -/
-axiom equationOfState : DensityField → TemperatureField → PressureField
 
 /-- Ideal gas law: p = ρRT -/
 noncomputable def idealGasLaw (R : ℝ) (ρ : DensityField) (T : TemperatureField) : PressureField :=
@@ -136,8 +130,8 @@ noncomputable def idealGasInternalEnergy (cᵥ : ℝ) (T : TemperatureField) : S
   fun x t => cᵥ * T x t
 
 /-- Fourier's law: q = -k∇T -/
-noncomputable def fourierHeatFlux (k : ℝ) (T : TemperatureField) : VectorField3D :=
-  fun x t i => -k * gradient T x t i
+noncomputable def fourierHeatFlux (ops : DifferentialOperators) (k : ℝ) (T : TemperatureField) : VectorField3D :=
+  fun x t i => -k * ops.gradient T x t i
 
 /- ============= FLOW CLASSIFICATION ============= -/
 
@@ -179,11 +173,12 @@ def dirichletBC
 
 /-- Neumann BC: specified normal derivative -/
 def neumannBC
+  (ops : DifferentialOperators)
   (f : ScalarField)
   (boundary : Set SpatialPoint)
   (normal : SpatialPoint → Fin 3 → ℝ)
   (g : SpatialPoint → ℝ → ℝ) : Prop :=
-  ∀ x ∈ boundary, ∀ t, (∑ i : Fin 3, gradient f x t i * normal x i) = g x t
+  ∀ x ∈ boundary, ∀ t, (∑ i : Fin 3, ops.gradient f x t i * normal x i) = g x t
 
 /- ============= DIMENSIONLESS NUMBERS ============= -/
 

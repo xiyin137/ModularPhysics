@@ -72,8 +72,17 @@ axiom zetaFunctionRegularization {F : Type _}
 
 /- ============= MEASURE THEORY FOR PATH INTEGRALS ============= -/
 
+/-- Structure for Borel measure theory -/
+structure BorelMeasureTheory where
+  /-- A Borel measure on a topological space -/
+  BorelMeasure : Type _ → Type _
+
+/-- Borel measure theory axiom -/
+axiom borelMeasureTheoryD : BorelMeasureTheory
+
 /-- A Borel measure on a topological space -/
-axiom BorelMeasure (X : Type _) : Type _
+def BorelMeasure (X : Type _) : Type _ :=
+  borelMeasureTheoryD.BorelMeasure X
 
 /-- Minlos theorem (Glimm-Jaffe): For scalar field theories with appropriate
     covariance structure, the Euclidean path integral measure exists as a
@@ -101,8 +110,17 @@ structure MinlosTheorem (d : ℕ) where
   /-- Characteristic functional relation -/
   characteristic_functional : Prop
 
+/-- Structure for Minlos theorem on free scalar fields -/
+structure MinlosFreeScalarTheory where
+  /-- Minlos theorem applies to free scalar field -/
+  minlos_free_scalar : (d : ℕ) → (m : ℝ) → m ≥ 0 → MinlosTheorem d
+
+/-- Minlos free scalar theory axiom -/
+axiom minlosFreeScalarTheoryD : MinlosFreeScalarTheory
+
 /-- Minlos theorem applies to free scalar field -/
-axiom minlos_free_scalar (d : ℕ) (m : ℝ) (hm : m ≥ 0) : MinlosTheorem d
+noncomputable def minlos_free_scalar (d : ℕ) (m : ℝ) (hm : m ≥ 0) : MinlosTheorem d :=
+  minlosFreeScalarTheoryD.minlos_free_scalar d m hm
 
 /-- Osterwalder-Schrader reconstruction: Euclidean QFT → Minkowski QFT
 
@@ -139,10 +157,21 @@ axiom osterwalder_schrader_reconstruction {d : ℕ}
   -- Reconstructs Wightman functions satisfying relativistic axioms
   ∃ (wightman_functions : ℕ → Type _), True
 
+/-- Structure for Nelson's axioms -/
+structure NelsonAxiomsTheory where
+  /-- Nelson's axioms: alternative to OS for Euclidean QFT
+      Nelson showed that a Euclidean-invariant measure satisfying certain
+      Markov properties gives rise to a relativistic QFT. -/
+  NelsonAxioms : ℕ → Type _
+
+/-- Nelson axioms theory axiom -/
+axiom nelsonAxiomsTheoryD : NelsonAxiomsTheory
+
 /-- Nelson's axioms: alternative to OS for Euclidean QFT
 
     Nelson showed that a Euclidean-invariant measure satisfying certain
     Markov properties gives rise to a relativistic QFT. -/
-axiom NelsonAxioms (d : ℕ) : Type _
+def NelsonAxioms (d : ℕ) : Type _ :=
+  nelsonAxiomsTheoryD.NelsonAxioms d
 
 end ModularPhysics.Core.QFT.PathIntegral

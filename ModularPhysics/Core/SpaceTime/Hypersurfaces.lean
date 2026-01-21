@@ -45,16 +45,13 @@ def DomainOfDependence (metric : SpacetimeMetric) (S : Set SpaceTimePoint) :
   {x | ∀ γ : Curve, TimelikeCurve metric γ →
        (∃ t₀, γ t₀ = x) → (∃ t₁, γ t₁ ∈ S)}
 
-/-- Normal vector to hypersurface -/
-axiom normalVector (metric : SpacetimeMetric) (S : Set SpaceTimePoint)
-    (x : SpaceTimePoint) (h : x ∈ S) : Fin 4 → ℝ
-
-/-- Extrinsic curvature (second fundamental form) of embedded hypersurface -/
-axiom extrinsicCurvature (metric : SpacetimeMetric) (S : Set SpaceTimePoint) :
-    SpaceTimePoint → Fin 4 → Fin 4 → ℝ
-
-/-- Induced metric on hypersurface -/
-axiom induceMetric (metric : SpacetimeMetric) (S : Set SpaceTimePoint) :
-    SpacetimeMetric
+/-- Structure for hypersurface geometry -/
+structure HypersurfaceTheory (metric : SpacetimeMetric) (S : Set SpaceTimePoint) where
+  /-- Normal vector to hypersurface -/
+  normalVector : (x : SpaceTimePoint) → x ∈ S → Fin 4 → ℝ
+  /-- Extrinsic curvature (second fundamental form) of embedded hypersurface -/
+  extrinsicCurvature : SpaceTimePoint → Fin 4 → Fin 4 → ℝ
+  /-- Induced metric on hypersurface -/
+  inducedMetric : SpacetimeMetric
 
 end ModularPhysics.Core.SpaceTime

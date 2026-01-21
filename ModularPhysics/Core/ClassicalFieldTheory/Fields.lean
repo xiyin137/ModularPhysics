@@ -20,31 +20,36 @@ abbrev VectorField := ClassicalField (Fin 4 → ℝ)
 /-- Tensor field -/
 def TensorField (m n : ℕ) := ClassicalField (Fin m → Fin n → ℝ)
 
-/-- Spinor field (axiomatized) -/
-axiom SpinorField : Type*
+/-- Structure for spinor field types -/
+structure SpinorTypes where
+  /-- Spinor field type -/
+  SpinorField : Type*
+  /-- Dirac spinor type -/
+  DiracSpinor : Type*
 
-/-- Dirac spinor -/
-axiom DiracSpinor : Type*
+/-- Structure for derivative operations on fields -/
+structure FieldDerivatives (F : Type*) where
+  /-- Partial derivative ∂_μ φ -/
+  partialDerivative : ClassicalField F → Fin 4 → ClassicalField F
+  /-- Covariant derivative ∇_μ (uses metric connection) -/
+  covariantDerivative : SpacetimeMetric → ClassicalField F → Fin 4 → ClassicalField F
+  /-- Lie derivative along vector field -/
+  lieDerivative : VectorField → ClassicalField F → ClassicalField F
 
-/-- Partial derivative ∂_μ φ -/
-axiom partialDerivative {F : Type*} :
-  ClassicalField F → Fin 4 → ClassicalField F
+/-- Structure for scalar field differential operators -/
+structure ScalarFieldOperators where
+  /-- Field derivatives for scalars -/
+  derivatives : FieldDerivatives ℝ
+  /-- d'Alembertian operator □ = ∂_μ ∂^μ (flat spacetime) -/
+  dalembertian : ScalarField → ScalarField
+  /-- Laplacian in curved spacetime -/
+  laplacian : SpacetimeMetric → ScalarField → ScalarField
 
-/-- Covariant derivative ∇_μ (uses metric connection) -/
-axiom covariantDerivative {F : Type*} :
-  SpacetimeMetric → ClassicalField F → Fin 4 → ClassicalField F
-
-/-- d'Alembertian operator □ = ∂_μ ∂^μ (flat spacetime) -/
-axiom dalembertian : ScalarField → ScalarField
-
-/-- Laplacian in curved spacetime -/
-axiom laplacian : SpacetimeMetric → ScalarField → ScalarField
-
-/-- Lie derivative along vector field -/
-axiom lieDerivative {F : Type*} :
-  VectorField → ClassicalField F → ClassicalField F
-
-/-- Exterior derivative -/
-axiom exteriorDerivative : VectorField → TensorField 4 4
+/-- Structure for vector field differential operators -/
+structure VectorFieldOperators where
+  /-- Field derivatives for vectors -/
+  derivatives : FieldDerivatives (Fin 4 → ℝ)
+  /-- Exterior derivative -/
+  exteriorDerivative : VectorField → TensorField 4 4
 
 end ModularPhysics.Core.ClassicalFieldTheory

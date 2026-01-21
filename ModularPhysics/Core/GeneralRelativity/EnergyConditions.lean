@@ -30,7 +30,7 @@ def NullEnergyCondition (metric : SpacetimeMetric) (T : TensorField 4 4) : Prop 
 def StrongEnergyCondition (metric : SpacetimeMetric) (T : TensorField 4 4) : Prop :=
   ∀ (x : SpaceTimePoint) (t : Fin 4 → ℝ),
     (∑ μ : Fin 4, ∑ ν : Fin 4, metric.g x μ ν * t μ * t ν) < 0 →
-    let traceT := ∑ μ : Fin 4, ∑ ν : Fin 4, inverseMetric metric x μ ν * T x μ ν
+    let traceT := ∑ μ : Fin 4, ∑ ν : Fin 4, metric.inverseMetric x μ ν * T x μ ν
     (∑ μ : Fin 4, ∑ ν : Fin 4, (T x μ ν - (1/2) * traceT * metric.g x μ ν) * t μ * t ν) ≥ 0
 
 /-- Dominant energy condition: energy doesn't flow faster than light

@@ -1,5 +1,6 @@
 import Mathlib.Data.Real.Basic
 import Mathlib.Analysis.InnerProductSpace.Basic
+import Mathlib.Analysis.Calculus.Deriv.Basic
 
 namespace ModularPhysics.Core.ClassicalMechanics
 
@@ -33,8 +34,16 @@ def Trajectory (n : ℕ) := ℝ → GeneralizedCoordinates n
 /-- Trajectory in phase space -/
 def PhaseSpaceTrajectory (n : ℕ) := ℝ → PhaseSpace n
 
-/-- Time derivative of a trajectory -/
-axiom trajectoryDerivative {n : ℕ}
-  (q : Trajectory n) (t : ℝ) (i : Fin n) : ℝ
+/-- Structure for a differentiable trajectory with its derivative -/
+structure DifferentiableTrajectory (n : ℕ) where
+  /-- The trajectory itself -/
+  path : Trajectory n
+  /-- Time derivative of the trajectory -/
+  derivative : ℝ → Fin n → ℝ
+
+/-- Time derivative of a trajectory (provided by structure) -/
+noncomputable def trajectoryDerivative {n : ℕ}
+  (q : Trajectory n) (t : ℝ) (i : Fin n) : ℝ :=
+  deriv (fun s => q s i) t
 
 end ModularPhysics.Core.ClassicalMechanics

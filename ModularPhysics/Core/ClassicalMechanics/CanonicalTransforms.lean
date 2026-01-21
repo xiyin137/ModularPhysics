@@ -3,13 +3,15 @@ import Mathlib.Data.Matrix.Basic
 
 namespace ModularPhysics.Core.ClassicalMechanics
 
+variable {n : ℕ}
+
 /-- Canonical transformation: preserves Hamiltonian structure -/
-structure CanonicalTransformation (n : ℕ) where
+structure CanonicalTransformation (n : ℕ) (sys : HamiltonianSystem n) where
   Q : PhaseSpace n → GeneralizedCoordinates n
   P : PhaseSpace n → GeneralizedMomenta n
   preserves_poisson : ∀ (f g : PhaseSpace n → ℝ) (x : PhaseSpace n),
-    poissonBracket f g x =
-    poissonBracket (fun y => f (Q y, P y)) (fun y => g (Q y, P y)) x
+    sys.poissonBracket f g x =
+    sys.poissonBracket (fun y => f (Q y, P y)) (fun y => g (Q y, P y)) x
 
 /-- Generating function F₁(q, Q, t) -/
 abbrev GeneratingFunction1 (n : ℕ) :=
@@ -19,10 +21,16 @@ abbrev GeneratingFunction1 (n : ℕ) :=
 abbrev GeneratingFunction2 (n : ℕ) :=
   GeneralizedCoordinates n → GeneralizedMomenta n → ℝ → ℝ
 
-/-- Canonical transformation from generating function -/
-axiom canonicalTransformFromGenerating {n : ℕ}
-  (F : GeneratingFunction2 n) :
-  CanonicalTransformation n
+/-- Structure for canonical transformation theory -/
+structure CanonicalTransformTheory (n : ℕ) where
+  /-- The underlying Hamiltonian system -/
+  sys : HamiltonianSystem n
+  /-- Canonical transformation from generating function -/
+  canonicalTransformFromGenerating : GeneratingFunction2 n → CanonicalTransformation n sys
+  /-- Composition of canonical transformations is canonical -/
+  canonical_compose : CanonicalTransformation n sys → CanonicalTransformation n sys → CanonicalTransformation n sys
+  /-- Inverse of canonical transformation -/
+  canonical_inverse : CanonicalTransformation n sys → CanonicalTransformation n sys
 
 /-- Symplectic matrix Ω in 2n dimensions -/
 def symplecticMatrix (n : ℕ) : Matrix (Fin (2*n)) (Fin (2*n)) ℝ :=
@@ -38,26 +46,17 @@ def isSymplectic {n : ℕ} (M : Matrix (Fin (2*n)) (Fin (2*n)) ℝ) : Prop :=
 /-- Symplectic group: matrices preserving symplectic form -/
 def SymplecticGroup (n : ℕ) := {M : Matrix (Fin (2*n)) (Fin (2*n)) ℝ // isSymplectic M}
 
-/-- Symplectic transformations form a group (structure axiomatized) -/
-axiom symplectic_group_structure (n : ℕ) :
-  Group (SymplecticGroup n)
+/-- Structure asserting symplectic transformations form a group -/
+structure SymplecticGroupStructure (n : ℕ) where
+  /-- Group instance for the symplectic group -/
+  group_instance : Group (SymplecticGroup n)
 
 /-- Identity transformation is canonical -/
-def canonicalIdentity (n : ℕ) : CanonicalTransformation n where
+def canonicalIdentity (sys : HamiltonianSystem n) : CanonicalTransformation n sys where
   Q := fun x => x.1
   P := fun x => x.2
   preserves_poisson := by
     intros f g x
     rfl
-
-/-- Composition of canonical transformations is canonical -/
-axiom canonical_compose {n : ℕ}
-  (T₁ T₂ : CanonicalTransformation n) :
-  CanonicalTransformation n
-
-/-- Inverse of canonical transformation -/
-axiom canonical_inverse {n : ℕ}
-  (T : CanonicalTransformation n) :
-  CanonicalTransformation n
 
 end ModularPhysics.Core.ClassicalMechanics

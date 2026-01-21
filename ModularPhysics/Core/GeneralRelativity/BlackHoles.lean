@@ -9,16 +9,19 @@ namespace ModularPhysics.Core.GeneralRelativity
 open SpaceTime ClassicalFieldTheory
 
 /-- General black hole structure -/
-structure BlackHole where
+structure BlackHole (consts : GRConstants) where
   metric : SpacetimeMetric
+  connection : ConnectionTheory metric
+  curvature : CurvatureTheory metric
   mass : ℝ
   mass_pos : mass > 0
-  satisfies_efe : ∃ T, satisfiesEFE metric T
+  satisfies_efe : ∃ T, satisfiesEFE consts curvature T
 
 /-- Event horizon: boundary of causal past of future null infinity -/
-def EventHorizon (bh : BlackHole) : Set SpaceTimePoint :=
+def EventHorizon (consts : GRConstants) (bh : BlackHole consts)
+    (asymp : AsymptoticStructure bh.metric) : Set SpaceTimePoint :=
   {x | ¬∃ (γ : Curve), NullGeodesic bh.metric γ ∧
-       γ 0 = x ∧ ∃ (t : ℝ), t > 0 ∧ γ t ∈ FutureNullInfinity}
+       γ 0 = x ∧ ∃ (t : ℝ), t > 0 ∧ γ t ∈ asymp.futureNullInfinity}
 
 /-- Trapped surface: both null expansions negative -/
 def TrappedSurface (_metric : SpacetimeMetric) (S : Set SpaceTimePoint) : Prop :=
@@ -26,50 +29,45 @@ def TrappedSurface (_metric : SpacetimeMetric) (S : Set SpaceTimePoint) : Prop :
   ∀ p ∈ S, ∃ (θ_out θ_in : ℝ), θ_out < 0 ∧ θ_in < 0
 
 /-- Apparent horizon: outermost trapped surface at given time -/
-def ApparentHorizon (bh : BlackHole) (t : ℝ) : Set SpaceTimePoint :=
+def ApparentHorizon (consts : GRConstants) (bh : BlackHole consts) (t : ℝ) : Set SpaceTimePoint :=
   {x | x 0 = t ∧ ∃ S, x ∈ S ∧ TrappedSurface bh.metric S ∧
        ∀ S', TrappedSurface bh.metric S' → (∀ y ∈ S', y 0 = t) → S' ⊆ S}
 
 /-- Black hole region: points that cannot reach infinity -/
-def BlackHoleRegion (bh : BlackHole) : Set SpaceTimePoint :=
+def BlackHoleRegion (consts : GRConstants) (bh : BlackHole consts)
+    (asymp : AsymptoticStructure bh.metric) : Set SpaceTimePoint :=
   {x | ¬∃ (γ : Curve), TimelikeGeodesic bh.metric γ ∧
-       γ 0 = x ∧ ∃ (t : ℝ), t > 0 ∧ γ t ∈ FutureNullInfinity}
+       γ 0 = x ∧ ∃ (t : ℝ), t > 0 ∧ γ t ∈ asymp.futureNullInfinity}
 
-/-- Surface gravity κ at horizon -/
-axiom surfaceGravityAtHorizon (bh : BlackHole)
-    (ξ : SpaceTimePoint → Fin 4 → ℝ)
-    (h : TimelikeKilling bh.metric ξ) : ℝ
+/-- Structure for black hole thermodynamics -/
+structure BlackHoleThermodynamics (consts : GRConstants) (bh : BlackHole consts) where
+  /-- Surface gravity κ at horizon -/
+  surfaceGravity : (ξ : SpaceTimePoint → Fin 4 → ℝ) →
+    TimelikeKilling bh.connection ξ → ℝ
+  /-- Bekenstein-Hawking entropy: S_BH = (k_B c³/4ℏG) A -/
+  bekensteinHawkingEntropy : ℝ
+  /-- Hawking temperature: T_H = ℏκ/(2πk_B c) -/
+  hawkingTemperature : ℝ → ℝ  -- function of κ
+  /-- First law: dM = κ/(8πG) dA + Ω dJ + Φ dQ -/
+  first_law_holds : True  -- Placeholder for differential relation
+  /-- Hawking area theorem: horizon area never decreases (classical) -/
+  hawking_area_theorem : ∀ (T : TensorField 4 4),
+    NullEnergyCondition bh.metric T →
+    ∀ (t₁ t₂ : ℝ), t₁ ≤ t₂ → True  -- Placeholder: A(t₂) ≥ A(t₁)
 
-/-- Hawking area theorem: horizon area never decreases (classical) -/
-axiom hawking_area_theorem (bh : BlackHole)
-    (T : TensorField 4 4)
-    (h : NullEnergyCondition bh.metric T)
-    (t₁ t₂ : ℝ) :
-  t₁ ≤ t₂ → True
-
-/-- Black hole thermodynamics: first law (dM = κ/(8πG) dA + Ω dJ + Φ dQ) -/
-axiom black_hole_first_law (bh : BlackHole) : True
-
-/-- Bekenstein-Hawking entropy: S_BH = (k_B c³/4ℏG) A -/
-axiom bekenstein_hawking_entropy (bh : BlackHole) : ℝ
-
-/-- Hawking temperature: T_H = ℏκ/(2πk_B c) -/
-axiom hawking_temperature (bh : BlackHole) (κ : ℝ) : ℝ
-
-/-- Penrose singularity theorem: trapped surface → singularity -/
-axiom penrose_singularity_theorem
-    (metric : SpacetimeMetric)
-    (T : TensorField 4 4)
-    (h_energy : NullEnergyCondition metric T)
-    (h_trapped : ∃ S, TrappedSurface metric S) :
-  True
-
-/-- Hawking-Penrose singularity theorem -/
-axiom hawking_penrose_theorem
-    (metric : SpacetimeMetric)
-    (T : TensorField 4 4)
-    (h_energy : StrongEnergyCondition metric T)
-    (h_global : GloballyHyperbolic metric) :
-  ¬∃ (γ : Curve), TimelikeGeodesic metric γ ∧ ∀ (t : ℝ), ∃ (t' : ℝ), t' > t
+/-- Structure for singularity theorems -/
+structure SingularityTheorems where
+  /-- Penrose singularity theorem: trapped surface → singularity -/
+  penrose_theorem : ∀ (metric : SpacetimeMetric)
+    (T : TensorField 4 4),
+    NullEnergyCondition metric T →
+    (∃ S, TrappedSurface metric S) →
+    True  -- Geodesic incompleteness
+  /-- Hawking-Penrose singularity theorem -/
+  hawking_penrose_theorem : ∀ (metric : SpacetimeMetric)
+    (T : TensorField 4 4),
+    StrongEnergyCondition metric T →
+    GloballyHyperbolic metric →
+    ¬∃ (γ : Curve), TimelikeGeodesic metric γ ∧ ∀ (t : ℝ), ∃ (t' : ℝ), t' > t
 
 end ModularPhysics.Core.GeneralRelativity

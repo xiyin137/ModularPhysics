@@ -9,218 +9,239 @@ set_option linter.unusedVariables false
 
 /- ============= TARGET CATEGORY (FINITE-DIMENSIONAL VECTOR SPACES) ============= -/
 
-/-- Target category objects (finite-dimensional complex vector spaces)
-
-    In TQFT, manifolds are mapped to vector spaces, and bordisms
-    to linear maps between them. -/
-axiom TargetObject : Type
-
-/-- Morphisms between vector spaces (linear maps) -/
-axiom TargetMorphism : TargetObject → TargetObject → Type
-
-/-- Composition of morphisms: f ; g -/
-noncomputable axiom targetCompose {A B C : TargetObject} :
-  TargetMorphism A B → TargetMorphism B C → TargetMorphism A C
-
-/-- Identity morphism: id_A : A → A -/
-noncomputable axiom targetId (A : TargetObject) : TargetMorphism A A
-
-/-- Composition is associative -/
-axiom targetCompose_assoc {A B C D : TargetObject}
-  (f : TargetMorphism A B) (g : TargetMorphism B C) (h : TargetMorphism C D) :
-  targetCompose (targetCompose f g) h = targetCompose f (targetCompose g h)
-
-/-- Identity is unit for composition -/
-axiom targetCompose_id_left {A B : TargetObject} (f : TargetMorphism A B) :
-  targetCompose (targetId A) f = f
-
-axiom targetCompose_id_right {A B : TargetObject} (f : TargetMorphism A B) :
-  targetCompose f (targetId B) = f
-
-/-- Vector space structure (the underlying vector space) -/
-axiom VectorSpace : TargetObject → Type
-
-/-- Dimension of vector space -/
-axiom vectorDimension : TargetObject → ℕ
-
-/-- Dimension is non-negative (trivially satisfied) -/
-axiom vectorDimension_nonneg (V : TargetObject) : vectorDimension V ≥ 0
-
-/-- Tensor product: V ⊗ W -/
-axiom tensorProduct : TargetObject → TargetObject → TargetObject
-
-/-- Tensor product is associative (up to isomorphism) -/
-axiom tensorProduct_assoc (U V W : TargetObject) :
-  tensorProduct (tensorProduct U V) W = tensorProduct U (tensorProduct V W)
-
-/-- Dimension of tensor product: dim(V ⊗ W) = dim(V) × dim(W) -/
-axiom tensorProduct_dimension (V W : TargetObject) :
-  vectorDimension (tensorProduct V W) = vectorDimension V * vectorDimension W
-
-/-- Direct sum: V ⊕ W -/
-axiom directSum : TargetObject → TargetObject → TargetObject
-
-/-- Dimension of direct sum: dim(V ⊕ W) = dim(V) + dim(W) -/
-axiom directSum_dimension (V W : TargetObject) :
-  vectorDimension (directSum V W) = vectorDimension V + vectorDimension W
-
-/-- Dual vector space: V* -/
-axiom dualSpace : TargetObject → TargetObject
-
-/-- Double dual is isomorphic to original: V** ≅ V -/
-axiom double_dual (V : TargetObject) :
-  vectorDimension (dualSpace (dualSpace V)) = vectorDimension V
-
-/-- Ground field (ℂ as 1-dimensional vector space) -/
-axiom groundField : TargetObject
-
-/-- Ground field has dimension 1 -/
-axiom groundField_dimension : vectorDimension groundField = 1
-
-/-- Ground field is tensor unit: ℂ ⊗ V ≅ V -/
-axiom groundField_tensor_unit (V : TargetObject) :
-  vectorDimension (tensorProduct groundField V) = vectorDimension V
-
-/-- Trace map: V ⊗ V* → ℂ or equivalently End(V) → ℂ -/
-noncomputable axiom traceMap (V : TargetObject) : VectorSpace V → ℂ
+/-- Structure for target category (finite-dimensional complex vector spaces) -/
+structure TargetCategory where
+  /-- Objects (finite-dimensional complex vector spaces) -/
+  Object : Type
+  /-- Morphisms between vector spaces (linear maps) -/
+  Morphism : Object → Object → Type
+  /-- Composition of morphisms: f ; g -/
+  compose : {A B C : Object} → Morphism A B → Morphism B C → Morphism A C
+  /-- Identity morphism: id_A : A → A -/
+  id : (A : Object) → Morphism A A
+  /-- Composition is associative -/
+  compose_assoc : ∀ {A B C D : Object}
+    (f : Morphism A B) (g : Morphism B C) (h : Morphism C D),
+    compose (compose f g) h = compose f (compose g h)
+  /-- Identity is unit for composition (left) -/
+  compose_id_left : ∀ {A B : Object} (f : Morphism A B),
+    compose (id A) f = f
+  /-- Identity is unit for composition (right) -/
+  compose_id_right : ∀ {A B : Object} (f : Morphism A B),
+    compose f (id B) = f
+  /-- Vector space structure (the underlying vector space) -/
+  VectorSpace : Object → Type
+  /-- Dimension of vector space -/
+  dimension : Object → ℕ
+  /-- Tensor product: V ⊗ W -/
+  tensorProduct : Object → Object → Object
+  /-- Tensor product is associative (up to isomorphism) -/
+  tensorProduct_assoc : ∀ (U V W : Object),
+    tensorProduct (tensorProduct U V) W = tensorProduct U (tensorProduct V W)
+  /-- Dimension of tensor product: dim(V ⊗ W) = dim(V) × dim(W) -/
+  tensorProduct_dimension : ∀ (V W : Object),
+    dimension (tensorProduct V W) = dimension V * dimension W
+  /-- Direct sum: V ⊕ W -/
+  directSum : Object → Object → Object
+  /-- Dimension of direct sum: dim(V ⊕ W) = dim(V) + dim(W) -/
+  directSum_dimension : ∀ (V W : Object),
+    dimension (directSum V W) = dimension V + dimension W
+  /-- Dual vector space: V* -/
+  dualSpace : Object → Object
+  /-- Double dual has same dimension as original: dim(V**) = dim(V) -/
+  double_dual : ∀ (V : Object),
+    dimension (dualSpace (dualSpace V)) = dimension V
+  /-- Ground field (ℂ as 1-dimensional vector space) -/
+  groundField : Object
+  /-- Ground field has dimension 1 -/
+  groundField_dimension : dimension groundField = 1
+  /-- Ground field is tensor unit: dim(ℂ ⊗ V) = dim(V) -/
+  groundField_tensor_unit : ∀ (V : Object),
+    dimension (tensorProduct groundField V) = dimension V
+  /-- Trace map: V ⊗ V* → ℂ or equivalently End(V) → ℂ -/
+  traceMap : (V : Object) → VectorSpace V → ℂ
 
 /- ============= TQFT AXIOMS (ATIYAH-SEGAL) ============= -/
 
-/-- TQFT Axiom T1: Assigns vector spaces to (n-1)-manifolds
+/-- Structure for TQFT (Atiyah-Segal axioms) -/
+structure TQFTAxioms (n : ℕ)
+    (mtb : ManifoldTheoryWithBoundary n)
+    (bt : TQFTBordismTheory n mtb.theory mtb.boundaryTheory)
+    (sm : StructuredManifolds (n-1) mtb.boundaryTheory)
+    (std : StandardManifolds (n-1) mtb.boundaryTheory)
+    (homeo : HomeomorphismTheory n mtb.theory)
+    (target : TargetCategory) where
+  /-- TQFT Axiom T1: Assigns vector spaces to (n-1)-manifolds -/
+  vectorSpace : mtb.boundaryTheory.Manifold → target.Object
+  /-- TQFT Axiom T2: Assigns linear maps to bordisms (functoriality) -/
+  functor : (W : bt.Bordism) →
+    target.Morphism
+      (vectorSpace ((bt.bordismBoundary W).1))
+      (vectorSpace ((bt.bordismBoundary W).2))
+  /-- TQFT Axiom T3: Partition function for closed manifolds -/
+  partitionFunction : ClosedManifold' mtb → ℂ
+  /-- TQFT Axiom T4: Monoidal structure (multiplicativity) -/
+  monoidal : ∀ (M N : mtb.boundaryTheory.Manifold),
+    vectorSpace (mtb.boundaryTheory.disjointUnion M N) =
+    target.tensorProduct (vectorSpace M) (vectorSpace N)
+  /-- TQFT Axiom T5: Duality (orientation reversal) -/
+  duality : ∀ (M : sm.OrientedManifold),
+    vectorSpace (sm.orientedToManifold (sm.reverseOrientation M)) =
+    target.dualSpace (vectorSpace (sm.orientedToManifold M))
+  /-- TQFT Axiom T6: Empty manifold is unit -/
+  empty_manifold_unit : vectorSpace mtb.boundaryTheory.emptyManifold = target.groundField
+  /-- TQFT Axiom T7: Topological invariance -/
+  topological_invariance : ∀ (M N : ClosedManifold' mtb)
+    (h : homeo.Homeomorphic M.val N.val),
+    partitionFunction M = partitionFunction N
+  /-- TQFT Axiom T8: Identity bordism maps to identity morphism -/
+  identity_axiom : ∀ (M : mtb.boundaryTheory.Manifold),
+    HEq (functor (bt.identityBordism M)) (target.id (vectorSpace M))
 
-    Z : Bord_n → Vect assigns to each closed (n-1)-manifold M
-    a finite-dimensional vector space Z(M). -/
-axiom tqftVectorSpace (n : ℕ) : Manifold (n-1) → TargetObject
+/-- Structure for closed manifolds with spheres -/
+structure ClosedManifoldWithSpheres (n : ℕ)
+    (mtb : ManifoldTheoryWithBoundary n)
+    (std : StandardManifolds n mtb.theory) where
+  /-- n-sphere as a closed manifold -/
+  sphereAsClosed : ClosedManifold' mtb
+  /-- sphereAsClosed correctly represents sphere -/
+  sphereAsClosed_val : mtb.theory.toManifold sphereAsClosed.val = std.sphere
+  /-- n-torus as a closed manifold -/
+  torusAsClosed : ClosedManifold' mtb
+  /-- torusAsClosed correctly represents torus -/
+  torusAsClosed_val : mtb.theory.toManifold torusAsClosed.val = std.torus
 
-/-- TQFT Axiom T2: Assigns linear maps to bordisms (functoriality)
-
-    For a bordism W : M → N (n-manifold with ∂W = M ⊔ -N),
-    Z(W) : Z(M) → Z(N) is a linear map. -/
-noncomputable axiom TQFTFunctor {n : ℕ} (W : Bordism n) :
-  TargetMorphism
-    (tqftVectorSpace n (bordismSource W))
-    (tqftVectorSpace n (bordismTarget W))
-
-/-- TQFT Axiom T3: Partition function for closed manifolds
-
-    For a closed n-manifold M (no boundary), Z(M) ∈ ℂ.
-    This arises as the trace of Z applied to M viewed as bordism ∅ → ∅. -/
-noncomputable axiom partitionFunction (n : ℕ) : ClosedManifold n → ℂ
-
-/-- TQFT Axiom T4: Monoidal structure (multiplicativity)
-
-    Z(M ⊔ N) = Z(M) ⊗ Z(N)
-    Disjoint union of manifolds maps to tensor product of vector spaces. -/
-axiom monoidal {n : ℕ} (M N : Manifold (n-1)) :
-  tqftVectorSpace n (disjointUnionManifold M N) =
-  tensorProduct (tqftVectorSpace n M) (tqftVectorSpace n N)
-
-/-- TQFT Axiom T5: Duality (orientation reversal)
-
-    Z(-M) = Z(M)*
-    Reversing orientation of manifold gives dual vector space. -/
-axiom duality {n : ℕ} (M : OrientedManifold (n-1)) :
-  tqftVectorSpace n (orientedToManifold (reverseOrientation M)) =
-  dualSpace (tqftVectorSpace n (orientedToManifold M))
-
-/-- TQFT Axiom T6: Empty manifold is unit
-
-    Z(∅) = ℂ (the ground field)
-    Empty manifold maps to 1-dimensional space. -/
-axiom empty_manifold (n : ℕ) :
-  tqftVectorSpace n (emptyManifold (n-1)) = groundField
-
-/-- TQFT Axiom T7: Topological invariance
-
-    Homeomorphic manifolds have equal partition functions.
-    This is the "topological" part of TQFT. -/
-axiom topological_invariance {n : ℕ} (M N : ClosedManifold n)
-  (h : Homeomorphic M.val N.val) :
-  partitionFunction n M = partitionFunction n N
-
-/-- TQFT Axiom T8: Sphere normalization
-
-    Z(S^n) = 1 for the standard n-sphere.
-    This is a normalization convention (not always adopted). -/
-axiom sphere_normalization (n : ℕ) :
-  partitionFunction n (sphereAsClosed n) = 1
-
-/-- Functoriality under composition: Z(W₂ ∘ W₁) = Z(W₂) ∘ Z(W₁)
-
-    Gluing bordisms corresponds to composing linear maps. -/
-axiom tqft_functoriality {n : ℕ} (W₁ W₂ : Bordism n)
-  (h : bordismTarget W₁ = bordismSource W₂) :
-  -- This requires careful handling of the type equality
-  True  -- The precise statement requires transport along h
-
-/-- Identity bordism maps to identity morphism: Z(M × [0,1]) = id_{Z(M)}
-
-    Note: The identity bordism has source = target = M, so by
-    identity_bordism_props, this equality is well-typed. -/
-axiom tqft_identity {n : ℕ} (M : Manifold (n-1)) :
-  -- Uses the fact that bordismSource/Target of identityBordism M = M
-  HEq (TQFTFunctor (identityBordism M)) (targetId (tqftVectorSpace n M))
-
-/-- Multiplicativity of partition function for disjoint union -/
-axiom partition_multiplicative {n : ℕ} (M N : ClosedManifold n) :
-  -- Z(M ⊔ N) = Z(M) · Z(N)
-  -- (This requires a way to form disjoint union of closed manifolds)
-  True
+/-- Structure for TQFT with normalization -/
+structure TQFTWithNormalization (n : ℕ)
+    (mtb : ManifoldTheoryWithBoundary n)
+    (bt : TQFTBordismTheory n mtb.theory mtb.boundaryTheory)
+    (sm : StructuredManifolds (n-1) mtb.boundaryTheory)
+    (std : StandardManifolds (n-1) mtb.boundaryTheory)
+    (std_n : StandardManifolds n mtb.theory)
+    (homeo : HomeomorphismTheory n mtb.theory)
+    (closed_spheres : ClosedManifoldWithSpheres n mtb std_n)
+    (target : TargetCategory)
+    (tqft : TQFTAxioms n mtb bt sm std homeo target) where
+  /-- Sphere normalization: Z(S^n) = 1 -/
+  sphere_normalization : tqft.partitionFunction closed_spheres.sphereAsClosed = 1
 
 /- ============= EXTENDED TQFT ============= -/
 
-/-- n-category: category with k-morphisms for k ≤ n -/
-axiom nCategory (n : ℕ) : Type
+/-- Structure for extended TQFT -/
+structure ExtendedTQFTTheory where
+  /-- n-category: category with k-morphisms for k ≤ n -/
+  nCategory : ℕ → Type
+  /-- Extended TQFT: assigns data to k-manifolds for all k ≤ n -/
+  ExtendedTQFT : (n : ℕ) → (k : Fin (n+1)) → Type
+  /-- Fully dualizable objects in an n-category -/
+  FullyDualizableObjects : ℕ → Type
+  /-- Cobordism hypothesis (Lurie's theorem) -/
+  cobordism_hypothesis : ∀ (n : ℕ),
+    ExtendedTQFT n 0 ≃ FullyDualizableObjects n
 
-/-- Extended TQFT: assigns data to k-manifolds for all k ≤ n
+/-- Structure for factorization homology -/
+structure FactorizationHomologyTheory (n : ℕ) (mt : ManifoldTheory n) (target : TargetCategory) where
+  /-- Factorization homology: ∫_M A -/
+  factorizationHomology : mt.Manifold → target.Object
 
-    - To a point (0-manifold): an n-category C
-    - To a circle (1-manifold): an object in C
-    - ...
-    - To an (n-1)-manifold: a vector space
-    - To an n-manifold: a number -/
-axiom ExtendedTQFT (n : ℕ) : (k : Fin (n+1)) → Type
+/-- TQFT type: assignment of complex numbers to closed manifolds -/
+abbrev TQFTType (n : ℕ) (mtb : ManifoldTheoryWithBoundary n) := ClosedManifold' mtb → ℂ
 
-/-- Fully dualizable objects in an n-category
+/-- Structure for TQFT properties -/
+structure TQFTProperties (n : ℕ) (mtb : ManifoldTheoryWithBoundary n)
+    (tqftType : TQFTType n mtb) where
+  /-- Non-triviality: not all partition functions are zero -/
+  partition_nontrivial : ∃ (M : ClosedManifold' mtb), tqftType M ≠ 0
 
-    An object is fully dualizable if it has duals at all categorical levels.
-    These are the objects that can be "evaluated" to give numbers. -/
-axiom FullyDualizableObjects (n : ℕ) : Type
+/- ============= STANDALONE MANIFOLD TYPES (for convenience) ============= -/
 
-/-- Cobordism hypothesis (Lurie's theorem)
+/-- Structure for standalone manifold data (the concrete realization of manifold theory) -/
+structure StandaloneManifoldData where
+  /-- Standalone manifold theory with boundary for dimension n -/
+  manifoldTheoryWithBoundaryD : (n : ℕ) → ManifoldTheoryWithBoundary n
+  /-- n-sphere in dimension n -/
+  sphere : (n : ℕ) → (manifoldTheoryWithBoundaryD n).theory.Manifold
+  /-- n-torus in dimension n -/
+  torus : (n : ℕ) → (manifoldTheoryWithBoundaryD n).theory.Manifold
+  /-- Homeomorphic relation for 3-manifolds -/
+  Homeomorphic : (manifoldTheoryWithBoundaryD 3).theory.ManifoldWithBoundary →
+    (manifoldTheoryWithBoundaryD 3).theory.ManifoldWithBoundary → Prop
+  /-- Triangulation of a 3-manifold -/
+  Triangulation : (manifoldTheoryWithBoundaryD 3).theory.Manifold → Type
+  /-- Surface of genus g -/
+  surfaceGenus : ℕ → (manifoldTheoryWithBoundaryD 2).theory.Manifold
+  /-- TQFT vector space for dimension n on a surface -/
+  tqftVectorSpace : (n : ℕ) → (manifoldTheoryWithBoundaryD 2).theory.Manifold → Type
+  /-- Dimension of TQFT vector space -/
+  vectorDimension : {n : ℕ} → tqftVectorSpace n (surfaceGenus 0) → ℕ
+  /-- Sphere as a closed n-manifold -/
+  sphereAsClosed : (n : ℕ) → ClosedManifold' (manifoldTheoryWithBoundaryD n)
 
-    Extended TQFTs are classified by fully dualizable objects:
-    Fun^⊗(Bord_n, C) ≃ (fully dualizable objects in C)
+/-- Standalone manifold data holds -/
+axiom standaloneManifoldDataD : StandaloneManifoldData
 
-    This is a profound result connecting topology and higher algebra. -/
-axiom cobordism_hypothesis (n : ℕ) :
-  ExtendedTQFT n 0 ≃ FullyDualizableObjects n
+/-- Standalone manifold theory with boundary for dimension n -/
+noncomputable def manifoldTheoryWithBoundaryD (n : ℕ) : ManifoldTheoryWithBoundary n :=
+  standaloneManifoldDataD.manifoldTheoryWithBoundaryD n
 
-/-- Factorization homology: ∫_M A
+/-- Standalone manifold type for dimension n -/
+abbrev Manifold (n : ℕ) := (manifoldTheoryWithBoundaryD n).theory.Manifold
 
-    For an E_n-algebra A and n-manifold M, factorization homology
-    computes the "integral" of A over M. This gives a way to
-    construct TQFTs from algebraic data. -/
-axiom factorizationHomology (n : ℕ) (M : Manifold n) : TargetObject
+/-- Standalone manifold with boundary type for dimension n -/
+abbrev ManifoldWithBoundary (n : ℕ) := (manifoldTheoryWithBoundaryD n).theory.ManifoldWithBoundary
 
-/-- TQFT type: assignment of complex numbers to closed manifolds
+/-- Standalone closed manifold type for dimension n -/
+abbrev ClosedManifold (n : ℕ) := ClosedManifold' (manifoldTheoryWithBoundaryD n)
 
-    A TQFT of dimension n determines a function from closed n-manifolds
-    to complex numbers (the partition function). -/
-abbrev TQFTType (n : ℕ) := ∀ (M : ClosedManifold n), ℂ
+/-- Standalone TQFTType for dimension n -/
+abbrev TQFTType' (n : ℕ) := TQFTType n (manifoldTheoryWithBoundaryD n)
 
-/- ============= PROPERTIES OF PARTITION FUNCTIONS ============= -/
+/-- n-sphere in dimension n -/
+noncomputable def sphere (n : ℕ) : Manifold n :=
+  standaloneManifoldDataD.sphere n
 
-/-- Non-triviality: not all partition functions are zero -/
-axiom partition_nontrivial (n : ℕ) :
-  ∃ (M : ClosedManifold n), partitionFunction n M ≠ 0
+/-- n-torus in dimension n -/
+noncomputable def torus (n : ℕ) : Manifold n :=
+  standaloneManifoldDataD.torus n
 
-/-- Partition function of product: Z(M × N) relates to Z(M) and Z(N)
+/-- Empty manifold in dimension n -/
+noncomputable def emptyManifold (n : ℕ) : Manifold n :=
+  (manifoldTheoryWithBoundaryD n).theory.emptyManifold
 
-    For unitary TQFT: |Z(M × N)| ≤ |Z(M)| · |Z(N)| -/
-axiom partition_product_bound (n m : ℕ)
-  (M : ClosedManifold n) (N : ClosedManifold m) :
-  -- The product manifold lives in dimension n + m
-  True  -- Would need product of closed manifolds
+/-- Empty manifold in the boundary theory (dimension n-1) -/
+noncomputable def emptyManifoldBoundary (n : ℕ) : (manifoldTheoryWithBoundaryD n).boundaryTheory.Manifold :=
+  (manifoldTheoryWithBoundaryD n).boundaryTheory.emptyManifold
+
+/-- Boundary of a manifold with boundary -/
+noncomputable def boundary (M : ManifoldWithBoundary 3) : (manifoldTheoryWithBoundaryD 3).boundaryTheory.Manifold :=
+  (manifoldTheoryWithBoundaryD 3).boundaryMap M
+
+/-- Homeomorphic relation for 3-manifolds -/
+def Homeomorphic : ManifoldWithBoundary 3 → ManifoldWithBoundary 3 → Prop :=
+  standaloneManifoldDataD.Homeomorphic
+
+/-- Triangulation of a manifold -/
+def Triangulation : Manifold 3 → Type :=
+  standaloneManifoldDataD.Triangulation
+
+/-- Convert manifold with boundary to manifold (forgets boundary) -/
+noncomputable def ManifoldWithBoundary.toManifold (n : ℕ) : ManifoldWithBoundary n → Manifold n :=
+  (manifoldTheoryWithBoundaryD n).theory.toManifold
+
+/-- Surface of genus g -/
+noncomputable def surfaceGenus (g : ℕ) : Manifold 2 :=
+  standaloneManifoldDataD.surfaceGenus g
+
+/-- TQFT vector space for dimension n on a surface -/
+def tqftVectorSpace (n : ℕ) (M : Manifold 2) : Type :=
+  standaloneManifoldDataD.tqftVectorSpace n M
+
+/-- Dimension of TQFT vector space -/
+noncomputable def vectorDimension {n : ℕ} (V : tqftVectorSpace n (surfaceGenus 0)) : ℕ :=
+  standaloneManifoldDataD.vectorDimension V
+
+/-- Sphere as a closed 3-manifold -/
+noncomputable def sphereAsClosed (n : ℕ) : ClosedManifold n :=
+  standaloneManifoldDataD.sphereAsClosed n
 
 end ModularPhysics.Core.QFT.TQFT

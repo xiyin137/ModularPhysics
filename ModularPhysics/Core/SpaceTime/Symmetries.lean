@@ -4,6 +4,8 @@ import Mathlib.Analysis.Calculus.Deriv.Basic
 
 namespace ModularPhysics.Core.SpaceTime
 
+variable {metric : SpacetimeMetric}
+
 /-- Killing vector field (generates isometry of metric)
 
     A vector field ξ is Killing if Lie derivative of metric vanishes:
@@ -12,42 +14,42 @@ namespace ModularPhysics.Core.SpaceTime
     Equivalently (Killing equation):
     ∇_μ ξ_ν + ∇_ν ξ_μ = 0
 -/
-def KillingVector (metric : SpacetimeMetric)
+def KillingVector (ct : ConnectionTheory metric)
     (ξ : SpaceTimePoint → Fin 4 → ℝ) : Prop :=
   ∀ x μ ν,
-    covariantDerivativeCovector metric ξ μ x ν +
-    covariantDerivativeCovector metric ξ ν x μ = 0
+    ct.covariantDerivativeCovector ξ μ x ν +
+    ct.covariantDerivativeCovector ξ ν x μ = 0
 
 /-- Timelike Killing vector (time translation symmetry) -/
-def TimelikeKilling (metric : SpacetimeMetric)
+def TimelikeKilling (ct : ConnectionTheory metric)
     (ξ : SpaceTimePoint → Fin 4 → ℝ) : Prop :=
-  KillingVector metric ξ ∧
+  KillingVector ct ξ ∧
   ∀ x, (∑ μ, ∑ ν, metric.g x μ ν * ξ x μ * ξ x ν) < 0
 
 /-- Spacelike Killing vector -/
-def SpacelikeKilling (metric : SpacetimeMetric)
+def SpacelikeKilling (ct : ConnectionTheory metric)
     (ξ : SpaceTimePoint → Fin 4 → ℝ) : Prop :=
-  KillingVector metric ξ ∧
+  KillingVector ct ξ ∧
   ∀ x, (∑ μ, ∑ ν, metric.g x μ ν * ξ x μ * ξ x ν) > 0
 
 /-- Null Killing vector -/
-def NullKilling (metric : SpacetimeMetric)
+def NullKilling (ct : ConnectionTheory metric)
     (ξ : SpaceTimePoint → Fin 4 → ℝ) : Prop :=
-  KillingVector metric ξ ∧
+  KillingVector ct ξ ∧
   ∀ x, (∑ μ, ∑ ν, metric.g x μ ν * ξ x μ * ξ x ν) = 0
 
 /-- Stationary spacetime (has timelike Killing vector) -/
-def Stationary (metric : SpacetimeMetric) : Prop :=
-  ∃ ξ, TimelikeKilling metric ξ
+def Stationary (ct : ConnectionTheory metric) : Prop :=
+  ∃ ξ, TimelikeKilling ct ξ
 
 /-- Static spacetime (stationary + hypersurface orthogonal)
 
     Stronger than stationary: the timelike Killing vector is
     orthogonal to a family of spacelike hypersurfaces
 -/
-def Static (metric : SpacetimeMetric) : Prop :=
-  Stationary metric ∧
-  ∃ ξ, TimelikeKilling metric ξ ∧
+def Static (ct : ConnectionTheory metric) : Prop :=
+  Stationary ct ∧
+  ∃ ξ, TimelikeKilling ct ξ ∧
     ∀ x μ ν, ξ x μ * ξ x ν = 0 → μ = ν
 
 /-- Isometry: diffeomorphism preserving metric -/
@@ -60,39 +62,48 @@ structure Isometry (metric : SpacetimeMetric) where
     metric.g (map x) μ ν = metric.g x μ ν
 
 /-- Killing horizon: surface where Killing vector becomes null -/
-def KillingHorizon (metric : SpacetimeMetric)
+def KillingHorizon (ct : ConnectionTheory metric)
     (ξ : SpaceTimePoint → Fin 4 → ℝ) : Set SpaceTimePoint :=
-  {x | KillingVector metric ξ ∧
+  {x | KillingVector ct ξ ∧
        (∑ μ, ∑ ν, metric.g x μ ν * ξ x μ * ξ x ν) = 0}
 
-/-- Surface gravity of Killing horizon -/
-axiom surfaceGravity (metric : SpacetimeMetric)
-    (ξ : SpaceTimePoint → Fin 4 → ℝ)
-    (horizon : Set SpaceTimePoint)
-    (h : horizon = KillingHorizon metric ξ) : ℝ
+/-- Structure for spacetime symmetry theory -/
+structure SymmetryTheory (metric : SpacetimeMetric) where
+  /-- The underlying connection theory -/
+  connection : ConnectionTheory metric
+  /-- Surface gravity of Killing horizon -/
+  surfaceGravity : (ξ : SpaceTimePoint → Fin 4 → ℝ) →
+    (horizon : Set SpaceTimePoint) →
+    (h : horizon = KillingHorizon connection ξ) → ℝ
 
-/-- Minkowski has maximum symmetry (10 Killing vectors: 4 translations + 6 rotations/boosts) -/
-axiom minkowski_maximal_symmetry :
-  ∃ (ξs : Fin 10 → SpaceTimePoint → Fin 4 → ℝ),
-    ∀ i, KillingVector minkowskiMetric (ξs i)
+/-- Structure for Minkowski spacetime with its symmetries -/
+structure MinkowskiSymmetries where
+  /-- Connection theory for Minkowski spacetime -/
+  connection : ConnectionTheory minkowskiMetric
+  /-- 10 Killing vectors (4 translations + 6 rotations/boosts) -/
+  killingVectors : Fin 10 → SpaceTimePoint → Fin 4 → ℝ
+  /-- Each is a Killing vector -/
+  all_killing : ∀ i, @KillingVector minkowskiMetric connection (killingVectors i)
 
-/-- Schwarzschild metric (spherically symmetric vacuum solution)
+/-- Structure for Schwarzschild spacetime
 
     In Schwarzschild coordinates (t, r, θ, φ):
     ds² = -(1-2M/r)dt² + (1-2M/r)⁻¹dr² + r²(dθ² + sin²θ dφ²)
-
-    Axiomatized as a metric with appropriate structure. -/
-axiom schwarzschildMetric (M : ℝ) (h : M > 0) : SpacetimeMetric
-
-/-- Schwarzschild metric is spherically symmetric and static -/
-axiom schwarzschild_static (M : ℝ) (h : M > 0) :
-  Static (schwarzschildMetric M h)
-
-/-- Schwarzschild has 4 Killing vectors (time translation + 3 rotations from spherical symmetry) -/
-axiom schwarzschild_killing_vectors (M : ℝ) (h : M > 0) :
-  ∃ (ξ_t : SpaceTimePoint → Fin 4 → ℝ)
-    (ξ_rot : Fin 3 → SpaceTimePoint → Fin 4 → ℝ),
-    TimelikeKilling (schwarzschildMetric M h) ξ_t ∧
-    ∀ i, SpacelikeKilling (schwarzschildMetric M h) (ξ_rot i)
+-/
+structure SchwarzschildSpacetime (M : ℝ) (h : M > 0) where
+  /-- The Schwarzschild metric -/
+  metric : SpacetimeMetric
+  /-- Connection theory for this metric -/
+  connection : ConnectionTheory metric
+  /-- Schwarzschild is static -/
+  is_static : Static connection
+  /-- Timelike Killing vector (time translation) -/
+  timeKilling : SpaceTimePoint → Fin 4 → ℝ
+  /-- Rotational Killing vectors (spherical symmetry) -/
+  rotKilling : Fin 3 → SpaceTimePoint → Fin 4 → ℝ
+  /-- Time translation is timelike Killing -/
+  time_is_timelike_killing : TimelikeKilling connection timeKilling
+  /-- Rotations are spacelike Killing -/
+  rot_is_spacelike_killing : ∀ i, SpacelikeKilling connection (rotKilling i)
 
 end ModularPhysics.Core.SpaceTime

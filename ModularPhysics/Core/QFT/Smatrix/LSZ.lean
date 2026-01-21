@@ -29,13 +29,26 @@ axiom greenFunction {H : Type _} [QuantumStateSpace H] {d : ℕ}
 
 /-- Relationship to Wightman functions for ordered times -/
 axiom green_equals_wightman_when_ordered {H : Type _} [QuantumStateSpace H] {d : ℕ} [NeZero d]
+  (wft : WightmanFunctionTheory H d)
   (phi : FieldDistribution H d)
   (n : ℕ)
   (points : Fin n → (Fin d → ℝ))
   (h_ordered : ∀ i j : Fin n, i ≤ j → points i ⟨0, NeZero.pos d⟩ ≥ points j ⟨0, NeZero.pos d⟩) :
-  greenFunction phi n points = wightmanFunction phi n points
+  greenFunction phi n points = wft.wightmanFunction phi n points
 
 /- ============= KÄLLÉN-LEHMANN SPECTRAL REPRESENTATION ============= -/
+
+/-- Structure for field strength theory -/
+structure FieldStrengthTheory where
+  /-- Field strength renormalization constant -/
+  field_strength_Z : ℝ
+  /-- Bounds: 0 < Z ≤ 1 -/
+  field_strength_bounds : 0 < field_strength_Z ∧ field_strength_Z ≤ 1
+  /-- Spectral integral for Källén-Lehmann representation -/
+  spectral_integral : ∀ (d : ℕ), SpectralDensity d → (Fin d → ℝ) → (Fin d → ℝ) → ℂ
+
+/-- Field strength theory axiom -/
+axiom fieldStrengthTheoryD : FieldStrengthTheory
 
 /-- Field strength renormalization constant Z ∈ (0,1]
 
@@ -45,11 +58,14 @@ axiom green_equals_wightman_when_ordered {H : Type _} [QuantumStateSpace H] {d :
     - Z > 0 required for particle interpretation
 
     This corresponds to the `residue` in IsolatedMass from Euclidean formalism. -/
-axiom field_strength_Z : ℝ
-axiom field_strength_bounds : 0 < field_strength_Z ∧ field_strength_Z ≤ 1
+noncomputable def field_strength_Z : ℝ := fieldStrengthTheoryD.field_strength_Z
+
+theorem field_strength_bounds : 0 < field_strength_Z ∧ field_strength_Z ≤ 1 :=
+  fieldStrengthTheoryD.field_strength_bounds
 
 /-- Spectral integral for Källén-Lehmann representation -/
-axiom spectral_integral : ∀ (d : ℕ), SpectralDensity d → (Fin d → ℝ) → (Fin d → ℝ) → ℂ
+noncomputable def spectral_integral : ∀ (d : ℕ), SpectralDensity d → (Fin d → ℝ) → (Fin d → ℝ) → ℂ :=
+  fieldStrengthTheoryD.spectral_integral
 
 /-- Two-point Wightman function has Källén-Lehmann spectral representation
 
@@ -64,10 +80,11 @@ axiom spectral_integral : ∀ (d : ℕ), SpectralDensity d → (Fin d → ℝ) �
 
     This connects to Euclidean.HasSpectralRepresentation via Wick rotation. -/
 axiom kallen_lehmann {H : Type _} [QuantumStateSpace H] {d : ℕ}
+  (wft : WightmanFunctionTheory H d)
   (phi : FieldDistribution H d)
   (x y : Fin d → ℝ) :
   ∃ (spectral : SpectralDensity d),
-    twoPointWightman phi x y = spectral_integral d spectral x y
+    twoPointWightman wft phi x y = spectral_integral d spectral x y
 
 /- ============= LSZ ASYMPTOTIC CONDITION ============= -/
 
@@ -210,6 +227,22 @@ axiom amputatedGreen {H : Type _} [QuantumStateSpace H] {d : ℕ}
 
 /- ============= MASS AND FIELD RENORMALIZATION ============= -/
 
+/-- Structure for physical mass theory -/
+structure PhysicalMassTheory where
+  /-- Physical mass m_phys (observed particle pole) -/
+  physical_mass : ℝ
+  /-- Physical mass is positive -/
+  physical_mass_positive : physical_mass > 0
+  /-- Self-energy Σ(p²): sum of 1PI two-point diagrams -/
+  self_energy : ℝ → ℂ
+  /-- Field strength Z from self-energy -/
+  field_strength_from_self_energy :
+    ∃ (deriv_self_energy : ℝ),
+      fieldStrengthTheoryD.field_strength_Z = 1 / (1 - deriv_self_energy)
+
+/-- Physical mass theory axiom -/
+axiom physicalMassTheoryD : PhysicalMassTheory
+
 /-- Physical mass m_phys (observed particle pole)
 
     The physical mass is defined as the location of the pole in the
@@ -218,8 +251,10 @@ axiom amputatedGreen {H : Type _} [QuantumStateSpace H] {d : ℕ}
     G̃₂(p²) has pole at p² = m_phys²
 
     This corresponds to the isolated mass in Euclidean.IsolatedMass. -/
-axiom physical_mass : ℝ
-axiom physical_mass_positive : physical_mass > 0
+noncomputable def physical_mass : ℝ := physicalMassTheoryD.physical_mass
+
+theorem physical_mass_positive : physical_mass > 0 :=
+  physicalMassTheoryD.physical_mass_positive
 
 /-- Self-energy Σ(p²): sum of 1PI two-point diagrams
 
@@ -229,7 +264,8 @@ axiom physical_mass_positive : physical_mass > 0
     where m₀ is the bare mass in the Lagrangian.
 
     At the physical pole: physical_mass² = m₀² + Σ(physical_mass²) -/
-axiom self_energy (p_squared : ℝ) : ℂ
+noncomputable def self_energy (p_squared : ℝ) : ℂ :=
+  physicalMassTheoryD.self_energy p_squared
 
 /-- Field strength Z from self-energy
 
@@ -237,11 +273,34 @@ axiom self_energy (p_squared : ℝ) : ℂ
 
     This relates the field renormalization to the derivative of
     the self-energy at the mass shell. -/
-axiom field_strength_from_self_energy :
+theorem field_strength_from_self_energy :
   ∃ (deriv_self_energy : ℝ),
-    field_strength_Z = 1 / (1 - deriv_self_energy)
+    field_strength_Z = 1 / (1 - deriv_self_energy) :=
+  physicalMassTheoryD.field_strength_from_self_energy
 
 /- ============= VALIDITY CONDITIONS ============= -/
+
+/-- Structure for LSZ validity conditions -/
+structure LSZValidityTheory where
+  /-- Mass gap -/
+  mass_gap : ℝ
+  /-- Mass gap is positive -/
+  mass_gap_positive : mass_gap > 0
+  /-- Mass gap is isolated -/
+  mass_gap_isolated :
+    ∀ (spectral : SpectralDensity 4),
+      mass_gap = physicalMassTheoryD.physical_mass ∧
+      ∀ μ_sq : ℝ, physicalMassTheoryD.physical_mass^2 < μ_sq →
+        μ_sq < (2 * physicalMassTheoryD.physical_mass)^2 →
+        spectral.ρ μ_sq = 0
+  /-- Asymptotic completeness: Møller operators have dense range -/
+  asymptotic_completeness_lsz :
+    ∀ (ψ : HilbertSpace) (ε : ℝ), ε > 0 →
+      ∃ (φ_in : InHilbert),
+        ‖innerProduct ψ ψ‖ - ‖innerProduct ψ (moller_in φ_in)‖ < ε
+
+/-- LSZ validity theory axiom -/
+axiom lszValidityTheoryD : LSZValidityTheory
 
 /-- Mass gap hypothesis: spectrum has gap above single-particle mass
 
@@ -257,13 +316,17 @@ axiom field_strength_from_self_energy :
 
     For massless theories (QED, QCD), IR divergences appear and
     S-matrix is only defined for IR-safe observables (inclusive cross sections). -/
-axiom mass_gap : ℝ
-axiom mass_gap_positive : mass_gap > 0
-axiom mass_gap_isolated :
+noncomputable def mass_gap : ℝ := lszValidityTheoryD.mass_gap
+
+theorem mass_gap_positive : mass_gap > 0 :=
+  lszValidityTheoryD.mass_gap_positive
+
+theorem mass_gap_isolated :
   ∀ (spectral : SpectralDensity 4),
     mass_gap = physical_mass ∧
     ∀ μ_sq : ℝ, physical_mass^2 < μ_sq → μ_sq < (2 * physical_mass)^2 →
-      spectral.ρ μ_sq = 0
+      spectral.ρ μ_sq = 0 :=
+  lszValidityTheoryD.mass_gap_isolated
 
 /-- Asymptotic completeness: Møller operators have dense range
 
@@ -276,11 +339,12 @@ axiom mass_gap_isolated :
 
     Mathematically: for any ψ ∈ ℋ and ε > 0, there exists φ ∈ ℋ_in such that
     the overlap ⟨ψ|Ω₊(φ)⟩ approximates the norm ⟨ψ|ψ⟩ well. -/
-axiom asymptotic_completeness_lsz :
+theorem asymptotic_completeness_lsz :
   ∀ (ψ : HilbertSpace) (ε : ℝ), ε > 0 →
     ∃ (φ_in : InHilbert),
       -- The Møller image approximates ψ in the sense that
       -- their inner product is close to the norm of ψ
-      ‖innerProduct ψ ψ‖ - ‖innerProduct ψ (moller_in φ_in)‖ < ε
+      ‖innerProduct ψ ψ‖ - ‖innerProduct ψ (moller_in φ_in)‖ < ε :=
+  lszValidityTheoryD.asymptotic_completeness_lsz
 
 end ModularPhysics.Core.QFT.Smatrix

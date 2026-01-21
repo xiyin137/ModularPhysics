@@ -6,180 +6,146 @@ namespace ModularPhysics.Core.QFT.TQFT
 
 set_option linter.unusedVariables false
 
-/- ============= MANIFOLDS AND BORDISMS ============= -/
+/- ============= MANIFOLDS ============= -/
 
-/-- n-dimensional smooth manifold (compact, without boundary unless stated) -/
-axiom Manifold (n : ℕ) : Type
+/-- Structure for manifold theory in dimension n -/
+structure ManifoldTheory (n : ℕ) where
+  /-- n-dimensional smooth manifold (compact, without boundary unless stated) -/
+  Manifold : Type
+  /-- Manifold with boundary -/
+  ManifoldWithBoundary : Type
+  /-- Coercion from manifold with boundary to manifold -/
+  toManifold : ManifoldWithBoundary → Manifold
+  /-- Empty manifold (empty set as n-manifold) -/
+  emptyManifold : Manifold
+  /-- Disjoint union of manifolds M ⊔ N -/
+  disjointUnion : Manifold → Manifold → Manifold
 
-/-- Manifold with boundary -/
-axiom ManifoldWithBoundary (n : ℕ) : Type
-
-/-- Coercion from manifold with boundary to manifold -/
-noncomputable axiom ManifoldWithBoundary.toManifold (n : ℕ) : ManifoldWithBoundary n → Manifold n
-
-noncomputable instance (n : ℕ) : Coe (ManifoldWithBoundary n) (Manifold n) where
-  coe := ManifoldWithBoundary.toManifold n
-
-/-- Boundary of a manifold (the (n-1)-dimensional boundary) -/
-axiom boundary {n : ℕ} : ManifoldWithBoundary n → Manifold (n-1)
-
-/-- Empty manifold (empty set as n-manifold) -/
-axiom emptyManifold (n : ℕ) : Manifold n
-
-/-- Homeomorphic relation between manifolds -/
-axiom Homeomorphic {n : ℕ} : ManifoldWithBoundary n → ManifoldWithBoundary n → Prop
-
-/-- Homeomorphic is an equivalence relation -/
-axiom homeomorphic_refl {n : ℕ} (M : ManifoldWithBoundary n) : Homeomorphic M M
-axiom homeomorphic_symm {n : ℕ} (M N : ManifoldWithBoundary n) : Homeomorphic M N → Homeomorphic N M
-axiom homeomorphic_trans {n : ℕ} (L M N : ManifoldWithBoundary n) :
-  Homeomorphic L M → Homeomorphic M N → Homeomorphic L N
+/-- Structure for manifold theory with boundary relation to lower dimension -/
+structure ManifoldTheoryWithBoundary (n : ℕ) where
+  /-- Manifold theory in dimension n -/
+  theory : ManifoldTheory n
+  /-- Manifold theory in dimension n-1 for boundaries -/
+  boundaryTheory : ManifoldTheory (n-1)
+  /-- Boundary map produces (n-1)-manifold -/
+  boundaryMap : theory.ManifoldWithBoundary → boundaryTheory.Manifold
 
 /-- Closed manifold (compact without boundary) -/
-def ClosedManifold (n : ℕ) := {M : ManifoldWithBoundary n // boundary M = emptyManifold (n-1)}
+def ClosedManifold' {n : ℕ} (mtb : ManifoldTheoryWithBoundary n) :=
+  {M : mtb.theory.ManifoldWithBoundary // mtb.boundaryMap M = mtb.boundaryTheory.emptyManifold}
 
-/-- n-sphere S^n (the standard n-dimensional sphere embedded in ℝ^{n+1}) -/
-axiom sphere (n : ℕ) : Manifold n
+/-- Structure for homeomorphism relation -/
+structure HomeomorphismTheory (n : ℕ) (mt : ManifoldTheory n) where
+  /-- Homeomorphic relation between manifolds -/
+  Homeomorphic : mt.ManifoldWithBoundary → mt.ManifoldWithBoundary → Prop
+  /-- Homeomorphic is reflexive -/
+  homeomorphic_refl : ∀ (M : mt.ManifoldWithBoundary), Homeomorphic M M
+  /-- Homeomorphic is symmetric -/
+  homeomorphic_symm : ∀ (M N : mt.ManifoldWithBoundary), Homeomorphic M N → Homeomorphic N M
+  /-- Homeomorphic is transitive -/
+  homeomorphic_trans : ∀ (L M N : mt.ManifoldWithBoundary),
+    Homeomorphic L M → Homeomorphic M N → Homeomorphic L N
 
-/-- n-sphere is a closed manifold -/
-axiom sphereAsClosed (n : ℕ) : ClosedManifold n
-
-/-- sphereAsClosed correctly represents sphere -/
-axiom sphereAsClosed_val (n : ℕ) :
-  ManifoldWithBoundary.toManifold n (sphereAsClosed n).val = sphere n
-
-/-- n-torus T^n = S¹ × ... × S¹ (n copies) -/
-axiom torus (n : ℕ) : Manifold n
-
-/-- n-torus is a closed manifold -/
-axiom torusAsClosed (n : ℕ) : ClosedManifold n
-
-/-- Euler characteristic of manifold -/
-axiom eulerChar : ∀ {n : ℕ}, Manifold n → ℤ
-
-/-- Euler characteristic of sphere: χ(S^n) = 1 + (-1)^n -/
-axiom eulerChar_sphere (n : ℕ) :
-  eulerChar (sphere n) = 1 + (-1 : ℤ)^n
-
-/-- Euler characteristic of torus: χ(T^n) = 0 for n ≥ 1 -/
-axiom eulerChar_torus (n : ℕ) (h : n ≥ 1) :
-  eulerChar (torus n) = 0
+/-- Structure for standard manifolds (sphere, torus) -/
+structure StandardManifolds (n : ℕ) (mt : ManifoldTheory n) where
+  /-- n-sphere S^n (the standard n-dimensional sphere embedded in ℝ^{n+1}) -/
+  sphere : mt.Manifold
+  /-- n-torus T^n = S¹ × ... × S¹ (n copies) -/
+  torus : mt.Manifold
+  /-- Euler characteristic of manifold -/
+  eulerChar : mt.Manifold → ℤ
+  /-- Euler characteristic of sphere: χ(S^n) = 1 + (-1)^n -/
+  eulerChar_sphere : eulerChar sphere = 1 + (-1 : ℤ)^n
+  /-- Euler characteristic of torus: χ(T^n) = 0 for n ≥ 1 -/
+  eulerChar_torus : n ≥ 1 → eulerChar torus = 0
 
 /- ============= BORDISM CATEGORY ============= -/
 
-/-- Bordism (cobordism): an n-manifold W with ∂W = M₁ ⊔ -M₂
-
-    A bordism from M to N is an n-manifold W whose boundary
-    decomposes as the disjoint union of M (incoming) and -N (outgoing).
-    This is the fundamental morphism in the bordism category. -/
-axiom Bordism (n : ℕ) : Type
-
-/-- Source and target of bordism -/
-axiom bordismBoundary {n : ℕ} : Bordism n → Manifold (n-1) × Manifold (n-1)
+/-- Structure for bordism theory in dimension n -/
+structure TQFTBordismTheory (n : ℕ) (mt : ManifoldTheory n) (mt_lower : ManifoldTheory (n-1)) where
+  /-- Bordism (cobordism): an n-manifold W with ∂W = M₁ ⊔ -M₂ -/
+  Bordism : Type
+  /-- Source and target of bordism -/
+  bordismBoundary : Bordism → mt_lower.Manifold × mt_lower.Manifold
+  /-- Disjoint union of bordisms W ⊔ W' -/
+  disjointUnion : Bordism → Bordism → Bordism
+  /-- Identity bordism (cylinder) M × [0,1]: M → M -/
+  identityBordism : mt_lower.Manifold → Bordism
+  /-- Identity bordism has correct boundary -/
+  identity_bordism_props : ∀ (M : mt_lower.Manifold),
+    bordismBoundary (identityBordism M) = (M, M)
+  /-- Disjoint union is compatible with source/target -/
+  disjoint_union_boundary : ∀ (W₁ W₂ : Bordism),
+    bordismBoundary (disjointUnion W₁ W₂) =
+    (mt_lower.disjointUnion (bordismBoundary W₁).1 (bordismBoundary W₂).1,
+     mt_lower.disjointUnion (bordismBoundary W₁).2 (bordismBoundary W₂).2)
 
 /-- Source of bordism (incoming boundary) -/
-noncomputable def bordismSource {n : ℕ} (W : Bordism n) : Manifold (n-1) :=
-  (bordismBoundary W).1
+noncomputable def bordismSource {n : ℕ} {mt : ManifoldTheory n} {mt_lower : ManifoldTheory (n-1)}
+    (bt : TQFTBordismTheory n mt mt_lower) (W : bt.Bordism) : mt_lower.Manifold :=
+  (bt.bordismBoundary W).1
 
 /-- Target of bordism (outgoing boundary) -/
-noncomputable def bordismTarget {n : ℕ} (W : Bordism n) : Manifold (n-1) :=
-  (bordismBoundary W).2
+noncomputable def bordismTarget {n : ℕ} {mt : ManifoldTheory n} {mt_lower : ManifoldTheory (n-1)}
+    (bt : TQFTBordismTheory n mt mt_lower) (W : bt.Bordism) : mt_lower.Manifold :=
+  (bt.bordismBoundary W).2
 
-/-- Bordism composition (gluing along common boundary)
-
-    If W₁: M → N and W₂: N → P, then W₂ ∘ W₁: M → P
-    is formed by gluing W₁ and W₂ along N. -/
-axiom bordismCompose {n : ℕ} (W₁ W₂ : Bordism n)
-  (h : bordismTarget W₁ = bordismSource W₂) : Bordism n
-
-/-- Disjoint union of manifolds M ⊔ N -/
-axiom disjointUnionManifold {n : ℕ} : Manifold n → Manifold n → Manifold n
-
-/-- Disjoint union of bordisms W ⊔ W' -/
-axiom disjointUnion {n : ℕ} : Bordism n → Bordism n → Bordism n
-
-/-- Identity bordism (cylinder) M × [0,1]: M → M -/
-axiom identityBordism {n : ℕ} (M : Manifold (n-1)) : Bordism n
-
-/-- Bordism category Bord_n: objects are (n-1)-manifolds, morphisms are n-bordisms -/
-axiom BordismCategory (n : ℕ) : Type
-
-/-- Identity bordism has correct boundary -/
-axiom identity_bordism_props {n : ℕ} (M : Manifold (n-1)) :
-  bordismBoundary (identityBordism M) = (M, M)
-
-/-- Functoriality of composition:
-    ∂(W₂ ∘ W₁) = (source(W₁), target(W₂)) -/
-axiom composition_boundary {n : ℕ} (W₁ W₂ : Bordism n)
-  (h : bordismTarget W₁ = bordismSource W₂) :
-  bordismBoundary (bordismCompose W₁ W₂ h) = (bordismSource W₁, bordismTarget W₂)
-
-/-- Disjoint union is compatible with source/target -/
-axiom disjoint_union_boundary {n : ℕ} (W₁ W₂ : Bordism n) :
-  bordismBoundary (disjointUnion W₁ W₂) =
-  (disjointUnionManifold (bordismSource W₁) (bordismSource W₂),
-   disjointUnionManifold (bordismTarget W₁) (bordismTarget W₂))
-
--- Legacy alias
-noncomputable def functoriality {n : ℕ} (W₁ W₂ : Bordism n)
-  (h : bordismTarget W₁ = bordismSource W₂) :
-  bordismBoundary (bordismCompose W₁ W₂ h) = (bordismSource W₁, bordismTarget W₂) :=
-  composition_boundary W₁ W₂ h
+/-- Structure for bordism composition -/
+structure TQFTBordismComposition (n : ℕ) (mt : ManifoldTheory n) (mt_lower : ManifoldTheory (n-1))
+    (bt : TQFTBordismTheory n mt mt_lower) where
+  /-- Bordism composition (gluing along common boundary) -/
+  compose : (W₁ W₂ : bt.Bordism) →
+    (bordismTarget bt W₁ = bordismSource bt W₂) → bt.Bordism
+  /-- Functoriality of composition -/
+  composition_boundary : ∀ (W₁ W₂ : bt.Bordism) (h : bordismTarget bt W₁ = bordismSource bt W₂),
+    bt.bordismBoundary (compose W₁ W₂ h) = (bordismSource bt W₁, bordismTarget bt W₂)
 
 /- ============= STRUCTURE ON MANIFOLDS ============= -/
 
-/-- Oriented manifold (manifold with chosen orientation) -/
-axiom OrientedManifold (n : ℕ) : Type
+/-- Structure for oriented and structured manifolds -/
+structure StructuredManifolds (n : ℕ) (mt : ManifoldTheory n) where
+  /-- Oriented manifold (manifold with chosen orientation) -/
+  OrientedManifold : Type
+  /-- Framed manifold (trivialized tangent bundle) -/
+  FramedManifold : Type
+  /-- Spin manifold (admits spin structure) -/
+  SpinManifold : Type
+  /-- Orientation reversal: -M has opposite orientation to M -/
+  reverseOrientation : OrientedManifold → OrientedManifold
+  /-- Orientation reversal is an involution: --M = M -/
+  reverseOrientation_involution : ∀ (M : OrientedManifold),
+    reverseOrientation (reverseOrientation M) = M
+  /-- Embed oriented manifold as (unoriented) manifold -/
+  orientedToManifold : OrientedManifold → mt.Manifold
+  /-- Framing determines orientation (framed ⟹ oriented) -/
+  framing_gives_orientation : FramedManifold → OrientedManifold
 
-/-- Framed manifold (trivialized tangent bundle = choice of basis at each point) -/
-axiom FramedManifold (n : ℕ) : Type
+/-- Structure for surfaces (2-manifolds) -/
+structure SurfaceTheory (mt : ManifoldTheory 2) (std : StandardManifolds 2 mt) where
+  /-- Surface of genus g (closed oriented 2-manifold with g handles) -/
+  surfaceGenus : ℕ → mt.Manifold
+  /-- Genus 0 is sphere: Σ₀ = S² -/
+  surfaceGenus_zero : surfaceGenus 0 = std.sphere
+  /-- Genus 1 is torus: Σ₁ = T² -/
+  surfaceGenus_one : surfaceGenus 1 = std.torus
+  /-- Euler characteristic of genus g surface: χ(Σ_g) = 2 - 2g -/
+  eulerChar_surfaceGenus : ∀ (g : ℕ),
+    std.eulerChar (surfaceGenus g) = 2 - 2 * (g : ℤ)
 
-/-- Spin manifold (admits spin structure) -/
-axiom SpinManifold (n : ℕ) : Type
-
-/-- Manifold with G-structure for some group G acting on frames -/
-axiom GStructureManifold (G : Type) (n : ℕ) : Type
-
-/-- Orientation reversal: -M has opposite orientation to M -/
-axiom reverseOrientation {n : ℕ} : OrientedManifold n → OrientedManifold n
-
-/-- Orientation reversal is an involution: --M = M -/
-axiom reverseOrientation_involution {n : ℕ} (M : OrientedManifold n) :
-  reverseOrientation (reverseOrientation M) = M
-
-/-- Embed oriented manifold as (unoriented) manifold -/
-axiom orientedToManifold {n : ℕ} : OrientedManifold n → Manifold n
-
-/-- Framing determines orientation (framed ⟹ oriented) -/
-axiom framing_gives_orientation {n : ℕ} :
-  FramedManifold n → OrientedManifold n
-
-/-- Surface of genus g (closed oriented 2-manifold with g handles) -/
-axiom surfaceGenus (g : ℕ) : Manifold 2
-
-/-- Genus 0 is sphere: Σ₀ = S² -/
-axiom surfaceGenus_zero : surfaceGenus 0 = sphere 2
-
-/-- Genus 1 is torus: Σ₁ = T² -/
-axiom surfaceGenus_one : surfaceGenus 1 = torus 2
-
-/-- Euler characteristic of genus g surface: χ(Σ_g) = 2 - 2g -/
-axiom eulerChar_surfaceGenus (g : ℕ) :
-  eulerChar (surfaceGenus g) = 2 - 2 * (g : ℤ)
-
-/-- Triangulation of a manifold (combinatorial decomposition into simplices) -/
-axiom Triangulation (M : Manifold n) : Type
+/-- Structure for triangulation of manifolds -/
+structure TriangulationTheory (n : ℕ) (mt : ManifoldTheory n) where
+  /-- Triangulation of a manifold (combinatorial decomposition into simplices) -/
+  Triangulation : mt.Manifold → Type
 
 /- ============= HIGHER BORDISM CATEGORIES ============= -/
 
-/-- Bordism n-category: k-morphisms are (k+1)-bordisms for k ≤ n-1 -/
-axiom bordismNCategory (n : ℕ) : Type
-
-/-- Bicategory (2-category with weak associativity) -/
-axiom Bicategory : Type
-
-/-- Bordism 2-category: objects are 0-manifolds, 1-morphisms are 1-bordisms,
-    2-morphisms are 2-bordisms between 1-bordisms -/
-axiom bordism2Category : Bicategory
+/-- Structure for higher bordism categories -/
+structure HigherBordismCategories where
+  /-- Bordism n-category: k-morphisms are (k+1)-bordisms for k ≤ n-1 -/
+  bordismNCategory : ℕ → Type
+  /-- Bicategory (2-category with weak associativity) -/
+  Bicategory : Type
+  /-- Bordism 2-category -/
+  bordism2Category : Bicategory
 
 end ModularPhysics.Core.QFT.TQFT
