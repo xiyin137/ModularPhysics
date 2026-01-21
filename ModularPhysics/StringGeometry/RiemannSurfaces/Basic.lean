@@ -244,25 +244,44 @@ theorem principal_divisor_degree_zero {RS : RiemannSurface}
 
 /-!
 ## Riemann-Roch Theorem
+
+The full Riemann-Roch theory with sheaf cohomology is developed in
+`RiemannSurfaces/Algebraic/RiemannRoch.lean`. Here we provide the basic statement.
 -/
 
-/-- Dimension of the Riemann-Roch space L(D).
+/-- Dimension of the Riemann-Roch space L(D) = H⁰(O(D)).
     L(D) = { f meromorphic : (f) + D ≥ 0 } = { f : poles bounded by D }
-    l(D) = dim L(D) is the dimension of this vector space over ℂ. -/
+    l(D) = dim L(D) is the dimension of this vector space over ℂ.
+
+    For the full cohomological treatment, see `Algebraic/RiemannRoch.lean`. -/
 noncomputable def l {RS : RiemannSurface}
     (_ : @CompactSpace RS.carrier RS.topology) (_ : Divisor RS) : ℕ :=
-  sorry  -- Requires vector space dimension
+  sorry  -- See Algebraic/RiemannRoch.lean for full treatment
 
 /-- Riemann-Roch theorem: l(D) - l(K - D) = deg(D) - g + 1
 
     This is the fundamental theorem connecting divisors to global sections.
-    The proof requires:
-    1. Definition of l(D) as dim H⁰(Σ, O(D))
-    2. Serre duality: H¹(O(D)) ≅ H⁰(K ⊗ O(-D))*
-    3. The Euler characteristic computation -/
-theorem riemann_roch (CRS : CompactRiemannSurface) (D : Divisor CRS.toRiemannSurface)
-    (K : CanonicalBundle CRS.toRiemannSurface) :
-    l CRS.compact D - l CRS.compact sorry = D.degree - CRS.genus + 1 := by
-  sorry  -- Requires sheaf cohomology
+
+    **Equivalent forms:**
+    1. h⁰(D) - h¹(D) = deg(D) - g + 1 (Euler characteristic form)
+    2. h⁰(D) - h⁰(K - D) = deg(D) - g + 1 (using Serre duality)
+
+    **Special cases:**
+    - D = 0: l(0) - l(K) = 1 - g, giving l(K) = g
+    - deg(D) > 2g - 2: l(K - D) = 0, so l(D) = deg(D) - g + 1
+
+    **Applications:**
+    - dim M_g = dim H⁰(K²) = 3g - 3 for g ≥ 2
+
+    For the full proof framework with sheaf cohomology, see `Algebraic/RiemannRoch.lean`.
+
+    Note: This simplified statement uses l(D) and l(K_minus_D) as separate inputs
+    since the simple Divisor type here doesn't have arithmetic operations.
+    See `Algebraic/Divisors.lean` for the full divisor group structure. -/
+theorem riemann_roch (CRS : CompactRiemannSurface) (D K_minus_D : Divisor CRS.toRiemannSurface)
+    (_ : CanonicalBundle CRS.toRiemannSurface)
+    (hK : D.degree + K_minus_D.degree = 2 * (CRS.genus : ℤ) - 2) :
+    (l CRS.compact D : ℤ) - l CRS.compact K_minus_D = D.degree - CRS.genus + 1 := by
+  sorry  -- See Algebraic/RiemannRoch.lean for full treatment
 
 end RiemannSurfaces

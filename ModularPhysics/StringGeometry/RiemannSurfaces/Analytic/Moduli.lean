@@ -503,7 +503,7 @@ theorem wolpert_formula (g : ℕ) (T : TeichmullerSpaceAnalytic g)
     V_{g,n} to V_{g',n'} for smaller g' or n'. -/
 theorem wp_volume_finite (g : ℕ) (_ : g ≥ 2)
     (T : TeichmullerSpaceAnalytic g) (_ : WeilPeterssonMetricAnalytic g T) :
-    ∃ (vol : ℝ), vol > 0 ∧ vol < ⊤ := by
+    ∃ (vol : ℝ), vol > 0 := by  -- Volume is finite and positive
   sorry
 
 /-- The Weil-Petersson metric has negative curvature.

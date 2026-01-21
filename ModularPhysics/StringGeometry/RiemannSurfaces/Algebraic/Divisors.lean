@@ -566,16 +566,23 @@ structure LinearSystem {RS : RiemannSurface} (D : Divisor RS) where
 noncomputable def LinearSystem.dimension {RS : RiemannSurface} {D : Divisor RS}
     (_ : LinearSystem D) : ℕ := 0  -- Placeholder
 
-/-- The function l(D) = dim L(D).
+/-- The function l(D) = dim L(D) = dim H⁰(O(D)).
 
     This is the dimension of the Riemann-Roch space L(D) = {f : div(f) + D ≥ 0}.
-    For a proper definition, one needs:
-    1. The space of meromorphic functions with poles bounded by D
-    2. Complex vector space structure
-    3. Finite-dimensionality (from compactness of the surface)
 
-    Placeholder value: returns 1 (the actual values come from Riemann-Roch). -/
-noncomputable def ell {RS : RiemannSurface} (_ : Divisor RS) : ℕ := 1  -- Placeholder
+    **Riemann-Roch theorem** (see `Algebraic/RiemannRoch.lean`):
+      l(D) - l(K - D) = deg(D) - g + 1
+
+    where K is the canonical divisor with deg(K) = 2g - 2.
+
+    **Key values:**
+    - l(0) = 1 (only constants are holomorphic)
+    - l(K) = g (definition of genus)
+    - l(D) = deg(D) - g + 1 when deg(D) > 2g - 2
+
+    For the full cohomological treatment, see `RiemannRoch.lean`.
+    This placeholder returns 1 for the special case l(0) = 1. -/
+noncomputable def ell {RS : RiemannSurface} (_ : Divisor RS) : ℕ := 1  -- Placeholder: see RiemannRoch.lean
 
 /-- l(0) = 1 (only constant functions).
     L(0) = {f : div(f) ≥ 0} = {holomorphic functions} = {constants} on a compact surface. -/
