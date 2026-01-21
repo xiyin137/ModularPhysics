@@ -203,19 +203,26 @@ theorem bell_theorem :
   rw [h_abs] at h_lhvt
   linarith
 
-noncomputable def singlet_density : DensityOperator (TensorProduct Qubit Qubit) :=
-  pureToDensity singlet
-
 -- ========================================
 -- CONNECTION TO QUANTUM MECHANICS
 -- ========================================
 
-/-- The correlation function we analyzed IS what quantum mechanics predicts -/
-theorem quantum_correlation_is_physical (a b : ℝ) :
+/-- The singlet state density operator, parametrized by a qubit basis and Bell state structure. -/
+noncomputable def singlet_density (basis : QubitBasis) (bell : BellState basis qubitTensorProduct) :
+    DensityOperator QubitPair :=
+  pureToDensity (singlet basis bell)
+
+/-- The correlation function we analyzed IS what quantum mechanics predicts.
+    This now requires explicit basis, Bell state, Pauli operators, and tensor observable structures. -/
+theorem quantum_correlation_is_physical (basis : QubitBasis) (bell : BellState basis qubitTensorProduct)
+    (paulis : PauliOperators) (a b : ℝ)
+    (tensorObs : TensorObservable qubitTensorProduct
+      (pauli_direction paulis (Real.pi/2) a)
+      (pauli_direction paulis (Real.pi/2) b)) :
   quantum_correlation_singlet a b =
-  expectation_value singlet (pauli_direction (Real.pi/2) a ⊗ᴼ pauli_direction (Real.pi/2) b) := by
+  expectation_value (singlet basis bell) tensorObs.obs := by
   unfold quantum_correlation_singlet
-  rw [singlet_pauli_correlation]
+  rw [singlet_pauli_correlation basis bell paulis a b tensorObs]
 
 /-- **MAIN RESULT**: Quantum mechanics violates local hidden variable theories
 
@@ -227,17 +234,25 @@ theorem quantum_correlation_is_physical (a b : ℝ) :
     1. Bell's inequality (fully proven) - |S| ≤ 2 for any LHVT
     2. Quantum calculation (axiomatized) - QM gives S = 2√2
     3. Contradiction - 2√2 > 2
+
+    Note: This theorem now requires explicit quantum mechanical structures (basis, Bell state,
+    Pauli operators, tensor observables) to be provided, rather than relying on axioms.
 -/
-theorem quantum_mechanics_violates_local_realism :
+theorem quantum_mechanics_violates_local_realism (basis : QubitBasis)
+    (bell : BellState basis qubitTensorProduct)
+    (paulis : PauliOperators)
+    (mkTensorObs : ∀ (a b : ℝ), TensorObservable qubitTensorProduct
+      (pauli_direction paulis (Real.pi/2) a)
+      (pauli_direction paulis (Real.pi/2) b)) :
   ¬∃ (theory : LHVT),
     ∀ (a b : Setting),
       lhvt_correlation theory a b =
-      expectation_value singlet (pauli_direction (Real.pi/2) a ⊗ᴼ pauli_direction (Real.pi/2) b) := by
+      expectation_value (singlet basis bell) (mkTensorObs a b).obs := by
   intro ⟨theory, h_match⟩
   apply bell_theorem
   use theory
   intro a b
-  rw [quantum_correlation_is_physical]
+  rw [quantum_correlation_is_physical basis bell paulis a b (mkTensorObs a b)]
   exact h_match a b
 
 end Bell

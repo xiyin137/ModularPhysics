@@ -33,25 +33,31 @@ axiom entropy_concave {H : Type _} [QuantumStateSpace H]
   vonNeumannEntropy (convexCombination lambda rho sigma) ≥
   lambda * vonNeumannEntropy rho + (1 - lambda) * vonNeumannEntropy sigma
 
-/-- Subadditivity of entropy -/
+/-- Subadditivity of entropy for tensor product states.
+    Takes a tensor product structure and partial trace operations. -/
 axiom entropy_subadditive {H1 H2 : Type _} [QuantumStateSpace H1] [QuantumStateSpace H2]
-  (rho : DensityOperator (TensorProduct H1 H2)) :
+  (T : TensorProductSpace H1 H2)
+  (pt2 : PartialTrace2 T) (pt1 : PartialTrace1 T)
+  (rho : DensityOperator T.carrier) :
   vonNeumannEntropy rho ≤
-  vonNeumannEntropy (partialTrace2 rho) + vonNeumannEntropy (partialTrace1 rho)
+  vonNeumannEntropy (pt2.trace rho) + vonNeumannEntropy (pt1.trace rho)
 
 /-- Araki-Lieb triangle inequality for entropy.
 
     This is a THEOREM (Araki-Lieb 1970), not an axiom itself. -/
 theorem araki_lieb {H1 H2 : Type _} [QuantumStateSpace H1] [QuantumStateSpace H2]
-  (rho : DensityOperator (TensorProduct H1 H2)) :
-  |vonNeumannEntropy (partialTrace2 rho) - vonNeumannEntropy (partialTrace1 rho)| ≤
+  (T : TensorProductSpace H1 H2)
+  (pt2 : PartialTrace2 T) (pt1 : PartialTrace1 T)
+  (rho : DensityOperator T.carrier) :
+  |vonNeumannEntropy (pt2.trace rho) - vonNeumannEntropy (pt1.trace rho)| ≤
   vonNeumannEntropy rho := by
   sorry
 
-/-- Conditional entropy -/
+/-- Conditional entropy for tensor product states. -/
 axiom conditionalEntropy {H1 H2 : Type _}
-  [QuantumStateSpace H1] [QuantumStateSpace H2] :
-  DensityOperator (TensorProduct H1 H2) → ℝ
+  [QuantumStateSpace H1] [QuantumStateSpace H2]
+  (T : TensorProductSpace H1 H2) :
+  DensityOperator T.carrier → ℝ
 
 /-- Relative entropy D(ρ||σ) -/
 axiom relativeEntropy {H : Type _} [QuantumStateSpace H] :

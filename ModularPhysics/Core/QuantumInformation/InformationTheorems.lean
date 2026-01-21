@@ -19,43 +19,49 @@ axiom ancilla {H : Type _} [QuantumStateSpace H] : H
 
 /-- No-cloning theorem (Wootters-Zurek 1982, Dieks 1982).
 
-    This is a THEOREM (provable from linearity of quantum mechanics), not an axiom itself. -/
-theorem no_cloning {H : Type _} [QuantumStateSpace H] :
-  ¬∃ (cloning : TensorProduct H H → TensorProduct H H),
-    ∀ (psi : H), cloning (tensorProduct psi ancilla) = tensorProduct psi psi := by
+    This is a THEOREM (provable from linearity of quantum mechanics), not an axiom itself.
+    Takes a tensor product structure as parameter. -/
+theorem no_cloning {H : Type _} [QuantumStateSpace H]
+  (T : TensorProductSpace H H) :
+  ¬∃ (cloning : T.carrier → T.carrier),
+    ∀ (psi : H), cloning (T.tensor psi ancilla) = T.tensor psi psi := by
   sorry
 
 /-- No-deleting theorem (Pati-Braunstein 2000).
 
     This is a THEOREM (provable from unitarity), not an axiom itself. -/
-theorem no_deleting {H : Type _} [QuantumStateSpace H] :
-  ¬∃ (deleting : TensorProduct H H → H),
-    ∀ (psi : H), deleting (tensorProduct psi psi) = psi := by
+theorem no_deleting {H : Type _} [QuantumStateSpace H]
+  (T : TensorProductSpace H H) :
+  ¬∃ (deleting : T.carrier → H),
+    ∀ (psi : H), deleting (T.tensor psi psi) = psi := by
   sorry
 
 /-- No-broadcasting theorem (Barnum et al. 1996).
 
     This is a THEOREM (provable from quantum mechanics), not an axiom itself. -/
-theorem no_broadcasting {H : Type _} [QuantumStateSpace H] :
-  ¬∃ (broadcast : H → TensorProduct H H),
+theorem no_broadcasting {H : Type _} [QuantumStateSpace H]
+  (T : TensorProductSpace H H) :
+  ¬∃ (broadcast : H → T.carrier),
     ∀ (psi phi : H), orthogonal psi phi →
-      broadcast psi = tensorProduct psi psi := by
+      broadcast psi = T.tensor psi psi := by
   sorry
 
 /-- Quantum teleportation -/
-axiom teleportation {H : Type _} [QuantumStateSpace H] :
-  PureState H → DensityOperator (TensorProduct H H) → H
+axiom teleportation {H : Type _} [QuantumStateSpace H]
+  (T : TensorProductSpace H H) :
+  PureState H → DensityOperator T.carrier → H
 
 /-- Teleportation classical cost (2 classical bits for qubits) -/
 def teleportation_classical_cost : ℝ := 2
 
 /-- Dense coding capacity -/
-axiom denseCoding {H : Type _} [QuantumStateSpace H] :
-  DensityOperator (TensorProduct H H) → ℝ
+axiom denseCoding {H : Type _} [QuantumStateSpace H]
+  (T : TensorProductSpace H H) :
+  DensityOperator T.carrier → ℝ
 
 /-- Dense coding achieves 2 bits per qubit with maximally entangled state -/
 axiom dense_coding_capacity :
-  ∃ (rho : DensityOperator (TensorProduct Qubit Qubit)), denseCoding rho = 2
+  ∃ (rho : DensityOperator QubitPair), denseCoding qubitTensorProduct rho = 2
 
 /-- Quantum error correction code -/
 axiom QECC (H : Type _) [QuantumStateSpace H] (k n : ℕ) : Type _
@@ -67,6 +73,6 @@ axiom quantum_hamming_bound (n k d : ℕ) : Prop
 axiom page_curve (time : ℝ) (initial_entropy : ℝ) : ℝ
 
 /-- Page time: when radiation entropy equals black hole entropy -/
-axiom page_time (initial_mass : ℝ) : ℝ
+axiom page_time_qi (initial_mass : ℝ) : ℝ
 
 end ModularPhysics.Core.QuantumInformation
