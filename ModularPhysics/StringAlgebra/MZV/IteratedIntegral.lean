@@ -123,12 +123,29 @@ theorem compositionToFormWord_depth1 (n : ℕ+) :
 /-- Weight is preserved: |w| = weight of composition -/
 theorem compositionToFormWord_weight (s : Composition) :
     (compositionToFormWord s).weight = s.weight := by
-  sorry  -- Requires induction on composition
+  unfold compositionToFormWord FormWord.weight Composition.weight
+  induction s with
+  | nil => simp
+  | cons n ns ih =>
+    simp only [List.flatMap_cons, List.length_append, List.length_replicate,
+               List.length_singleton, List.map_cons, List.sum_cons]
+    rw [ih]
+    have h : n.val ≥ 1 := n.pos
+    omega
 
 /-- Depth is preserved: count of ω₁ = depth of composition -/
 theorem compositionToFormWord_depth (s : Composition) :
     (compositionToFormWord s).countOmega1 = s.depth := by
-  sorry  -- Requires induction
+  unfold compositionToFormWord FormWord.countOmega1 Composition.depth
+  induction s with
+  | nil => simp
+  | cons n ns ih =>
+    simp only [List.flatMap_cons, List.countP_append, List.length_cons]
+    rw [ih]
+    -- Count omega1 in (replicate (n-1) omega0 ++ [omega1])
+    simp only [List.countP_replicate, List.countP_cons, List.countP_nil, beq_iff_eq]
+    simp only [reduceCtorEq, ↓reduceIte, Nat.zero_add]
+    omega
 
 /-- Convert a form word back to a composition (partial inverse).
 
@@ -254,7 +271,7 @@ end GroupoidElement
 
     per : FormWord → ℂ (or ℝ for real MZVs)
     per(ω₀^{s₁-1}ω₁...ω₀^{sₖ-1}ω₁) = ζ(s₁,...,sₖ) -/
-def periodMap (_w : FormWord) : Unit := ()  -- Placeholder for ℂ value
+def formWordPeriodMap (_w : FormWord) : Unit := ()  -- Placeholder for ℂ value
 
 /-- The de Rham realization is the vector space spanned by form words
     modulo shuffle relations. -/

@@ -112,7 +112,18 @@ def ReducedCoderivation.square (D : ReducedCoderivation R V) :
     ReducedSymCoalg R V → ReducedSymCoalg R V :=
   D.map ∘ D.map
 
-/-! ## Square-Zero Coderivations and L∞ Algebras -/
+/-! ## Square-Zero Coderivations and L∞ Algebras
+
+    The condition D² = 0 is the defining equation for L∞ algebras.
+    When expanded in terms of brackets, this gives the generalized
+    Jacobi identities at each word length.
+
+    TODO: To implement this properly, we need:
+    1. Concrete additive structure on SymCoalg R V
+    2. A zero element in the coalgebra
+    3. Equality checking for coalgebra elements
+
+    The current implementation uses True as a placeholder. -/
 
 /-- A coderivation is square-zero if D² = 0.
 

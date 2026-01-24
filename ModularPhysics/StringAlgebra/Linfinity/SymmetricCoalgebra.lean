@@ -6,6 +6,7 @@ Authors: ModularPhysics Contributors
 import Mathlib.Algebra.DirectSum.Basic
 import Mathlib.Algebra.DirectSum.Module
 import Mathlib.RingTheory.TensorProduct.Basic
+import Mathlib.RingTheory.Coalgebra.Basic
 import Mathlib.Data.Finset.Basic
 import Mathlib.Data.List.Perm.Basic
 import ModularPhysics.StringAlgebra.Linfinity.Basic
@@ -189,21 +190,48 @@ structure ReducedCoproduct (R : Type u) [CommRing R] (V : ℤ → Type v)
   coproduct : ReducedSymCoalg R V → ReducedSymCoalg R V × ReducedSymCoalg R V → R
   -- The actual structure should use tensor product, this is a placeholder
 
-/-! ## Properties -/
+/-! ## Coalgebra Properties
 
-/-- Coassociativity: (Δ ⊗ id) ∘ Δ = (id ⊗ Δ) ∘ Δ -/
+    The symmetric coalgebra satisfies the standard coalgebra axioms.
+    These are analogous to mathlib's `Coalgebra` class from
+    `Mathlib.RingTheory.Coalgebra.Basic`, but adapted for the graded setting
+    with Koszul signs.
+
+    In mathlib, a coalgebra has:
+    - `comul : A →ₗ[R] A ⊗[R] A` (coproduct)
+    - `counit : A →ₗ[R] R` (counit)
+    - `Coalgebra.coassoc` (coassociativity)
+    - `Coalgebra.rTensor_counit_comp_comul` and `lTensor_counit_comp_comul` (counit axioms)
+
+    For the graded symmetric coalgebra, we additionally have:
+    - Koszul signs in the coproduct formula
+    - Graded cocommutativity
+
+    TODO: Once the concrete implementation of SymCoalg is complete,
+    these theorems should be proved and connected to mathlib's Coalgebra. -/
+
+/-- Coassociativity: (Δ ⊗ id) ∘ Δ = (id ⊗ Δ) ∘ Δ
+
+    This states that the coproduct is associative in the coalgebra sense.
+    For concrete elements: Δ(Δ(x) ⊗ 1) = Δ(1 ⊗ Δ(x)) (with appropriate signs). -/
 theorem coproduct_coassociative {R : Type u} [CommRing R] {V : ℤ → Type v}
     [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] :
   True :=  -- Placeholder for (Δ ⊗ id) ∘ Δ = (id ⊗ Δ) ∘ Δ
   sorry
 
-/-- Counit axiom: (ε ⊗ id) ∘ Δ = id = (id ⊗ ε) ∘ Δ -/
+/-- Counit axiom: (ε ⊗ id) ∘ Δ = id = (id ⊗ ε) ∘ Δ
+
+    The counit ε : S(V) → R satisfies the coalgebra unit axioms.
+    This ensures ε is the "identity" for the coproduct. -/
 theorem counit_axiom {R : Type u} [CommRing R] {V : ℤ → Type v}
     [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] :
   True :=  -- Placeholder for (ε ⊗ id) ∘ Δ = id = (id ⊗ ε) ∘ Δ
   sorry
 
-/-- Graded cocommutativity: τ ∘ Δ = Δ with appropriate Koszul signs -/
+/-- Graded cocommutativity: τ ∘ Δ = Δ with appropriate Koszul signs
+
+    The symmetric coalgebra is graded cocommutative:
+    τ(Δ(x)) = Δ(x) where τ(a ⊗ b) = (-1)^{|a||b|} b ⊗ a -/
 theorem coproduct_graded_cocommutative {R : Type u} [CommRing R] {V : ℤ → Type v}
     [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] :
   True :=  -- Placeholder for τ ∘ Δ = Δ with appropriate signs

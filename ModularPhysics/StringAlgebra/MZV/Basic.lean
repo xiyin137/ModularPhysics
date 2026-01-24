@@ -211,12 +211,31 @@ def compositionToWord (s : Composition) : MZVWord :=
 /-- The word representation has the same depth as the composition -/
 theorem compositionToWord_depth (s : Composition) :
     (compositionToWord s).depth = s.depth := by
-  sorry  -- Requires careful counting argument
+  unfold compositionToWord MZVWord.depth Composition.depth
+  induction s with
+  | nil => simp
+  | cons n ns ih =>
+    simp only [List.flatMap_cons, List.countP_append, List.length_cons]
+    rw [ih]
+    -- Count the 1s in (MZVLetter.one :: List.replicate (n.val - 1) MZVLetter.zero)
+    simp only [List.countP_cons, List.countP_replicate, beq_iff_eq]
+    -- The head is one, so we get 1 + (count of 1s in zeros) = 1 + 0 = 1
+    simp only [reduceCtorEq, ↓reduceIte]
+    omega
 
 /-- The word representation preserves weight -/
 theorem compositionToWord_weight (s : Composition) :
     (compositionToWord s).weight = s.weight := by
-  sorry  -- Requires induction
+  unfold compositionToWord MZVWord.weight Composition.weight
+  induction s with
+  | nil => simp
+  | cons n ns ih =>
+    simp only [List.flatMap_cons, List.length_append, List.length_cons,
+               List.length_replicate, List.map_cons, List.sum_cons]
+    rw [ih]
+    -- Length of (MZVLetter.one :: List.replicate (n.val - 1) MZVLetter.zero) = 1 + (n.val - 1) = n.val
+    have h : n.val ≥ 1 := n.pos
+    omega
 
 /-! ## Standard Compositions -/
 

@@ -71,7 +71,16 @@ open List
 /-- A formal sum of compositions with rational coefficients.
 
     This represents elements of the formal MZV algebra before
-    quotienting by relations. -/
+    quotienting by relations. Elements are represented as lists
+    of (coefficient, composition) pairs.
+
+    Note: This representation allows duplicate compositions with
+    different coefficients. The `normalize` function combines
+    like terms. For a canonical representation, use `normalize`
+    before comparison.
+
+    Mathematically, this is the free ℚ-module on compositions,
+    with the shuffle or stuffle product extending to an algebra. -/
 abbrev FormalSum := List (ℚ × Composition)
 
 namespace FormalSum
@@ -86,7 +95,7 @@ def single (s : Composition) : FormalSum := [(1, s)]
 def smul (c : ℚ) (f : FormalSum) : FormalSum :=
   f.map fun (q, s) => (c * q, s)
 
-/-- Addition of formal sums -/
+/-- Addition of formal sums (concatenation, doesn't combine like terms) -/
 def add (f g : FormalSum) : FormalSum := f ++ g
 
 /-- Negation -/
@@ -96,9 +105,53 @@ def neg (f : FormalSum) : FormalSum :=
 /-- Subtraction -/
 def sub (f g : FormalSum) : FormalSum := add f (neg g)
 
+/-- Combine like terms in a formal sum.
+
+    Groups terms by composition and sums their coefficients.
+    Removes terms with zero coefficient. -/
+def normalize (f : FormalSum) : FormalSum :=
+  let grouped := f.foldl (fun acc (c, s) =>
+    match acc.lookup s with
+    | some c' => (s, c + c') :: acc.filter (·.1 ≠ s)
+    | none => (s, c) :: acc
+  ) ([] : List (Composition × ℚ))
+  grouped.filter (·.2 ≠ 0) |>.map (fun (s, c) => (c, s))
+
 /-- Convert a list of compositions to a formal sum with coefficient 1 each -/
 def ofList (l : List Composition) : FormalSum :=
   l.map fun s => (1, s)
+
+/-- Check if two formal sums are equivalent (equal after normalization) -/
+def equiv (f g : FormalSum) : Bool :=
+  let nf := normalize f
+  let ng := normalize g
+  nf.length = ng.length ∧ nf.all (ng.contains ·)
+
+/-- The total coefficient sum (useful for checking relations) -/
+def totalCoeff (f : FormalSum) : ℚ :=
+  f.foldl (fun acc (c, _) => acc + c) 0
+
+/-! ### Basic Properties -/
+
+/-- Adding zero on the left is identity -/
+theorem add_zero_left (f : FormalSum) : add zero f = f := by
+  simp only [add, zero, List.nil_append]
+
+/-- Adding zero on the right is identity -/
+theorem add_zero_right (f : FormalSum) : add f zero = f := by
+  simp only [add, zero, List.append_nil]
+
+/-- Scalar multiplication by 1 is identity -/
+theorem smul_one (f : FormalSum) : smul 1 f = f := by
+  simp only [smul, one_mul, List.map_id']
+
+/-- Scalar multiplication by 0 gives zero -/
+theorem smul_zero_eq (f : FormalSum) : smul 0 f = f.map fun (_, s) => (0, s) := by
+  simp only [smul, zero_mul]
+
+/-- Negation is scalar multiplication by -1 -/
+theorem neg_eq_smul_neg_one (f : FormalSum) : neg f = smul (-1) f := by
+  simp only [neg, smul, neg_one_mul]
 
 /-- The weight of a formal sum (maximum weight of components) -/
 def maxWeight (f : FormalSum) : ℕ :=

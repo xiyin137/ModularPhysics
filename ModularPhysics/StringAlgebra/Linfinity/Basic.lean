@@ -253,4 +253,75 @@ def suspend (V : ℤ → Type v) (n : ℤ) : V n ≃ Shift V 1 (n + 1) :=
 def desuspend (V : ℤ → Type v) (n : ℤ) : Shift V 1 n ≃ V (n - 1) :=
   Equiv.refl _
 
+/-! ## Multilinear Graded Maps (for L∞ Brackets) -/
+
+/-- A graded n-ary bracket of degree d.
+
+    For L∞ algebras, the n-th bracket l_n has degree 2-n.
+    This structure captures l_n : V^⊗n → V with the appropriate degree shift. -/
+structure GradedBracket (R : Type u) [CommRing R]
+    (V : ℤ → Type v) [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
+    (n : ℕ) (d : ℤ) where
+  /-- The bracket applied to n elements of specified degrees.
+      The output degree is the sum of input degrees plus d. -/
+  apply : (degrees : Fin n → ℤ) → (∀ i, V (degrees i)) → V (Finset.univ.sum degrees + d)
+  /-- The bracket is multilinear -/
+  multilinear : True  -- Placeholder for multilinearity condition
+  /-- The bracket is graded symmetric (with Koszul signs) -/
+  graded_symmetric : True  -- Placeholder for graded symmetry
+
+namespace GradedBracket
+
+variable {R : Type u} [CommRing R]
+variable {V : ℤ → Type v} [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
+
+/-- The zero bracket -/
+protected def zero (n : ℕ) (d : ℤ) : GradedBracket R V n d where
+  apply := fun _ _ => 0
+  multilinear := trivial
+  graded_symmetric := trivial
+
+instance (n : ℕ) (d : ℤ) : Zero (GradedBracket R V n d) := ⟨GradedBracket.zero n d⟩
+
+/-- The degree of an L∞ bracket l_n is 2 - n -/
+def lInftyDegree (n : ℕ) : ℤ := 2 - n
+
+/-- The unary bracket l₁ (differential) has degree 1 -/
+theorem l1_degree : lInftyDegree 1 = 1 := rfl
+
+/-- The binary bracket l₂ has degree 0 -/
+theorem l2_degree : lInftyDegree 2 = 0 := rfl
+
+/-- The ternary bracket l₃ (Jacobiator) has degree -1 -/
+theorem l3_degree : lInftyDegree 3 = -1 := rfl
+
+end GradedBracket
+
+/-! ## L∞ Algebra via Brackets -/
+
+/-- An L∞ algebra structure specified by its brackets.
+
+    This is an alternative definition to the coalgebraic one,
+    directly specifying the multilinear brackets l_n. -/
+structure LInftyBrackets (R : Type u) [CommRing R]
+    (V : ℤ → Type v) [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] where
+  /-- The n-th bracket l_n for n ≥ 1 -/
+  bracket : (n : ℕ) → n ≥ 1 → GradedBracket R V n (GradedBracket.lInftyDegree n)
+  /-- The generalized Jacobi identity holds for all n ≥ 1.
+
+      ∑_{i+j=n+1} ∑_σ ε(σ) l_j(l_i(x_{σ(1)}, ..., x_{σ(i)}), x_{σ(i+1)}, ..., x_{σ(n)}) = 0 -/
+  jacobi : ∀ n : ℕ, n ≥ 1 → True  -- Placeholder for generalized Jacobi
+
+/-- A DGLA is an L∞ algebra where l_n = 0 for n ≥ 3 -/
+def LInftyBrackets.isDGLA {R : Type u} [CommRing R]
+    {V : ℤ → Type v} [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
+    (L : LInftyBrackets R V) : Prop :=
+  ∀ n : ℕ, (hn : n ≥ 3) → L.bracket n (Nat.one_le_iff_ne_zero.mpr (by omega : n ≠ 0)) = 0
+
+/-- A Lie algebra is a DGLA where additionally l₁ = 0 -/
+def LInftyBrackets.isLie {R : Type u} [CommRing R]
+    {V : ℤ → Type v} [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
+    (L : LInftyBrackets R V) : Prop :=
+  L.isDGLA ∧ L.bracket 1 (le_refl 1) = 0
+
 end StringAlgebra.Linfinity

@@ -299,15 +299,15 @@ theorem weight8_relation : True := by
     This is the "forget motivic structure" map.
     It is a ring homomorphism but NOT injective
     (in general, we lose information). -/
-def periodMap (_m : MotivicMZV) : Unit :=
+def motivicPeriodMap (_m : MotivicMZV) : Unit :=
   ()  -- Placeholder for the complex value
 
 /-- The period map is a ring homomorphism -/
-theorem periodMap_ring_hom : True := by
+theorem motivicPeriodMap_ring_hom : True := by
   trivial
 
 /-- Kernels of the period map are motivic relations -/
-theorem periodMap_kernel : True := by
+theorem motivicPeriodMap_kernel : True := by
   trivial
 
 /-! ## Brown's Main Theorem -/

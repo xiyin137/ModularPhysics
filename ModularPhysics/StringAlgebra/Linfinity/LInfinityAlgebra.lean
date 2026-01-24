@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.StringAlgebra.Linfinity.Coderivations
+import Mathlib.Algebra.Lie.Basic
 
 /-!
 # L∞ Algebras
@@ -235,6 +236,14 @@ structure LieAlg (R : Type u) [CommRing R] (V : Type v)
   antisymm : ∀ x y, bracket x y = - bracket y x
   /-- Jacobi identity -/
   jacobi : ∀ x y z, bracket (bracket x y) z + bracket (bracket y z) x + bracket (bracket z x) y = 0
+  /-- Bilinearity in the first argument -/
+  add_left : ∀ x y z, bracket (x + y) z = bracket x z + bracket y z
+  /-- Bilinearity in the second argument -/
+  add_right : ∀ x y z, bracket x (y + z) = bracket x y + bracket x z
+  /-- Scalar multiplication in first argument -/
+  smul_left : ∀ (r : R) x y, bracket (r • x) y = r • bracket x y
+  /-- Scalar multiplication in second argument -/
+  smul_right : ∀ (r : R) x y, bracket x (r • y) = r • bracket x y
 
 /-- Every Lie algebra gives an L∞ algebra.
 
@@ -259,5 +268,39 @@ def LieAlg.toLInfty {R : Type u} [CommRing R] {V : Type v}
     degree_one := rfl
     square_zero := trivial  -- D² = 0 follows from Jacobi identity
   }
+
+/-! ## Connection to Mathlib's Lie Algebras -/
+
+/-- Construct a `LieAlg` from mathlib's `LieRing` and `LieAlgebra` instances.
+
+    This provides interoperability with the mathlib Lie algebra library.
+    The `AddCommGroup` and `Module` instances come from `LieRing` and `LieAlgebra`. -/
+def LieAlg.ofMathlib (R : Type u) [CommRing R] (V : Type v)
+    [LieRing V] [LieAlgebra R V] :
+    @LieAlg R _ V LieRing.toAddCommGroup LieAlgebra.toModule where
+  bracket := fun x y => ⁅x, y⁆
+  antisymm := fun x y => (lie_skew x y).symm
+  jacobi := fun x y z => by
+    -- lie_jacobi gives: ⁅x, ⁅y, z⁆⁆ + ⁅y, ⁅z, x⁆⁆ + ⁅z, ⁅x, y⁆⁆ = 0
+    -- We need: ⁅⁅x, y⁆, z⁆ + ⁅⁅y, z⁆, x⁆ + ⁅⁅z, x⁆, y⁆ = 0
+    -- lie_skew x y says: -⁅y, x⁆ = ⁅x, y⁆
+    -- So ⁅⁅x, y⁆, z⁆ = -⁅z, ⁅x, y⁆⁆ via (lie_skew ⁅x, y⁆ z).symm
+    rw [(lie_skew ⁅x, y⁆ z).symm, (lie_skew ⁅y, z⁆ x).symm, (lie_skew ⁅z, x⁆ y).symm]
+    -- Now goal is: -⁅z, ⁅x, y⁆⁆ + -⁅x, ⁅y, z⁆⁆ + -⁅y, ⁅z, x⁆⁆ = 0
+    have h := lie_jacobi x y z
+    simp only [← neg_add, neg_eq_zero]
+    convert h using 1
+    abel
+  add_left := fun x y z => LieRing.add_lie x y z
+  add_right := fun x y z => LieRing.lie_add x y z
+  smul_left := fun r x y => LieModule.smul_lie r x y
+  smul_right := fun r x y => LieModule.lie_smul r x y
+
+/-- A mathlib Lie algebra gives an L∞ algebra via our construction. -/
+def mathlibLieToLInfty (R : Type u) [CommRing R] (V : Type v)
+    [LieRing V] [LieAlgebra R V] :
+    @LInftyAlgebra R _ (fun _ : ℤ => V)
+      (fun _ => LieRing.toAddCommGroup) (fun _ => LieAlgebra.toModule) :=
+  (LieAlg.ofMathlib R V).toLInfty
 
 end StringAlgebra.Linfinity
