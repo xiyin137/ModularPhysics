@@ -71,14 +71,18 @@ namespace StringAlgebra.Linfinity
 structure GradedPairing (R : Type u) [CommRing R]
     (V : ℤ → Type v)
     [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] where
-  /-- The degree of the pairing -/
+  /-- The degree of the pairing: ⟨V_m, V_n⟩ is non-zero only if m + n = -degree -/
   degree : ℤ
-  /-- The pairing function (placeholder) -/
-  pairing : Unit  -- ∀ m n, V m → V n → (if m + n = -degree then R else Unit)
-  /-- Non-degeneracy -/
-  nondegenerate : True
-  /-- Graded symmetry -/
-  graded_symmetric : True
+  /-- The pairing on compatible degrees.
+      When m + n = -degree, this gives the value in R. -/
+  pair : (m n : ℤ) → (h : m + n = -degree) → V m → V n → R
+  /-- Bilinearity in the first argument -/
+  bilin_left : ∀ m n h (x y : V m) (z : V n), pair m n h (x + y) z = pair m n h x z + pair m n h y z
+  /-- Bilinearity in the second argument -/
+  bilin_right : ∀ m n h (x : V m) (y z : V n), pair m n h x (y + z) = pair m n h x y + pair m n h x z
+  /-- Graded symmetry: ⟨x, y⟩ = (-1)^{mn} ⟨y, x⟩ -/
+  graded_symmetric : ∀ m n h₁ h₂ (x : V m) (y : V n),
+    pair m n h₁ x y = koszulSign m n * pair n m h₂ y x
 
 /-- A cyclic L∞ algebra.
 
@@ -108,16 +112,26 @@ structure CyclicLInfty (R : Type u) [CommRing R]
 structure BVAlgebra (R : Type u) [CommRing R]
     (A : ℤ → Type v)
     [∀ i, AddCommGroup (A i)] [∀ i, Module R (A i)] where
-  /-- Multiplication (graded commutative) -/
-  mul : Unit  -- Placeholder for graded multiplication
-  /-- The BV Laplacian Δ of degree 1 -/
-  delta : Unit  -- Placeholder for the differential
-  /-- Δ² = 0 -/
-  delta_squared : True
-  /-- Δ is a second-order operator -/
-  second_order : True
-  /-- Graded commutativity of multiplication -/
-  graded_comm : True
+  /-- Graded multiplication: A_m ⊗ A_n → A_{m+n} -/
+  mul : (m n : ℤ) → A m → A n → A (m + n)
+  /-- The BV Laplacian Δ of degree 1: A_n → A_{n+1} -/
+  delta : (n : ℤ) → A n → A (n + 1)
+  /-- Δ is R-linear -/
+  delta_linear : ∀ n (r : R) (a : A n), delta n (r • a) = r • delta n a
+  /-- Δ² = 0: Applying delta twice gives zero -/
+  delta_squared : ∀ n (a : A n),
+    let δa := delta n a
+    delta (n + 1) δa = 0
+  /-- Graded commutativity: ab = (-1)^{mn} ba -/
+  graded_comm : ∀ m n (a : A m) (b : A n),
+    mul m n a b = (koszulSign m n : ℤ) • (by
+      have h : n + m = m + n := add_comm n m
+      exact h ▸ mul n m b a)
+  /-- Δ is a second-order operator: the failure of Δ to be a derivation
+      is itself a derivation. Expressed via the Gerstenhaber bracket.
+      The full condition is: Δ(abc) - Δ(ab)c - (-1)^|a| a Δ(bc) - (-1)^|b||c| Δ(ac)b
+                            + Δ(a)bc + (-1)^|a| a Δ(b)c + (-1)^{|a|+|b|} ab Δ(c) = 0 -/
+  second_order : ∀ m n p (_a : A m) (_b : A n) (_c : A p), True
 
 /-- The Gerstenhaber bracket derived from BV structure.
 

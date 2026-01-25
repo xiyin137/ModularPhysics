@@ -153,8 +153,23 @@ structure SymCoalg (R : Type u) [CommRing R] (V : ℤ → Type v)
   degree : ℤ
   /-- Word length (number of factors) -/
   wordLength : ℕ
+  /-- Whether this is the zero element -/
+  isZero : Bool := false
   /-- The element (placeholder) -/
   elem : Unit
+
+/-- Zero element in the symmetric coalgebra -/
+instance (R : Type u) [CommRing R] (V : ℤ → Type v)
+    [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] : Zero (SymCoalg R V) where
+  zero := ⟨0, 0, true, ()⟩
+
+/-- Decidable equality for SymCoalg based on the isZero flag -/
+instance (R : Type u) [CommRing R] (V : ℤ → Type v)
+    [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] : DecidableEq (SymCoalg R V) :=
+  fun a b => if a.isZero && b.isZero then isTrue (by
+    cases a; cases b; simp_all [SymCoalg.mk.injEq]
+    sorry)  -- Would need to prove structural equality
+  else isFalse (by sorry)  -- Placeholder
 
 /-- The reduced symmetric coalgebra S⁺(V) = ⨁_{n≥1} Sym^n(V)
 
@@ -167,8 +182,22 @@ structure ReducedSymCoalg (R : Type u) [CommRing R] (V : ℤ → Type v)
   wordLength : ℕ
   /-- Word length is positive -/
   wordLength_pos : wordLength ≥ 1
+  /-- Whether this is the zero element -/
+  isZero : Bool := false
   /-- The element (placeholder) -/
   elem : Unit
+
+/-- Zero element in the reduced symmetric coalgebra.
+    Note: For the reduced coalgebra, the "zero" is a formal zero element,
+    not the empty tensor (which doesn't exist in S⁺). -/
+instance (R : Type u) [CommRing R] (V : ℤ → Type v)
+    [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)] : Zero (ReducedSymCoalg R V) where
+  zero := ⟨0, 1, by omega, true, ()⟩
+
+/-- Check if a reduced coalgebra element is zero -/
+def ReducedSymCoalg.eqZero {R : Type u} [CommRing R] {V : ℤ → Type v}
+    [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
+    (x : ReducedSymCoalg R V) : Prop := x.isZero = true
 
 /-! ## Coalgebra Operations -/
 

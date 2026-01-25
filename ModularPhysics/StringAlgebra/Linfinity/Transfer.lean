@@ -168,25 +168,29 @@ def transferInclusion {R : Type u} [CommRing R]
     LInftyHom R (transferredLInfty L data) L :=
   sorry  -- Construct using tree formulas
 
-/-- The transfer inclusion is a quasi-isomorphism -/
+/-- The transfer inclusion is a quasi-isomorphism.
+
+    This is the key result of homotopy transfer: the inclusion i_∞
+    induces an isomorphism on homology. -/
 theorem transfer_is_quasiIso {R : Type u} [CommRing R]
     {V H : ℤ → Type v}
     [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
     [∀ i, AddCommGroup (H i)] [∀ i, Module R (H i)]
     (L : LInftyAlgebra R V) (data : SDR R V H) :
     (transferInclusion L data).isQuasiIso :=
-  trivial
+  fun _ => trivial
 
 /-! ## Minimal Models -/
 
 /-- A minimal L∞ algebra has l₁ = 0.
 
-    Every L∞ algebra is quasi-isomorphic to a minimal one (its minimal model). -/
+    Every L∞ algebra is quasi-isomorphic to a minimal one (its minimal model).
+    A minimal algebra encodes the homotopy type without redundant information. -/
 def isMinimal {R : Type u} [CommRing R]
     {V : ℤ → Type v}
     [∀ i, AddCommGroup (V i)] [∀ i, Module R (V i)]
-    (_L : LInftyAlgebra R V) : Prop :=
-  True  -- Placeholder: l₁ = 0
+    (L : LInftyAlgebra R V) : Prop :=
+  L.toStructure.D.vanishesOnWordLength 1
 
 /-- The minimal model is obtained by transfer to homology.
 

@@ -212,17 +212,6 @@ def stuffleFormal (f g : FormalSum) : FormalSum :=
 
 /-! ## The Double Shuffle Relations -/
 
-/-- A double shuffle relation is a formal sum that equals zero
-    when evaluated on MZVs.
-
-    These arise from the equation:
-    Σ_{w ∈ u ш v} ζ(w) = Σ_{s ∈ s * t} ζ(s) -/
-structure DoubleShuffleRelation where
-  /-- The formal sum representing the relation -/
-  relation : FormalSum
-  /-- Proof that this is a valid relation (placeholder) -/
-  isRelation : True
-
 /-- The double shuffle relation for two compositions.
 
     DS(s, t) = (s ш t) - (s * t)
@@ -234,6 +223,25 @@ def doubleShuffleRelation (s t : Composition) : FormalSum :=
   -- Stuffle of compositions
   let stuffleTerms := FormalSum.ofList (stuffle s t)
   FormalSum.sub shuffleTerms stuffleTerms
+
+/-- A double shuffle relation is a formal sum that equals zero
+    when evaluated on MZVs.
+
+    These arise from the equation:
+    Σ_{w ∈ u ш v} ζ(w) = Σ_{s ∈ s * t} ζ(s)
+
+    A formal sum is a valid double shuffle relation if it arises as the
+    difference of shuffle and stuffle products for some compositions. -/
+structure DoubleShuffleRelation where
+  /-- The formal sum representing the relation -/
+  relation : FormalSum
+  /-- There exist compositions s and t such that this is their double shuffle -/
+  isRelation : ∃ s t : Composition, relation = doubleShuffleRelation s t
+
+/-- Construct a double shuffle relation from two compositions -/
+def DoubleShuffleRelation.of (s t : Composition) : DoubleShuffleRelation where
+  relation := doubleShuffleRelation s t
+  isRelation := ⟨s, t, rfl⟩
 
 /-! ## Key Examples -/
 

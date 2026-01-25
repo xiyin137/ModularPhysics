@@ -62,6 +62,19 @@ namespace StringAlgebra.MZV
 
 /-! ## Classical Polylogarithm -/
 
+/-- Convergence region for polylogarithms.
+
+    The series Li_n(z) = Σ_{k=1}^∞ z^k / k^n converges:
+    - For |z| < 1: always converges (for all n ≥ 1)
+    - For |z| = 1: converges if n ≥ 2 (absolutely for n ≥ 2)
+    - For |z| > 1: diverges
+
+    This type abstracts the convergence condition without requiring ℂ. -/
+inductive PolylogConvergence : Type
+  | insideUnitDisk : PolylogConvergence   -- |z| < 1: always converges
+  | onUnitCircle (n_ge_2 : Bool) : PolylogConvergence  -- |z| = 1: need n ≥ 2
+  deriving DecidableEq, Repr
+
 /-- The classical polylogarithm Li_n(z).
 
     Defined by the series:
@@ -73,22 +86,27 @@ structure Polylog where
   order : ℕ
   /-- The argument z (placeholder - should be ℂ) -/
   argument : Unit
-  /-- Convergence condition -/
-  converges : True
+  /-- The convergence region -/
+  convergenceRegion : PolylogConvergence
+  /-- Convergence condition: for |z| = 1 we need order ≥ 2 -/
+  converges : convergenceRegion = .insideUnitDisk ∨
+    (convergenceRegion = .onUnitCircle true ∧ order ≥ 2)
 
 namespace Polylog
 
-/-- Li_1(z) = -log(1-z) -/
+/-- Li_1(z) for |z| < 1: Li_1(z) = -log(1-z) -/
 def li1 : Polylog where
   order := 1
   argument := ()
-  converges := trivial
+  convergenceRegion := .insideUnitDisk
+  converges := Or.inl rfl
 
-/-- Li_2(z) - the dilogarithm -/
+/-- Li_2(z) - the dilogarithm, converges on unit circle too -/
 def li2 : Polylog where
   order := 2
   argument := ()
-  converges := trivial
+  convergenceRegion := .onUnitCircle true
+  converges := Or.inr ⟨rfl, le_refl 2⟩
 
 /-- Li_n(1) = ζ(n) for n ≥ 2 -/
 theorem polylog_one_eq_zeta (n : ℕ) (_hn : n ≥ 2) :
@@ -128,7 +146,10 @@ end Polylog
     Li_s(z) = Σ_{n₁>...>nₖ≥1} z₁^{n₁}...zₖ^{nₖ} / (n₁^{s₁}...nₖ^{sₖ})
 
     The composition s = (s₁,...,sₖ) gives the "exponents" (depths).
-    The arguments z = (z₁,...,zₖ) give the "twists". -/
+    The arguments z = (z₁,...,zₖ) give the "twists".
+
+    Convergence: When all |zᵢ| ≤ 1, convergence is equivalent to
+    the composition being admissible (s₁ ≥ 2) when z₁ = 1. -/
 structure MultiplePolylog where
   /-- The index composition -/
   indices : Composition
@@ -136,8 +157,10 @@ structure MultiplePolylog where
   arguments : List Unit
   /-- Lengths must match -/
   lengths_eq : indices.length = arguments.length
-  /-- Convergence condition -/
-  converges : True
+  /-- Convergence is guaranteed by admissibility of the index composition
+      when evaluating at unit arguments.
+      We use isAdmissible as the key convergence criterion. -/
+  converges : indices.isAdmissible
 
 namespace MultiplePolylog
 
@@ -279,7 +302,10 @@ structure RootOfUnity where
     ζ(s; ε) = Σ_{n₁>...>nₖ≥1} ε₁^{n₁}...εₖ^{nₖ} / (n₁^{s₁}...nₖ^{sₖ})
 
     For N-th roots of unity, these are called "colored MZVs" or
-    "multiple polylogarithms at roots of unity". -/
+    "multiple polylogarithms at roots of unity".
+
+    Convergence requires the index composition to be admissible (s₁ ≥ 2)
+    when the first root of unity is 1. -/
 structure ColoredMZV where
   /-- The indices -/
   indices : Composition
@@ -287,8 +313,9 @@ structure ColoredMZV where
   colors : List RootOfUnity
   /-- Lengths match -/
   lengths_eq : indices.length = colors.length
-  /-- Convergence condition -/
-  isAdmissible : True
+  /-- Convergence condition: use the admissibility of the index composition.
+      This ensures convergence when evaluating the series. -/
+  isAdmissible : indices.isAdmissible
 
 namespace ColoredMZV
 
