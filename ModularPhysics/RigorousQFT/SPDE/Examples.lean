@@ -3,10 +3,10 @@ Copyright (c) 2025 ModularPhysics. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
-import ModularPhysics.SPDE.Examples.Phi4
-import ModularPhysics.SPDE.Examples.YangMills2D
-import ModularPhysics.SPDE.Examples.KPZ
-import ModularPhysics.SPDE.Examples.StochasticHeat
+import ModularPhysics.RigorousQFT.SPDE.Examples.Phi4
+import ModularPhysics.RigorousQFT.SPDE.Examples.YangMills2D
+import ModularPhysics.RigorousQFT.SPDE.Examples.KPZ
+import ModularPhysics.RigorousQFT.SPDE.Examples.StochasticHeat
 
 /-!
 # SPDE Examples

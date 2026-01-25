@@ -4,12 +4,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
 
-import ModularPhysics.SPDE.Basic
-import ModularPhysics.SPDE.BrownianMotion
-import ModularPhysics.SPDE.StochasticIntegration
-import ModularPhysics.SPDE.RegularityStructures
-import ModularPhysics.SPDE.SPDE
-import ModularPhysics.SPDE.Examples
+import ModularPhysics.RigorousQFT.SPDE.Basic
+import ModularPhysics.RigorousQFT.SPDE.BrownianMotion
+import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
+import ModularPhysics.RigorousQFT.SPDE.RegularityStructures
+import ModularPhysics.RigorousQFT.SPDE.SPDE
+import ModularPhysics.RigorousQFT.SPDE.Examples
 
 /-!
 # Stochastic Partial Differential Equations

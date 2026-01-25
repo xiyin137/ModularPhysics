@@ -3,7 +3,7 @@ Copyright (c) 2025 ModularPhysics. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
-import ModularPhysics.SPDE.BrownianMotion
+import ModularPhysics.RigorousQFT.SPDE.BrownianMotion
 import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
 import Mathlib.Analysis.Calculus.Deriv.Basic
 import Mathlib.Analysis.Calculus.ContDiff.Defs
