@@ -44,9 +44,12 @@ ModularPhysics/
 │       ├── Griffiths/
 │       ├── Hypercontractivity/
 │       └── ReflectionPositivity/
+├── SPDE/
+│   └── Examples/
 ├── StringAlgebra/
 │   ├── Linfinity/
-│   └── MZV/
+│   ├── MZV/
+│   └── VOA/
 └── StringGeometry/
     ├── RiemannSurfaces/
     │   ├── Helpers/

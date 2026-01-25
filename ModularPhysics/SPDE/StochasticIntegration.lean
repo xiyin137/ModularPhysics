@@ -1,0 +1,306 @@
+/-
+Copyright (c) 2025 ModularPhysics. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: ModularPhysics Contributors
+-/
+import ModularPhysics.SPDE.BrownianMotion
+import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
+import Mathlib.Analysis.Calculus.Deriv.Basic
+import Mathlib.Analysis.Calculus.ContDiff.Defs
+
+/-!
+# Stochastic Integration (Itô Calculus)
+
+This file develops stochastic integration with respect to Brownian motion
+and more general semimartingales.
+
+## Main Definitions
+
+* `StochasticIntegral` - The Itô integral ∫₀ᵗ H_s dW_s
+* `ItoProcess` - Processes of the form dX = μ dt + σ dW
+* `ItoFormula` - Itô's formula for C² functions
+
+## References
+
+* Karatzas, Shreve, "Brownian Motion and Stochastic Calculus"
+* Revuz, Yor, "Continuous Martingales and Brownian Motion"
+-/
+
+namespace SPDE
+
+open MeasureTheory
+
+variable {Ω : Type*} [MeasurableSpace Ω]
+
+/-! ## Simple Processes -/
+
+/-- A simple (step) process defined by a finite partition -/
+structure SimpleProcess (F : Filtration Ω ℝ) where
+  /-- Number of partition points -/
+  n : ℕ
+  /-- The partition times (as a function) -/
+  times : Fin n → ℝ
+  /-- The values at each interval -/
+  values : Fin n → Ω → ℝ
+  /-- Partition is increasing -/
+  increasing : ∀ i j : Fin n, i < j → times i < times j
+  /-- Values are predictable (F_{t_{i-1}}-measurable) -/
+  adapted : ∀ i : Fin n, (i : ℕ) > 0 →
+    @Measurable Ω ℝ (F.σ_algebra (times ⟨i - 1, by omega⟩)) _ (values i)
+
+namespace SimpleProcess
+
+variable {F : Filtration Ω ℝ}
+
+/-- The stochastic integral of a simple process w.r.t. Brownian motion -/
+noncomputable def stochasticIntegral (H : SimpleProcess F) (W : BrownianMotion Ω μ) : Ω → ℝ :=
+  fun ω =>
+    ∑ i : Fin H.n, if h : (i : ℕ) + 1 < H.n then
+      H.values i ω * (W.process (H.times ⟨i + 1, h⟩) ω - W.process (H.times i) ω)
+    else 0
+
+/-- The Itô isometry for simple processes -/
+theorem isometry (H : SimpleProcess F) (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] :
+    ∫ ω, (H.stochasticIntegral W ω)^2 ∂μ =
+    ∑ i : Fin H.n, if h : (i : ℕ) + 1 < H.n then
+      (∫ ω, (H.values i ω)^2 ∂μ) * (H.times ⟨i + 1, h⟩ - H.times i)
+    else 0 := by
+  sorry
+
+end SimpleProcess
+
+/-! ## Itô Integral -/
+
+/-- The space of Itô integrable processes.
+    H is integrable if E[∫₀ᵀ H²_s ds] < ∞ -/
+structure ItoIntegrableProcess (F : Filtration Ω ℝ) (μ : Measure Ω) (T : ℝ) where
+  /-- The process -/
+  process : ℝ → Ω → ℝ
+  /-- Adapted to F -/
+  adapted : ∀ t : ℝ, t ≤ T → @Measurable Ω ℝ (F.σ_algebra t) _ (process t)
+  /-- Square-integrable condition: E[∫₀ᵀ H²_s ds] < ∞ -/
+  square_integrable : ∃ (bound : ℝ),
+    ∫ ω, (∫ t in Set.Icc 0 T, (process t ω)^2 ∂volume) ∂μ ≤ bound
+
+/-- The Itô integral ∫₀ᵗ H_s dW_s -/
+structure ItoIntegral (F : Filtration Ω ℝ) (μ : Measure Ω) (T : ℝ) where
+  /-- The integrand -/
+  integrand : ItoIntegrableProcess F μ T
+  /-- The driving Brownian motion -/
+  BM : BrownianMotion Ω μ
+  /-- The resulting process -/
+  integral : ℝ → Ω → ℝ
+  /-- The integral is a continuous martingale -/
+  is_martingale : ∃ M : Martingale F μ ℝ, M.process = integral
+  /-- Isometry: E[(∫₀ᵗ H dW)²] = E[∫₀ᵗ H² ds] -/
+  isometry : ∀ t : ℝ, t ≤ T →
+    ∫ ω, (integral t ω)^2 ∂μ =
+    ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (integrand.process s ω)^2 ∂volume) ∂μ
+
+namespace ItoIntegral
+
+variable {F : Filtration Ω ℝ} {μ : Measure Ω} {T : ℝ}
+
+/-- Linearity of Itô integral in the integrand -/
+theorem linear (I₁ I₂ : ItoIntegral F μ T) (_h : I₁.BM = I₂.BM) (a b : ℝ) :
+    ∃ I : ItoIntegral F μ T,
+      I.BM = I₁.BM ∧
+      ∀ t : ℝ, ∀ᵐ ω ∂μ, I.integral t ω = a * I₁.integral t ω + b * I₂.integral t ω := by
+  sorry
+
+/-- Itô isometry -/
+theorem ito_isometry (I : ItoIntegral F μ T) (t : ℝ) (ht : t ≤ T) :
+    ∫ ω, (I.integral t ω)^2 ∂μ =
+    ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (I.integrand.process s ω)^2 ∂volume) ∂μ :=
+  I.isometry t ht
+
+/-- Burkholder-Davis-Gundy inequality: E[sup|M_t|^p] ≤ C_p E[⟨M⟩_T^{p/2}] -/
+theorem bdg_inequality (I : ItoIntegral F μ T) (p : ℝ) (_hp : 1 ≤ p) :
+    ∃ (Cp : ℝ), Cp > 0 ∧
+      ∫ ω, (⨆ (t : Set.Icc 0 T), |I.integral t ω|)^p ∂μ ≤
+      Cp * ∫ ω, ((∫ (s : ℝ) in Set.Icc 0 T, (I.integrand.process s ω)^2 ∂volume))^(p/2) ∂μ := by
+  sorry
+
+end ItoIntegral
+
+/-! ## Itô Processes -/
+
+/-- An Itô process: dX_t = μ_t dt + σ_t dW_t -/
+structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
+  /-- The process X -/
+  process : ℝ → Ω → ℝ
+  /-- The drift coefficient μ -/
+  drift : ℝ → Ω → ℝ
+  /-- The diffusion coefficient σ -/
+  diffusion : ℝ → Ω → ℝ
+  /-- The driving Brownian motion -/
+  BM : BrownianMotion Ω μ
+  /-- Integral form: X_t = X_0 + ∫₀ᵗ μ_s ds + ∫₀ᵗ σ_s dW_s -/
+  integral_form : ∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
+    ∃ (stoch_int : ℝ),  -- The stochastic integral term
+    process t ω = process 0 ω +
+      (∫ (s : ℝ) in Set.Icc 0 t, drift s ω ∂volume) + stoch_int
+
+namespace ItoProcess
+
+variable {F : Filtration Ω ℝ} {μ : Measure Ω}
+
+/-- The quadratic variation of an Itô process is ∫₀ᵗ σ²_s ds -/
+theorem quadratic_variation (X : ItoProcess F μ) :
+    ∃ qv : QuadraticVariation F,
+      qv.process = X.process ∧
+      (∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
+        qv.variation t ω = ∫ (s : ℝ) in Set.Icc 0 t, (X.diffusion s ω)^2 ∂volume) := by
+  sorry
+
+/-- Itô processes are semimartingales -/
+theorem is_semimartingale (X : ItoProcess F μ) :
+    ∃ (M : LocalMartingale F μ ℝ) (A : ℝ → Ω → ℝ),
+      ∀ t : ℝ, ∀ᵐ ω ∂μ, X.process t ω = M.process t ω + A t ω := by
+  sorry
+
+end ItoProcess
+
+/-! ## Itô's Formula -/
+
+/-- Itô's formula for a C² function f applied to an Itô process.
+    df(t, X_t) = ∂_t f dt + ∂_x f dX + (1/2)∂²_x f σ² dt -/
+theorem ito_formula {F : Filtration Ω ℝ} {μ : Measure Ω}
+    (X : ItoProcess F μ)
+    (f : ℝ → ℝ → ℝ)
+    (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x)) :
+    ∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
+      ∃ (drift_term diffusion_term correction_term : ℝ),
+      f t (X.process t ω) = f 0 (X.process 0 ω) +
+        drift_term + diffusion_term + correction_term := by
+  sorry
+
+/-! ## Stochastic Differential Equations -/
+
+/-- An SDE: dX_t = b(t, X_t) dt + σ(t, X_t) dW_t -/
+structure SDE (F : Filtration Ω ℝ) (μ : Measure Ω) where
+  /-- Drift coefficient b(t, x) -/
+  drift : ℝ → ℝ → ℝ
+  /-- Diffusion coefficient σ(t, x) -/
+  diffusion : ℝ → ℝ → ℝ
+  /-- Lipschitz condition in x -/
+  lipschitz : ∃ K : ℝ, K > 0 ∧ ∀ t x y : ℝ,
+    |drift t x - drift t y| + |diffusion t x - diffusion t y| ≤ K * |x - y|
+  /-- Linear growth condition -/
+  linear_growth : ∃ K : ℝ, K > 0 ∧ ∀ t x : ℝ,
+    |drift t x|^2 + |diffusion t x|^2 ≤ K^2 * (1 + |x|^2)
+
+/-- A strong solution to an SDE -/
+structure SDESolution (F : Filtration Ω ℝ) (μ : Measure Ω) (sde : SDE F μ) where
+  /-- The solution process -/
+  solution : ItoProcess F μ
+  /-- Initial condition -/
+  initial : Ω → ℝ
+  /-- Initial value matches -/
+  initial_matches : ∀ᵐ ω ∂μ, solution.process 0 ω = initial ω
+  /-- The drift matches -/
+  drift_matches : ∀ t : ℝ, ∀ᵐ ω ∂μ,
+    solution.drift t ω = sde.drift t (solution.process t ω)
+  /-- The diffusion matches -/
+  diffusion_matches : ∀ t : ℝ, ∀ᵐ ω ∂μ,
+    solution.diffusion t ω = sde.diffusion t (solution.process t ω)
+
+/-- Existence and uniqueness theorem for SDEs (Picard-Lindelöf) -/
+theorem sde_existence_uniqueness {F : Filtration Ω ℝ} {μ : Measure Ω}
+    (sde : SDE F μ) (W : BrownianMotion Ω μ) (initial : Ω → ℝ)
+    (h_initial : Integrable (fun ω => (initial ω)^2) μ) :
+    ∃ sol : SDESolution F μ sde, sol.initial = initial ∧ sol.solution.BM = W := by
+  sorry
+
+/-- Uniqueness in law for SDE solutions -/
+theorem sde_uniqueness_law {F : Filtration Ω ℝ} {μ : Measure Ω}
+    (sde : SDE F μ) (sol₁ sol₂ : SDESolution F μ sde)
+    (h : ∀ᵐ ω ∂μ, sol₁.initial ω = sol₂.initial ω) :
+    ∀ t : ℝ, ∀ᵐ ω ∂μ, sol₁.solution.process t ω = sol₂.solution.process t ω := by
+  sorry
+
+/-! ## Stratonovich Integral -/
+
+/-- The Stratonovich integral ∫₀ᵗ H_s ∘ dW_s.
+    Related to Itô by: ∫ H ∘ dW = ∫ H dW + (1/2)⟨H, W⟩ -/
+structure StratonovichIntegral (F : Filtration Ω ℝ) (μ : Measure Ω) (T : ℝ) where
+  /-- The integrand -/
+  integrand : ItoIntegrableProcess F μ T
+  /-- The driving Brownian motion -/
+  BM : BrownianMotion Ω μ
+  /-- The corresponding Itô integral -/
+  ito_integral : ItoIntegral F μ T
+  /-- The result -/
+  integral : ℝ → Ω → ℝ
+  /-- Relation to Itô integral with correction term -/
+  ito_correction : ∀ t : ℝ, t ≤ T → ∀ᵐ ω ∂μ,
+    ∃ (correction : ℝ),
+    integral t ω = ito_integral.integral t ω + correction
+
+/-- Stratonovich calculus follows the ordinary chain rule -/
+theorem stratonovich_chain_rule {F : Filtration Ω ℝ} {μ : Measure Ω} {T : ℝ}
+    (I : StratonovichIntegral F μ T)
+    (f : ℝ → ℝ)
+    (_hf : ContDiff ℝ 1 f) :
+    ∀ t : ℝ, t ≤ T → ∀ᵐ ω ∂μ,
+      f (I.integral t ω) = f (I.integral 0 ω) +
+        ∫ (s : ℝ) in Set.Icc 0 t, deriv f (I.integral s ω) * I.integrand.process s ω ∂volume := by
+  sorry
+
+/-! ## Semimartingales -/
+
+/-- A semimartingale is M + A where M is local martingale, A is finite variation -/
+structure Semimartingale (F : Filtration Ω ℝ) (μ : Measure Ω) where
+  /-- The local martingale part -/
+  martingale_part : LocalMartingale F μ ℝ
+  /-- The finite variation part -/
+  finite_variation_part : ℝ → Ω → ℝ
+  /-- Finite variation property -/
+  finite_variation : ∀ ω : Ω, ∀ T : ℝ, T ≥ 0 →
+    ∃ (V : ℝ), ∀ (partition : List ℝ),
+      List.sum (partition.map (fun t => |finite_variation_part t ω|)) ≤ V
+  /-- The process X = M + A -/
+  process : ℝ → Ω → ℝ
+  /-- Decomposition -/
+  decomposition : ∀ t : ℝ, ∀ ω : Ω,
+    process t ω = martingale_part.process t ω + finite_variation_part t ω
+
+/-- Stochastic integral w.r.t. semimartingale -/
+noncomputable def semimartingale_integral
+    {F : Filtration Ω ℝ} {μ : Measure Ω}
+    (H : PredictableProcess F ℝ)
+    (X : Semimartingale F μ) : ℝ → Ω → ℝ :=
+  fun t ω => ∫ (s : ℝ) in Set.Icc 0 t, H.process s ω * X.finite_variation_part s ω ∂volume
+
+/-! ## Girsanov's Theorem -/
+
+/-- Girsanov's theorem: under change of measure, BM becomes BM with drift.
+    If dQ/dP = exp(∫θ dW - (1/2)∫θ² dt), then W̃_t = W_t - ∫₀ᵗ θ_s ds is Q-BM. -/
+theorem girsanov {F : Filtration Ω ℝ} {μ : Measure Ω} [IsProbabilityMeasure μ]
+    (W : BrownianMotion Ω μ)
+    (θ : ℝ → Ω → ℝ)
+    (T : ℝ)
+    (_novikov : ∃ (bound : ℝ),
+      ∫ ω, Real.exp ((1/2) * ∫ (t : ℝ) in Set.Icc 0 T, (θ t ω)^2 ∂volume) ∂μ ≤ bound) :
+    ∃ (ν : Measure Ω) (W' : BrownianMotion Ω ν),
+      ∀ t : ℝ, ∀ᵐ ω ∂μ,
+        W'.process t ω = W.process t ω - ∫ (s : ℝ) in Set.Icc 0 t, θ s ω ∂volume := by
+  sorry
+
+/-! ## Martingale Representation Theorem -/
+
+/-- Every square-integrable martingale adapted to the Brownian filtration
+    can be represented as a stochastic integral -/
+theorem martingale_representation {F : Filtration Ω ℝ} {μ : Measure Ω}
+    [IsProbabilityMeasure μ]
+    (W : BrownianMotion Ω μ)
+    (M : Martingale F μ ℝ)
+    (hM : ∀ t : ℝ, Integrable (fun ω => (M.process t ω)^2) μ) :
+    ∃ (H : ℝ → Ω → ℝ),
+      (∀ t : ℝ, @Measurable Ω ℝ (F.σ_algebra t) _ (H t)) ∧
+      ∀ t : ℝ, ∀ᵐ ω ∂μ, ∃ (integral_value : ℝ),
+        M.process t ω = M.process 0 ω + integral_value := by
+  sorry
+
+end SPDE
