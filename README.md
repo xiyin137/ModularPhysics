@@ -47,6 +47,7 @@ ModularPhysics/
 │   │   └── Examples/
 │   ├── vNA/
 │   │   ├── MeasureTheory/
+│   │   ├── Spectral/
 │   │   └── Unbounded/
 │   └── Wightman/
 │       ├── Groups/

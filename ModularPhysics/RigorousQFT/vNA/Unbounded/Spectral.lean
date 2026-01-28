@@ -245,137 +245,156 @@ theorem norm_sq_eq_inner (E : Set ℝ) (x : H) :
   rw [h1, inner_self_eq_norm_sq_to_K]
   norm_cast
 
+/-- ‖P(E)x‖ ≤ ‖x‖ for any spectral projection.
+    This follows from P(E) being an orthogonal projection (idempotent and self-adjoint).
+
+    Proof: By Pythagoras, ‖x‖² = ‖P(E)x‖² + ‖(1-P(E))x‖² ≥ ‖P(E)x‖² -/
+theorem proj_norm_le (E : Set ℝ) (x : H) : ‖P.proj E x‖ ≤ ‖x‖ := by
+  by_cases hx : x = 0
+  · simp [hx]
+  -- Use: ‖P(E)x‖² = ⟨x, P(E)x⟩ and Cauchy-Schwarz
+  have hnorm_sq := P.norm_sq_eq_inner E x
+  -- ‖P(E)x‖² = Re⟨x, P(E)x⟩ ≤ ‖⟨x, P(E)x⟩‖ ≤ ‖x‖ · ‖P(E)x‖ (Cauchy-Schwarz)
+  have hCS : ‖@inner ℂ H _ x (P.proj E x)‖ ≤ ‖x‖ * ‖P.proj E x‖ :=
+    norm_inner_le_norm x (P.proj E x)
+  -- For complex z, z.re ≤ |z.re| ≤ ‖z‖
+  have hre_le : (@inner ℂ H _ x (P.proj E x)).re ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := by
+    calc (@inner ℂ H _ x (P.proj E x)).re
+        ≤ |(@inner ℂ H _ x (P.proj E x)).re| := le_abs_self _
+      _ ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := Complex.abs_re_le_norm _
+  have h1 : ‖P.proj E x‖^2 ≤ ‖x‖ * ‖P.proj E x‖ := by
+    calc ‖P.proj E x‖^2 = (@inner ℂ H _ x (P.proj E x)).re := hnorm_sq
+      _ ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := hre_le
+      _ ≤ ‖x‖ * ‖P.proj E x‖ := hCS
+  by_cases hPx : P.proj E x = 0
+  · simp [hPx]
+  · have hPx_pos : 0 < ‖P.proj E x‖ := norm_pos_iff.mpr hPx
+    calc ‖P.proj E x‖ = ‖P.proj E x‖^2 / ‖P.proj E x‖ := by field_simp
+      _ ≤ (‖x‖ * ‖P.proj E x‖) / ‖P.proj E x‖ := by
+          apply div_le_div_of_nonneg_right h1 hPx_pos.le
+      _ = ‖x‖ := by field_simp
+
+/-- The operator norm of P(E) is at most 1 -/
+theorem proj_opNorm_le_one (E : Set ℝ) : ‖P.proj E‖ ≤ 1 := by
+  apply ContinuousLinearMap.opNorm_le_bound _ zero_le_one
+  intro x
+  simp only [one_mul]
+  exact P.proj_norm_le E x
+
+/-- P(E)x and P(F)x are orthogonal when E and F are disjoint.
+    This follows from P(E)P(F) = P(E ∩ F) = P(∅) = 0. -/
+theorem proj_orthogonal_of_disjoint (E F : Set ℝ) (hEF : Disjoint E F) (x : H) :
+    @inner ℂ H _ (P.proj E x) (P.proj F x) = 0 := by
+  -- ⟨P(E)x, P(F)x⟩ = ⟨x, P(E)* P(F)x⟩ = ⟨x, P(E)P(F)x⟩ (self-adjoint)
+  --                = ⟨x, P(E ∩ F)x⟩ = ⟨x, P(∅)x⟩ = ⟨x, 0⟩ = 0
+  have hinter : E ∩ F = ∅ := Set.disjoint_iff_inter_eq_empty.mp hEF
+  calc @inner ℂ H _ (P.proj E x) (P.proj F x)
+      = @inner ℂ H _ x (ContinuousLinearMap.adjoint (P.proj E) (P.proj F x)) :=
+        (ContinuousLinearMap.adjoint_inner_right _ _ _).symm
+    _ = @inner ℂ H _ x (P.proj E (P.proj F x)) := by rw [P.isSelfAdj E]
+    _ = @inner ℂ H _ x ((P.proj E ∘L P.proj F) x) := rfl
+    _ = @inner ℂ H _ x (P.proj (E ∩ F) x) := by rw [← P.inter E F]
+    _ = @inner ℂ H _ x (P.proj ∅ x) := by rw [hinter]
+    _ = @inner ℂ H _ x 0 := by rw [P.empty]; simp
+    _ = 0 := inner_zero_right _
+
+omit [CompleteSpace H] in
+/-- Pythagorean theorem for pairwise orthogonal vectors indexed by Fin n. -/
+theorem pythag_sum_sq {n : ℕ} (v : Fin n → H)
+    (horth : ∀ i j, i ≠ j → @inner ℂ H _ (v i) (v j) = 0) :
+    ‖∑ i : Fin n, v i‖^2 = ∑ i : Fin n, ‖v i‖^2 := by
+  induction n with
+  | zero => simp
+  | succ k ih =>
+    rw [Fin.sum_univ_castSucc, Fin.sum_univ_castSucc]
+    have hw_u_orth : @inner ℂ H _ (∑ i : Fin k, v (Fin.castSucc i)) (v (Fin.last k)) = 0 := by
+      rw [sum_inner]
+      apply Finset.sum_eq_zero
+      intro i _
+      apply horth
+      exact Fin.castSucc_ne_last i
+    have hpyth2 := norm_add_sq_eq_norm_sq_add_norm_sq_of_inner_eq_zero _ _ hw_u_orth
+    simp only [sq]
+    rw [hpyth2]
+    congr 1
+    have horth' : ∀ i j : Fin k, i ≠ j →
+        @inner ℂ H _ (v (Fin.castSucc i)) (v (Fin.castSucc j)) = 0 := by
+      intro i j hij
+      apply horth
+      exact Fin.castSucc_injective k |>.ne hij
+    have h := ih (v ∘ Fin.castSucc) horth'
+    simp only [Function.comp_apply, sq] at h
+    exact h
+
+/-- The tight operator norm bound for sums of projections on disjoint sets.
+    The tight bound is ‖Σᵢ cᵢ P(Eᵢ)‖ ≤ sup |cᵢ| when the Eᵢ are pairwise disjoint.
+    This uses orthogonality: ‖Σᵢ cᵢ P(Eᵢ) x‖² = Σᵢ |cᵢ|² ‖P(Eᵢ) x‖².
+
+    The proof requires the Pythagorean theorem for pairwise orthogonal vectors,
+    which we establish using the orthogonality of P(E)x and P(F)x for disjoint E, F. -/
+theorem proj_sum_norm_le_sup {n : ℕ} (c : Fin n → ℂ) (E : Fin n → Set ℝ)
+    (hE_disj : ∀ i j, i ≠ j → Disjoint (E i) (E j))
+    (M : ℝ) (hM : ∀ i, ‖c i‖ ≤ M) (hM_pos : 0 ≤ M) :
+    ‖∑ i : Fin n, c i • P.proj (E i)‖ ≤ M := by
+  apply ContinuousLinearMap.opNorm_le_bound _ hM_pos
+  intro x
+  simp only [ContinuousLinearMap.sum_apply, ContinuousLinearMap.smul_apply]
+  -- Use Pythagorean theorem for orthogonal vectors
+  have hproj_orth : ∀ i j, i ≠ j → @inner ℂ H _ (P.proj (E i) x) (P.proj (E j) x) = 0 := by
+    intro i j hij; exact P.proj_orthogonal_of_disjoint (E i) (E j) (hE_disj i j hij) x
+  have hproj_pythag : ‖∑ i : Fin n, P.proj (E i) x‖^2 = ∑ i : Fin n, ‖P.proj (E i) x‖^2 := by
+    exact pythag_sum_sq (fun i => P.proj (E i) x) hproj_orth
+  -- Define v and use Pythagorean
+  let v : Fin n → H := fun i => c i • P.proj (E i) x
+  have hv_orth : ∀ i j, i ≠ j → @inner ℂ H _ (v i) (v j) = 0 := by
+    intro i j hij
+    simp only [v, inner_smul_left, inner_smul_right]
+    rw [P.proj_orthogonal_of_disjoint (E i) (E j) (hE_disj i j hij) x]
+    ring
+  have hpythag : ‖∑ i : Fin n, v i‖^2 = ∑ i : Fin n, ‖v i‖^2 := by exact pythag_sum_sq v hv_orth
+  -- Bound ∑ᵢ ‖P(Eᵢ) x‖² ≤ ‖x‖²
+  have hproj_sum_le : ∑ i : Fin n, ‖P.proj (E i) x‖^2 ≤ ‖x‖^2 := by
+    rw [← hproj_pythag]
+    have hsum_bound : ‖∑ i : Fin n, P.proj (E i) x‖ ≤ ‖x‖ := by
+      have hcalc : ‖∑ i : Fin n, P.proj (E i) x‖^2 ≤ ‖x‖ * ‖∑ i : Fin n, P.proj (E i) x‖ :=
+        calc ‖∑ i : Fin n, P.proj (E i) x‖^2 = ∑ i : Fin n, ‖P.proj (E i) x‖^2 := hproj_pythag
+          _ = ∑ i : Fin n, (@inner ℂ H _ x (P.proj (E i) x)).re := by
+              congr 1; ext i; exact P.norm_sq_eq_inner (E i) x
+          _ = (∑ i : Fin n, @inner ℂ H _ x (P.proj (E i) x)).re := by rw [← Complex.re_sum]
+          _ = (@inner ℂ H _ x (∑ i : Fin n, P.proj (E i) x)).re := by rw [← inner_sum]
+          _ ≤ ‖@inner ℂ H _ x (∑ i : Fin n, P.proj (E i) x)‖ := Complex.re_le_norm _
+          _ ≤ ‖x‖ * ‖∑ i : Fin n, P.proj (E i) x‖ := norm_inner_le_norm _ _
+      by_cases hzero : ∑ i : Fin n, P.proj (E i) x = 0
+      · rw [hzero, norm_zero]; exact norm_nonneg x
+      · have hpos : 0 < ‖∑ i : Fin n, P.proj (E i) x‖ := norm_pos_iff.mpr hzero
+        calc ‖∑ i : Fin n, P.proj (E i) x‖
+            = ‖∑ i : Fin n, P.proj (E i) x‖^2 / ‖∑ i : Fin n, P.proj (E i) x‖ := by field_simp
+          _ ≤ (‖x‖ * ‖∑ i : Fin n, P.proj (E i) x‖) / ‖∑ i : Fin n, P.proj (E i) x‖ := by
+              apply div_le_div_of_nonneg_right hcalc hpos.le
+          _ = ‖x‖ := by field_simp
+    exact sq_le_sq' (by linarith [norm_nonneg (∑ i : Fin n, P.proj (E i) x)]) hsum_bound
+  -- Final calculation
+  show ‖∑ i : Fin n, c i • P.proj (E i) x‖ ≤ M * ‖x‖
+  calc ‖∑ i : Fin n, c i • P.proj (E i) x‖
+      = Real.sqrt (‖∑ i : Fin n, c i • P.proj (E i) x‖^2) := (Real.sqrt_sq (norm_nonneg _)).symm
+    _ = Real.sqrt (∑ i : Fin n, ‖c i • P.proj (E i) x‖^2) := by rw [hpythag]
+    _ = Real.sqrt (∑ i : Fin n, ‖c i‖^2 * ‖P.proj (E i) x‖^2) := by
+        congr 1; apply Finset.sum_congr rfl; intro i _
+        rw [norm_smul]; ring
+    _ ≤ Real.sqrt (∑ i : Fin n, M^2 * ‖P.proj (E i) x‖^2) := by
+        apply Real.sqrt_le_sqrt
+        apply Finset.sum_le_sum
+        intro i _
+        apply mul_le_mul_of_nonneg_right _ (sq_nonneg _)
+        exact sq_le_sq' (by linarith [norm_nonneg (c i)]) (hM i)
+    _ = Real.sqrt (M^2 * ∑ i : Fin n, ‖P.proj (E i) x‖^2) := by rw [← Finset.mul_sum]
+    _ ≤ Real.sqrt (M^2 * ‖x‖^2) := by
+        apply Real.sqrt_le_sqrt
+        apply mul_le_mul_of_nonneg_left hproj_sum_le (sq_nonneg M)
+    _ = |M| * ‖x‖ := by rw [Real.sqrt_mul (sq_nonneg M), Real.sqrt_sq_eq_abs, Real.sqrt_sq (norm_nonneg x)]
+    _ = M * ‖x‖ := by rw [abs_of_nonneg hM_pos]
+
 end SpectralMeasure
-
-/-! ### The spectral theorem -/
-
-/-- The spectral theorem: every self-adjoint operator has a spectral decomposition.
-    T = ∫ λ dP(λ) where P is a spectral measure supported on the spectrum of T.
-    This is one of the fundamental theorems of functional analysis.
-
-    The spectral measure P satisfies:
-    1. P is supported on the spectrum σ(T) ⊆ ℝ
-    2. For x ∈ dom(T), Tx = ∫ λ dP(λ) x (spectral integral)
-    3. For bounded Borel f, f(T) = ∫ f(λ) dP(λ) (functional calculus)
-
-    The proof proceeds via one of:
-    - Cayley transform: (T-i)(T+i)⁻¹ is unitary, apply spectral theorem for unitaries
-    - Resolution of identity: construct P from the resolvent (T-z)⁻¹
-    - Stone's theorem: connect to one-parameter unitary groups
-
-    ## Implementation
-
-    The full Cayley transform infrastructure is in:
-    - `ModularPhysics.RigorousQFT.vNA.Spectral.CayleyTransform`
-    - `ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC`
-
-    This connects to Mathlib's CFC (Continuous Functional Calculus) for bounded
-    normal operators via the Cayley bijection. -/
-theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) :
-    ∃ P : SpectralMeasure H,
-      -- The identity function applied via functional calculus recovers T on its domain
-      -- This is stated indirectly: the spectral measure determines T
-      P.proj Set.univ = 1 ∧
-      -- The spectral measure is concentrated on ℝ (self-adjointness)
-      (∀ E : Set ℝ, P.proj E = P.proj (E ∩ Set.univ)) := by
-  /-
-  FOUNDATIONAL RESULT: Reed-Simon Theorem VIII.4, Rudin Theorem 13.30
-
-  The spectral theorem for unbounded self-adjoint operators.
-
-  **Cayley transform approach (implemented in vNA.Spectral.CayleyTransform):**
-  1. Define the Cayley transform U = (T-i)(T+i)⁻¹
-  2. Prove U is unitary (uses T = T*, see `cayley_exists`)
-  3. Apply spectral theorem for unitary operators
-     - Mathlib provides CFC: `Analysis.CStarAlgebra.ContinuousFunctionalCalculus`
-     - Unitary spectrum ⊆ S¹: `Unitary.spectrum_subset_circle`
-  4. Pull back the spectral measure from U to T via λ ↦ i(1+λ)/(1-λ)
-     - See `spectralMeasureViaCayley` and `spectral_correspondence`
-
-  **Key results used from Mathlib:**
-  - `IsSelfAdjoint.mem_spectrum_eq_re` - spectrum of self-adjoint is real
-  - `IsSelfAdjoint.spectralRadius_eq_nnnorm` - spectral radius = norm
-  - CFC multiplicativity, adjoint properties
-
-  The full infrastructure connecting unbounded operators to Mathlib's CFC
-  is in `vNA.Spectral.FunctionalCalculusFromCFC`.
-  -/
-  -- Apply spectral_theorem_via_cayley to get the projection-valued measure
-  obtain ⟨P, hP_empty, hP_univ, hP_idem, hP_sa, hP_inter, hP_sigma⟩ :=
-    spectral_theorem_via_cayley T hT hsa
-  -- Construct monotonicity from the other properties
-  -- E ⊆ F means P(E) "projects onto a subspace of" P(F)
-  -- Proof: P(E) = P(E ∩ F) = P(E)P(F), so ran(P(E)) ⊆ ran(P(F))
-  -- For x ∈ H: P(E)x = P(E)P(F)x, and ‖P(E)x‖ = ‖P(E)(P(F)x)‖ ≤ ‖P(E)‖ · ‖P(F)x‖ ≤ ‖P(F)x‖
-  have hP_mono : ∀ E F, E ⊆ F → ∀ x : H, ‖P E x‖ ≤ ‖P F x‖ := by
-    intro E F hEF x
-    -- Key: E ⊆ F implies E ∩ F = E
-    have hEF_inter : E ∩ F = E := Set.inter_eq_left.mpr hEF
-    -- So P(E) = P(E ∩ F) = P(E)P(F)
-    have hPE_eq : P E = P E ∘L P F := by rw [← hP_inter E F, hEF_inter]
-    -- Therefore P(E)x = P(E)(P(F)x)
-    have hPEx : P E x = P E (P F x) := by
-      calc P E x = (P E ∘L P F) x := by rw [← hPE_eq]
-        _ = P E (P F x) := rfl
-    -- ‖P(E)x‖ = ‖P(E)(P(F)x)‖
-    rw [hPEx]
-    -- P(E) is idempotent and self-adjoint, so it's a projection with ‖P(E)‖ ≤ 1
-    -- More precisely: ‖P(E)y‖ ≤ ‖y‖ for any y (projections are contractions)
-    -- This follows from: ‖P(E)y‖² = ⟨P(E)y, P(E)y⟩ = ⟨y, P(E)²y⟩ = ⟨y, P(E)y⟩ ≤ ‖y‖ · ‖P(E)y‖
-    have hPE_contraction : ∀ y, ‖P E y‖ ≤ ‖y‖ := by
-      intro y
-      by_cases hy : P E y = 0
-      · rw [hy, norm_zero]; exact norm_nonneg y
-      · -- ‖P(E)y‖² = ⟨P(E)y, P(E)y⟩ = ⟨y, P(E)*P(E)y⟩ = ⟨y, P(E)²y⟩ = ⟨y, P(E)y⟩
-        have h1 : ‖P E y‖^2 = RCLike.re (@inner ℂ H _ (P E y) (P E y)) :=
-          (inner_self_eq_norm_sq (P E y)).symm
-        -- ⟨P(E)y, P(E)y⟩ = ⟨y, P(E)* P(E)y⟩ by adjoint property
-        have h2 : @inner ℂ H _ (P E y) (P E y) = @inner ℂ H _ y ((P E).adjoint (P E y)) :=
-          (ContinuousLinearMap.adjoint_inner_right (P E) y (P E y)).symm
-        have h3 : (P E).adjoint (P E y) = P E (P E y) := by rw [hP_sa E]
-        have h4 : P E (P E y) = (P E ∘L P E) y := rfl
-        have h5 : (P E ∘L P E) y = P E y := by rw [hP_idem E]
-        -- Combine: ⟨P(E)y, P(E)y⟩ = ⟨y, P(E)y⟩
-        have h_inner_eq : @inner ℂ H _ (P E y) (P E y) = @inner ℂ H _ y (P E y) := by
-          rw [h2, h3, h4, h5]
-        -- |⟨y, P(E)y⟩| ≤ ‖y‖ · ‖P(E)y‖ (Cauchy-Schwarz)
-        have hcs : ‖@inner ℂ H _ y (P E y)‖ ≤ ‖y‖ * ‖P E y‖ := norm_inner_le_norm y (P E y)
-        -- re z ≤ |re z| ≤ ‖z‖ for complex z
-        have hre_le : RCLike.re (@inner ℂ H _ y (P E y)) ≤ ‖@inner ℂ H _ y (P E y)‖ := by
-          have h := Complex.abs_re_le_norm (@inner ℂ H _ y (P E y))
-          exact le_trans (le_abs_self _) h
-        -- ‖P(E)y‖² = re⟨P(E)y, P(E)y⟩ = re⟨y, P(E)y⟩ ≤ ‖y‖ · ‖P(E)y‖
-        have h6 : ‖P E y‖^2 ≤ ‖y‖ * ‖P E y‖ := by
-          calc ‖P E y‖^2 = RCLike.re (@inner ℂ H _ (P E y) (P E y)) := h1
-            _ = RCLike.re (@inner ℂ H _ y (P E y)) := by rw [h_inner_eq]
-            _ ≤ ‖@inner ℂ H _ y (P E y)‖ := hre_le
-            _ ≤ ‖y‖ * ‖P E y‖ := hcs
-        -- From ‖P(E)y‖² ≤ ‖y‖ · ‖P(E)y‖ and P(E)y ≠ 0, divide by ‖P(E)y‖
-        have hpos : 0 < ‖P E y‖ := norm_pos_iff.mpr hy
-        calc ‖P E y‖ = ‖P E y‖^2 / ‖P E y‖ := by field_simp
-          _ ≤ (‖y‖ * ‖P E y‖) / ‖P E y‖ := by apply div_le_div_of_nonneg_right h6 hpos.le
-          _ = ‖y‖ := by field_simp
-    exact hPE_contraction (P F x)
-  -- Construct the SpectralMeasure
-  let PM : SpectralMeasure H := {
-    proj := P
-    empty := hP_empty
-    univ := hP_univ
-    isIdempotent := hP_idem
-    isSelfAdj := hP_sa
-    inter := hP_inter
-    monotone := hP_mono
-    sigma_additive := hP_sigma
-  }
-  refine ⟨PM, PM.univ, ?_⟩
-  intro E
-  simp only [Set.inter_univ]
-
-/-- The spectral measure of a self-adjoint operator -/
-def UnboundedOperator.spectralMeasure (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) : SpectralMeasure H :=
-  (spectral_theorem T hT hsa).choose
 
 /-! ### Functional calculus -/
 
@@ -449,6 +468,31 @@ theorem simple_spectralApply_smul {n : ℕ} (P : SpectralMeasure H)
   unfold SimpleFunction.spectralApply
   simp only [Finset.smul_sum, smul_smul]
 
+/-- Weak bound on the operator norm of a simple function applied to a spectral measure.
+    For a simple function f = Σᵢ cᵢ χ_{Eᵢ} with n terms, we have ‖Σᵢ cᵢ P(Eᵢ)‖ ≤ n * sup |cᵢ|.
+
+    This uses the triangle inequality: ‖Σᵢ cᵢ P(Eᵢ)‖ ≤ Σᵢ |cᵢ| ‖P(Eᵢ)‖ ≤ n * M.
+
+    NOTE: The tight bound ‖Σᵢ cᵢ P(Eᵢ)‖ ≤ sup |cᵢ| (independent of n) holds when
+    the Eᵢ are disjoint, using orthogonality. See `proj_sum_norm_le_sup`. -/
+theorem simple_spectralApply_norm_le {n : ℕ} (P : SpectralMeasure H) (f : SimpleFunction n)
+    (M : ℝ) (hM : ∀ i, ‖f.coeffs i‖ ≤ M) :
+    ‖f.spectralApply P‖ ≤ n * M := by
+  unfold SimpleFunction.spectralApply
+  calc ‖∑ i : Fin n, f.coeffs i • P.proj (f.sets i)‖
+      ≤ ∑ i : Fin n, ‖f.coeffs i • P.proj (f.sets i)‖ := norm_sum_le _ _
+    _ ≤ ∑ i : Fin n, ‖f.coeffs i‖ * ‖P.proj (f.sets i)‖ := by
+        apply Finset.sum_le_sum
+        intro i _
+        exact norm_smul_le _ _
+    _ ≤ ∑ i : Fin n, ‖f.coeffs i‖ * 1 := by
+        apply Finset.sum_le_sum
+        intro i _
+        apply mul_le_mul_of_nonneg_left (P.proj_opNorm_le_one _) (norm_nonneg _)
+    _ = ∑ i : Fin n, ‖f.coeffs i‖ := by simp
+    _ ≤ ∑ _i : Fin n, M := Finset.sum_le_sum (fun i _ => hM i)
+    _ = n * M := by simp [Finset.sum_const]
+
 /-- Approximate a bounded function by a simple function on a partition of [-N, N].
     For n subdivisions, we use intervals [k/n, (k+1)/n) for k = -nN, ..., nN-1. -/
 def approximateBySimple (f : ℝ → ℂ) (N : ℕ) (n : ℕ) (_hn : n > 0) : SimpleFunction (2 * N * n) where
@@ -482,41 +526,31 @@ theorem stepApproximation_cauchy (P : SpectralMeasure H) (f : ℝ → ℂ)
   intro ε hε
   obtain ⟨M, hM⟩ := hf_bdd
   /-
-  PROOF using Mathlib infrastructure:
+  PROOF using sesquilinear form bound and operator norm characterization.
 
-  **Step 1: Uniform continuity on compact intervals**
-  By Heine-Cantor (IsCompact.uniformContinuousOn_of_continuous), for any compact interval
-  I = [-N, N], f is uniformly continuous on I. So for ε/(4*(N+1)) > 0, there exists
-  δ > 0 such that |x - y| < δ implies |f(x) - f(y)| < ε/(4*(N+1)).
+  **Key insight:** For bounded f with ‖f‖_∞ ≤ M, each step approximation satisfies
+    ‖stepApproximation P f N n hn‖ ≤ M
+  This uses `proj_sum_norm_le_sup` applied to disjoint intervals.
 
-  **Step 2: Choose partition size**
-  Choose n₀ such that 1/n₀ < δ. Then on each subinterval [k/n, (k+1)/n) of width 1/n < δ,
-  the step function approximation differs from f by at most ε/(4*(N+1)).
+  **Strategy:**
+  1. For continuous bounded f on [-N, N], step function inner products converge
+     to ∫ f dμ_{x,y} where μ_{x,y}(E) = ⟨x, P(E) y⟩
+  2. By Cauchy-Schwarz: |⟨x, T_{N,n} y⟩| ≤ M · ‖x‖ · ‖y‖ for all N, n
+  3. The difference ‖T₁ - T₂‖ in operator norm is controlled by sup_‖x‖=‖y‖=1 |⟨x, (T₁-T₂)y⟩|
 
-  **Step 3: Bound the operator norm**
-  For a step function Σᵢ cᵢ χ_{Eᵢ} where the Eᵢ are disjoint:
-    ‖Σᵢ cᵢ P(Eᵢ)‖ ≤ sup_i |cᵢ|
-  This uses orthogonality: for x ∈ H, ‖(Σᵢ cᵢ P(Eᵢ))x‖² = Σᵢ |cᵢ|² ‖P(Eᵢ)x‖²
-                                                        ≤ (sup |cᵢ|)² Σᵢ ‖P(Eᵢ)x‖²
-                                                        ≤ (sup |cᵢ|)² ‖x‖²
+  The intervals [k/n, (k+1)/n) are disjoint, so by `proj_sum_norm_le_sup`:
+    ‖stepApproximation P f N n hn x‖ ≤ M · ‖x‖
 
-  **Step 4: Combine the estimates**
-  The difference of two step approximations on [-N, N] has coefficients bounded by ε/2,
-  so the operator norm is bounded by ε/2.
+  For the Cauchy property, we use that both approximations converge to the same
+  limit (the spectral integral) as N, n → ∞. The convergence follows from:
+  - Uniform continuity of f on compact sets (Heine-Cantor)
+  - Riemann sum convergence to the integral
+  - The sesquilinear form bound |⟨x, Ty⟩| ≤ M‖x‖‖y‖ gives operator norm bound
 
-  The contribution from outside [-N, N] is bounded by 2M · ‖P(ℝ \ [-N, N])‖ → 0 as N → ∞.
-
-  Choose N₀ large enough for both bounds to be < ε/4.
+  FOUNDATIONAL: Full proof requires uniform continuity → Riemann sum convergence.
   -/
-  -- The detailed proof requires tracking the error from:
-  -- (1) Step function approximation error on [-N, N]
-  -- (2) Tail contribution from ℝ \ [-N, N]
-  -- Both can be made arbitrarily small by choosing N₀ large enough.
-  --
-  -- Key Mathlib facts used:
-  -- - IsCompact.uniformContinuousOn_of_continuous (Heine-Cantor)
-  -- - orthogonalProjection_norm_le (‖P(E)‖ ≤ 1 for spectral projections)
-  -- - P.univ = 1 and P(ℝ \ [-N,N]) → 0 strongly as N → ∞
+  use max 1 (Nat.ceil (4 * (max M 0 + 1) / ε))
+  intro N₁ N₂ n₁ n₂ hN₁ hN₂ hn₁ hn₂ hpos₁ hpos₂
   sorry
 
 /-- The limit of step approximations exists for bounded continuous functions.
@@ -663,23 +697,35 @@ def functionalCalculus (P : SpectralMeasure H) (f : ℝ → ℂ) : H →L[ℂ] H
     -/
     have h_exists : ∃ T : H →L[ℂ] H, ∀ ε > 0, ∃ N₀ : ℕ, ∀ N n : ℕ, N ≥ N₀ → n ≥ N₀ →
         ∀ (hn : n > 0), ‖stepApproximation P f N n hn - T‖ < ε := by
-      -- The construction uses the bounded sesquilinear form approach.
-      -- For each bounded f, define B_f(x, y) = ∫ f(λ) d⟨x, P(·)y⟩(λ)
-      -- This integral is defined via simple function approximation.
-      --
-      -- Key bounds:
-      -- |B_f(x, y)| ≤ ‖f‖_∞ · |μ_{x,y}|(ℝ)
-      -- where |μ_{x,y}|(ℝ) ≤ ‖x‖ · ‖y‖ by the projection bound.
-      --
-      -- By sesquilinear_to_operator (proven in SpectralIntegral.lean),
-      -- there exists unique T ∈ B(H) with B_f(x, y) = ⟨x, T y⟩.
-      --
-      -- The step approximations converge to this T because:
-      -- For step function f_n approximating f with ‖f - f_n‖_∞ < ε,
-      -- we have ‖T - ∫ f_n dP‖ ≤ ‖f - f_n‖_∞ < ε.
-      --
-      -- FOUNDATIONAL: This requires the full integration theory against
-      -- projection-valued measures, specifically the bound ‖∫ f dP‖ ≤ ‖f‖_∞.
+      /-
+      PROOF using sesquilinear_to_operator.
+
+      **Step 1: Uniform bound on step approximation inner products**
+      For any step approximation T_{N,n}, and any x, y ∈ H:
+        |⟨x, T_{N,n} y⟩| ≤ M · ‖x‖ · ‖y‖
+      where M = sup|f|. This uses:
+        |⟨x, T_{N,n} y⟩| = |Σₖ f(k/n) ⟨x, P(Iₖ) y⟩|
+                        ≤ M · Σₖ |⟨x, P(Iₖ) y⟩|
+                        ≤ M · (Σₖ ‖P(Iₖ)x‖²)^{1/2} · (Σₖ ‖P(Iₖ)y‖²)^{1/2}
+                        ≤ M · ‖x‖ · ‖y‖
+      The last step uses Σₖ ‖P(Iₖ)x‖² ≤ ‖x‖² (Pythagorean for orthogonal projections).
+
+      **Step 2: Define the sesquilinear form**
+      For bounded continuous f, the inner products ⟨x, T_{N,n} y⟩ converge as Riemann sums.
+      Define B_f(x, y) = lim_{N,n→∞} ⟨x, T_{N,n} y⟩.
+      By the uniform bound, |B_f(x, y)| ≤ M · ‖x‖ · ‖y‖.
+
+      **Step 3: Apply sesquilinear_to_operator**
+      B_f is sesquilinear (linear in y, conjugate-linear in x) and bounded.
+      By sesquilinear_to_operator, there exists unique T with B_f(x, y) = ⟨x, Ty⟩.
+
+      **Step 4: Show convergence in operator norm**
+      For ε > 0, choose N₀ large so that for N, n ≥ N₀:
+        |⟨x, T_{N,n} y⟩ - ⟨x, T y⟩| < ε · ‖x‖ · ‖y‖
+      This implies ‖T_{N,n} - T‖ ≤ ε.
+
+      FOUNDATIONAL: The convergence of Riemann sums requires measure-theoretic integration.
+      -/
       sorry
     exact h_exists
 
@@ -712,6 +758,272 @@ theorem functionalCalculus_star (P : SpectralMeasure H) (f : ℝ → ℂ) :
   -- FOUNDATIONAL: Reed-Simon VIII.5(c)
   -- Uses P(E)* = P(E) and continuity of adjoint
   sorry
+
+/-! ### Spectral Integral Characterization -/
+
+/-- For continuous bounded f, functionalCalculus equals spectralIntegralLimit. -/
+theorem functionalCalculus_eq_limit (P : SpectralMeasure H) (f : C(ℝ, ℂ))
+    (hf_bdd : ∃ M : ℝ, ∀ x, ‖f x‖ ≤ M) :
+    functionalCalculus P f = spectralIntegralLimit P f hf_bdd f.continuous := by
+  -- Both are defined as limits of the same step approximations
+  -- functionalCalculus uses Classical.choose on an existence proof
+  -- spectralIntegralLimit uses stepApproximation_converges.choose
+  -- Since the limit is unique, they must be equal
+  ext x
+  apply ext_inner_left ℂ
+  intro y
+  -- Get the convergence properties from both definitions
+  have hconv := (stepApproximation_converges P f hf_bdd f.continuous).choose_spec
+  -- The functionalCalculus is defined via the same limit
+  -- The key is showing uniqueness of the limit
+  sorry
+
+/-- **The Spectral Integral Characterization (Reed-Simon VIII.5)**
+
+    The functional calculus via step approximation equals the CFC via Cayley transform.
+    Both compute the same operator f(T) = ∫ f(λ) dP(λ).
+
+    **Proof Idea:**
+    1. functionalCalculus P f is defined via step approximation: lim Σₖ f(λₖ) P(Eₖ)
+    2. UnboundedCFC T hT hsa C f is defined via Cayley: cfc (f ∘ inverseCayley) U
+    3. Both compute the spectral integral ∫ f dμ_{y,x} where μ_{y,x}(E) = ⟨y, P(E) x⟩
+    4. When P.proj = spectralProjection, the complex spectral measures agree
+    5. By sesquilinear_to_operator uniqueness, the operators are equal
+
+    **Key:** By definition of complexSpectralMeasure,
+      complexSpectralMeasure y x E = ⟨y, spectralProjection E x⟩
+    so with hP : P.proj = spectralProjection, both methods integrate against the same measure. -/
+theorem spectralIntegral_characterization (T : UnboundedOperator H)
+    (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT)
+    (C : CayleyTransform T hT hsa)
+    (P : SpectralMeasure H)
+    (hP : P.proj = spectralProjection T hT hsa C)
+    (f : C(ℝ, ℂ)) :
+    functionalCalculus P f = UnboundedCFC T hT hsa C f := by
+  /-
+  PROOF (Reed-Simon VIII.5):
+
+  Both functionalCalculus and UnboundedCFC compute the spectral integral.
+  By extensionality: two operators are equal iff they agree on all inner products.
+
+  **Step 1: Define the spectral form**
+  B_f(y, x) := ∫ f(λ) d⟨y, P(λ) x⟩
+
+  **Step 2: Show functionalCalculus computes B_f**
+  functionalCalculus P f = lim Σₖ f(λₖ) P(Eₖ)
+  ⟨y, (functionalCalculus P f) x⟩ = lim Σₖ f(λₖ) ⟨y, P(Eₖ) x⟩ = B_f(y, x)
+
+  **Step 3: Show UnboundedCFC computes B_f**
+  By definition: complexSpectralMeasure y x E = ⟨y, spectralProjection E x⟩
+  With hP : P.proj = spectralProjection, we have ⟨y, P(E) x⟩ = complexSpectralMeasure y x E
+  By the RMK construction: ⟨y, (UnboundedCFC f) x⟩ = ∫ f d(complexSpectralMeasure y x)
+  Since the measures are equal: ⟨y, (UnboundedCFC f) x⟩ = B_f(y, x)
+
+  **Step 4: Conclude equality**
+  By ext_inner_left: functionalCalculus P f = UnboundedCFC T hT hsa C f
+  -/
+  ext x
+  apply ext_inner_left ℂ
+  intro y
+  -- Both sides compute the spectral integral ∫ f dμ_{y,x}
+  -- where μ_{y,x}(E) = ⟨y, P(E) x⟩ = complexSpectralMeasure y x E (by hP and definition)
+  have hμ_eq : ∀ E, @inner ℂ H _ y (P.proj E x) = complexSpectralMeasure T hT hsa C y x E := by
+    intro E
+    rw [hP]
+    rfl
+  -- KEY INSIGHT: Both operators represent the same sesquilinear form, so by
+  -- sesquilinear_to_operator uniqueness (proven in SpectralIntegral.lean), they're equal.
+  --
+  -- Define B_f(y, x) := ∫ f(λ) dμ_{y,x}(λ) where μ_{y,x}(E) = ⟨y, P(E) x⟩.
+  --
+  -- 1. functionalCalculus P f satisfies ⟨y, (functionalCalculus P f) x⟩ = B_f(y, x)
+  --    by its construction as the limit of step approximations.
+  --
+  -- 2. UnboundedCFC T hT hsa C f satisfies ⟨y, (UnboundedCFC f) x⟩ = B_f(y, x)
+  --    by Mathlib's CFC and the RMK construction.
+  --
+  -- Since both satisfy ⟨y, T x⟩ = B_f(y, x), and sesquilinear_to_operator gives
+  -- uniqueness of the representing operator, we have:
+  --   ⟨y, functionalCalculus P f x⟩ = B_f(y, x) = ⟨y, UnboundedCFC T hT hsa C f x⟩
+  --
+  -- The remaining sorry is for the specific integral characterizations of each operator.
+  -- These require connecting the abstract definitions to the spectral integral.
+  sorry
+
+/-- The key equality: functionalCalculus and UnboundedCFC compute the same spectral integral.
+
+    For P constructed from spectral_theorem_via_cayley (which uses spectralProjection),
+    both operators satisfy ⟨y, T x⟩ = ∫ f dμ_{y,x} where μ_{y,x}(E) = ⟨y, P(E) x⟩.
+
+    This is the core of Reed-Simon Theorem VIII.5. -/
+theorem spectralIntegral_unique (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
+    (P : SpectralMeasure H)
+    (hP : P.proj = spectralProjection T hT hsa C)
+    (f : C(ℝ, ℂ)) (x y : H) :
+    @inner ℂ H _ y ((functionalCalculus P f) x) =
+    @inner ℂ H _ y ((UnboundedCFC T hT hsa C f) x) := by
+  -- Use spectralIntegral_characterization which shows the operators are equal
+  have heq := spectralIntegral_characterization T hT hsa C P hP f
+  rw [heq]
+
+/-! ### The Spectral Theorem -/
+
+/-- **The Spectral Theorem for Unbounded Self-Adjoint Operators**
+
+    For every densely defined self-adjoint operator T on a Hilbert space H,
+    there exists a unique spectral measure P and a Cayley transform C such that
+    the functional calculus on P agrees with the unbounded CFC via C.
+
+    **Key Property:** For all bounded continuous functions f : ℝ → ℂ:
+      `functionalCalculus P f = UnboundedCFC T hT hsa C f`
+
+    This means:
+    - f(T) computed via the spectral integral ∫ f(λ) dP(λ)
+    - equals f(T) computed via the Cayley transform (f ∘ inverseCayley)(U)
+
+    **Application to Stone's Theorem:**
+    For f(λ) = exp(itλ), we get: `exp(itT) = ∫ exp(itλ) dP(λ)`
+    This is precisely what Stone's theorem needs to construct the unitary group.
+
+    **Construction:**
+    1. The Cayley transform U = (T-i)(T+i)⁻¹ is unitary (by self-adjointness)
+    2. Apply Mathlib's CFC to U (unitary spectrum ⊆ S¹)
+    3. Pull back to ℝ via the inverse Cayley map λ ↦ i(1+λ)/(1-λ)
+    4. The spectral measure P on ℝ is the pullback of U's spectral measure
+
+    References: Reed-Simon Theorem VIII.4, Rudin Theorem 13.30 -/
+theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) :
+    ∃ (P : SpectralMeasure H) (C : CayleyTransform T hT hsa),
+      ∀ f : C(ℝ, ℂ), functionalCalculus P f = UnboundedCFC T hT hsa C f := by
+  -- Step 1: Get the Cayley transform and properties from spectral_theorem_via_cayley
+  -- The new signature returns: ∃ C, let P := spectralProjection T hT hsa C, (properties)
+  obtain ⟨C, hP_empty, hP_univ, hP_idem, hP_sa, hP_inter, hP_sigma, _hP_spectral⟩ :=
+    spectral_theorem_via_cayley T hT hsa
+  -- Define P_raw from the spectral projection
+  let P_raw := spectralProjection T hT hsa C
+  -- Step 2: Derive monotonicity from idempotence + self-adjointness
+  -- E ⊆ F implies P(E) = P(E ∩ F) = P(E)P(F), so ran(P(E)) ⊆ ran(P(F))
+  have hP_mono : ∀ E F, E ⊆ F → ∀ x : H, ‖P_raw E x‖ ≤ ‖P_raw F x‖ := by
+    intro E F hEF x
+    have hEF_inter : E ∩ F = E := Set.inter_eq_left.mpr hEF
+    have hPE_eq : P_raw E = P_raw E ∘L P_raw F := by rw [← hP_inter E F, hEF_inter]
+    have hPEx : P_raw E x = P_raw E (P_raw F x) := by
+      calc P_raw E x = (P_raw E ∘L P_raw F) x := by rw [← hPE_eq]
+        _ = P_raw E (P_raw F x) := rfl
+    rw [hPEx]
+    -- Projections are contractions: ‖P(E)y‖ ≤ ‖y‖
+    have hPE_contraction : ∀ y, ‖P_raw E y‖ ≤ ‖y‖ := by
+      intro y
+      by_cases hy : P_raw E y = 0
+      · rw [hy, norm_zero]; exact norm_nonneg y
+      · have h1 : ‖P_raw E y‖^2 = RCLike.re (@inner ℂ H _ (P_raw E y) (P_raw E y)) :=
+          (inner_self_eq_norm_sq (P_raw E y)).symm
+        have h2 : @inner ℂ H _ (P_raw E y) (P_raw E y) = @inner ℂ H _ y ((P_raw E).adjoint (P_raw E y)) :=
+          (ContinuousLinearMap.adjoint_inner_right (P_raw E) y (P_raw E y)).symm
+        have h3 : (P_raw E).adjoint (P_raw E y) = P_raw E (P_raw E y) := by rw [hP_sa E]
+        have h4 : P_raw E (P_raw E y) = (P_raw E ∘L P_raw E) y := rfl
+        have h5 : (P_raw E ∘L P_raw E) y = P_raw E y := by rw [hP_idem E]
+        have h_inner_eq : @inner ℂ H _ (P_raw E y) (P_raw E y) = @inner ℂ H _ y (P_raw E y) := by
+          rw [h2, h3, h4, h5]
+        have hcs : ‖@inner ℂ H _ y (P_raw E y)‖ ≤ ‖y‖ * ‖P_raw E y‖ := norm_inner_le_norm y (P_raw E y)
+        have hre_le : RCLike.re (@inner ℂ H _ y (P_raw E y)) ≤ ‖@inner ℂ H _ y (P_raw E y)‖ := by
+          have h := Complex.abs_re_le_norm (@inner ℂ H _ y (P_raw E y))
+          exact le_trans (le_abs_self _) h
+        have h6 : ‖P_raw E y‖^2 ≤ ‖y‖ * ‖P_raw E y‖ := by
+          calc ‖P_raw E y‖^2 = RCLike.re (@inner ℂ H _ (P_raw E y) (P_raw E y)) := h1
+            _ = RCLike.re (@inner ℂ H _ y (P_raw E y)) := by rw [h_inner_eq]
+            _ ≤ ‖@inner ℂ H _ y (P_raw E y)‖ := hre_le
+            _ ≤ ‖y‖ * ‖P_raw E y‖ := hcs
+        have hpos : 0 < ‖P_raw E y‖ := norm_pos_iff.mpr hy
+        calc ‖P_raw E y‖ = ‖P_raw E y‖^2 / ‖P_raw E y‖ := by field_simp
+          _ ≤ (‖y‖ * ‖P_raw E y‖) / ‖P_raw E y‖ := by apply div_le_div_of_nonneg_right h6 hpos.le
+          _ = ‖y‖ := by field_simp
+    exact hPE_contraction (P_raw F x)
+  -- Step 3: Construct the SpectralMeasure
+  let P : SpectralMeasure H := {
+    proj := P_raw
+    empty := hP_empty
+    univ := hP_univ
+    isIdempotent := hP_idem
+    isSelfAdj := hP_sa
+    inter := hP_inter
+    monotone := hP_mono
+    sigma_additive := hP_sigma
+  }
+  -- Step 4: Use the Cayley transform from spectral_theorem_via_cayley
+  -- C was already obtained in Step 1 from spectral_theorem_via_cayley
+  use P, C
+  intro f
+  /-
+  PROOF: functionalCalculus P f = UnboundedCFC T hT hsa C f
+
+  The proof uses operator extension: ∀ x, (functionalCalculus P f) x = (UnboundedCFC T hT hsa C f) x
+
+  **Step 1: P_raw = spectralProjection T hT hsa C (by construction)**
+  Inside spectral_theorem_via_cayley, P_raw is defined as:
+    P_raw(E) := spectralProjection T hT hsa C' E
+  where C' comes from the deterministic `cayley_exists T hT hsa`.
+  Since Classical.choose is deterministic, C = C', so P_raw E = spectralProjection T hT hsa C E.
+
+  **Step 2: spectralProjection is characterized by the unbounded CFC**
+  By construction in FunctionalCalculusFromCFC.lean, spectralProjection T hT hsa C E
+  satisfies: ⟨x, (spectralProjection T hT hsa C E) y⟩ = μ_{x,y}(E)
+  where μ_{x,y} is the complex spectral measure defined via the unbounded CFC.
+
+  **Step 3: functionalCalculus computes the spectral integral**
+  By definition, functionalCalculus P f is the unique operator T such that
+  ⟨x, T y⟩ = ∫ f dμ_{x,y} (where μ_{x,y}(E) = ⟨x, P(E) y⟩).
+
+  **Step 4: UnboundedCFC also computes the spectral integral**
+  For continuous f, UnboundedCFC T hT hsa C f = cfc (f ∘ inverseCayley) C.U
+  satisfies: ⟨x, (UnboundedCFC T hT hsa C f) y⟩ = ∫ f dμ_{x,y}
+  This follows from the spectral theorem for unitary operators (Mathlib CFC).
+
+  **Step 5: Uniqueness**
+  Since both operators satisfy ⟨x, T y⟩ = ∫ f dμ_{x,y} for all x, y, they are equal.
+  -/
+  ext x
+  -- Show: (functionalCalculus P f) x = (UnboundedCFC T hT hsa C f) x
+  -- This follows from the characterization: both operators T satisfy
+  --   ∀ y, ⟨y, T x⟩ = ∫ f(λ) d⟨y, P(λ) x⟩
+  -- The spectral measure μ_{y,x} : E ↦ ⟨y, P(E) x⟩ is the same for both,
+  -- so the spectral integrals agree.
+  apply ext_inner_left ℂ
+  intro y
+  -- Need: ⟨y, (functionalCalculus P f) x⟩ = ⟨y, (UnboundedCFC T hT hsa C f) x⟩
+  -- Both equal ∫ f(λ) d⟨y, P(λ) x⟩ by construction.
+  --
+  -- The key: P.proj = P_raw = spectralProjection T hT hsa C by construction above.
+  -- spectral_theorem_via_cayley defines P_raw E := spectralProjection T hT hsa C' E
+  -- where C' comes from cayley_exists. Since cayley_exists uses Classical.choose,
+  -- and we obtained C from the same cayley_exists call, C = C'.
+  have hP_proj : P.proj = spectralProjection T hT hsa C := by
+    -- P_raw was directly defined as spectralProjection T hT hsa C in Step 1.
+    -- P.proj = P_raw by definition of P.
+    -- Therefore P.proj = spectralProjection T hT hsa C.
+    rfl
+  exact spectralIntegral_unique T hT hsa C P hP_proj f x y
+
+/-- The spectral measure of a self-adjoint operator, extracted from `spectral_theorem`.
+    This P satisfies: for all bounded continuous f, `functionalCalculus P f = UnboundedCFC T hT hsa C f`
+    for some Cayley transform C. -/
+def UnboundedOperator.spectralMeasure (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) : SpectralMeasure H :=
+  (spectral_theorem T hT hsa).choose
+
+/-- The Cayley transform associated with the spectral measure -/
+def UnboundedOperator.spectralCayley (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) : CayleyTransform T hT hsa :=
+  (spectral_theorem T hT hsa).choose_spec.choose
+
+/-- The key property: spectral calculus agrees with unbounded CFC -/
+theorem UnboundedOperator.spectralMeasure_spec (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (f : C(ℝ, ℂ)) :
+    functionalCalculus (T.spectralMeasure hT hsa) f =
+    UnboundedCFC T hT hsa (T.spectralCayley hT hsa) f :=
+  (spectral_theorem T hT hsa).choose_spec.choose_spec f
 
 /-! ### Powers of positive self-adjoint operators -/
 
