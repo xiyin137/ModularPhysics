@@ -12,6 +12,7 @@ import Mathlib.Analysis.InnerProductSpace.Adjoint
 import Mathlib.MeasureTheory.Integral.RieszMarkovKakutani.Real
 import ModularPhysics.RigorousQFT.vNA.Spectral.CayleyTransform
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralIntegral
+import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralStieltjes
 
 /-!
 # Functional Calculus from Mathlib's CFC
@@ -290,6 +291,62 @@ def cayleyPushforward (f : C(ℝ, ℂ)) :
 noncomputable def cfcViaInverseCayley (f : C(ℝ, ℂ)) : ℂ → ℂ := fun w =>
   if h : w ≠ 1 then f (inverseCayleyMap w h) else f 0
 
+/-- Variant of cfcViaInverseCayley for functions vanishing at infinity (C₀ functions).
+
+    For compactly supported or C₀ functions, the limit as t → ±∞ is 0, so
+    the correct value at w = 1 is 0 (not f(0)). This ensures continuity on
+    the full spectrum including at w = 1 for unbounded operators. -/
+noncomputable def cfcViaInverseCayleyC0 (f : C(ℝ, ℂ)) : ℂ → ℂ := fun w =>
+  if h : w ≠ 1 then f (inverseCayleyMap w h) else 0
+
+/-- cfcViaInverseCayleyC0 agrees with cfcViaInverseCayley on {w | w ≠ 1}. -/
+lemma cfcViaInverseCayleyC0_eq_away_from_one (f : C(ℝ, ℂ)) (w : ℂ) (hw : w ≠ 1) :
+    cfcViaInverseCayleyC0 f w = cfcViaInverseCayley f w := by
+  simp only [cfcViaInverseCayleyC0, cfcViaInverseCayley, dif_pos hw]
+
+/-- cfcViaInverseCayleyC0 is continuous on S¹ \ {1} for any continuous f. -/
+lemma cfcViaInverseCayleyC0_continuousOn (f : C(ℝ, ℂ)) :
+    ContinuousOn (cfcViaInverseCayleyC0 f) {z | z ≠ 1} := by
+  intro w hw
+  simp only [Set.mem_setOf_eq] at hw
+  apply ContinuousWithinAt.congr
+  · -- Use continuity of f ∘ inverseCayleyMap
+    let g : ℂ → ℂ := fun z => f ((Complex.I * (1 + z) / (1 - z)).re)
+    have hg_cont : ContinuousOn g {z | z ≠ 1} := by
+      apply ContinuousOn.comp (t := Set.univ) f.continuous.continuousOn
+      · apply Complex.continuous_re.comp_continuousOn
+        apply ContinuousOn.div
+        · exact ContinuousOn.mul continuousOn_const (ContinuousOn.add continuousOn_const continuousOn_id)
+        · exact ContinuousOn.sub continuousOn_const continuousOn_id
+        · intro z hz
+          simp only [Set.mem_setOf_eq] at hz
+          simp only [sub_ne_zero]
+          exact fun heq => hz heq.symm
+      · intro _ _; exact Set.mem_univ _
+    exact hg_cont w hw
+  · intro z hz
+    simp only [Set.mem_setOf_eq] at hz
+    simp only [cfcViaInverseCayleyC0, dif_pos hz, inverseCayleyMap]
+  · simp only [cfcViaInverseCayleyC0, dif_pos hw, inverseCayleyMap]
+
+/-- cfcViaInverseCayleyC0 preserves multiplication. -/
+lemma cfcViaInverseCayleyC0_mul (f g : C(ℝ, ℂ)) :
+    cfcViaInverseCayleyC0 (f * g) = cfcViaInverseCayleyC0 f * cfcViaInverseCayleyC0 g := by
+  ext w
+  simp only [cfcViaInverseCayleyC0, Pi.mul_apply]
+  split_ifs with h
+  · simp only [ContinuousMap.mul_apply]
+  · simp only [mul_zero]
+
+/-- cfcViaInverseCayleyC0 preserves star. -/
+lemma cfcViaInverseCayleyC0_star (f : C(ℝ, ℂ)) :
+    cfcViaInverseCayleyC0 (star f) = star (cfcViaInverseCayleyC0 f) := by
+  ext w
+  simp only [cfcViaInverseCayleyC0, Pi.star_apply]
+  split_ifs with h
+  · simp only [ContinuousMap.star_apply]
+  · simp only [star_zero]
+
 /-- The Cayley transform U is star-normal (unitary implies normal). -/
 theorem cayleyTransform_isStarNormal (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) :
@@ -441,6 +498,41 @@ lemma indicatorApprox_le_one (a b ε : ℝ) (hε : ε > 0) (x : ℝ) :
 lemma indicatorApprox_nonneg (a b ε : ℝ) (hε : ε > 0) (x : ℝ) :
     0 ≤ indicatorApprox a b ε hε x := le_max_left _ _
 
+/-- indicatorApprox is 0 for x ≤ a - ε (below the support). -/
+lemma indicatorApprox_eq_zero_below (a b ε : ℝ) (hε : ε > 0) (x : ℝ) (hx : x ≤ a - ε) :
+    indicatorApprox a b ε hε x = 0 := by
+  unfold indicatorApprox
+  simp only [ContinuousMap.coe_mk]
+  have h : (x - (a - ε)) / (2 * ε) ≤ 0 := by
+    rw [div_le_iff₀ (by linarith : 2 * ε > 0)]
+    linarith
+  have h2 : min ((x - (a - ε)) / (2 * ε)) (((b + ε) - x) / (2 * ε)) ≤ 0 :=
+    le_trans (min_le_left _ _) h
+  have h3 : min 1 (min ((x - (a - ε)) / (2 * ε)) ((b + ε - x) / (2 * ε))) ≤ 0 :=
+    le_trans (min_le_right _ _) h2
+  exact max_eq_left h3
+
+/-- indicatorApprox is 0 for x ≥ b + ε (above the support). -/
+lemma indicatorApprox_eq_zero_above (a b ε : ℝ) (hε : ε > 0) (x : ℝ) (hx : x ≥ b + ε) :
+    indicatorApprox a b ε hε x = 0 := by
+  unfold indicatorApprox
+  simp only [ContinuousMap.coe_mk]
+  have h : ((b + ε) - x) / (2 * ε) ≤ 0 := by
+    rw [div_le_iff₀ (by linarith : 2 * ε > 0)]
+    linarith
+  have h2 : min ((x - (a - ε)) / (2 * ε)) (((b + ε) - x) / (2 * ε)) ≤ 0 :=
+    le_trans (min_le_right _ _) h
+  have h3 : min 1 (min ((x - (a - ε)) / (2 * ε)) ((b + ε - x) / (2 * ε))) ≤ 0 :=
+    le_trans (min_le_right _ _) h2
+  exact max_eq_left h3
+
+/-- indicatorApprox is 0 outside [a - ε, b + ε]. -/
+lemma indicatorApprox_eq_zero_outside (a b ε : ℝ) (hε : ε > 0) (x : ℝ)
+    (hx : x ≤ a - ε ∨ x ≥ b + ε) : indicatorApprox a b ε hε x = 0 := by
+  cases hx with
+  | inl h => exact indicatorApprox_eq_zero_below a b ε hε x h
+  | inr h => exact indicatorApprox_eq_zero_above a b ε hε x h
+
 /-- For x in [a+ε, b-ε], the bump function equals 1. -/
 lemma indicatorApprox_eq_one (a b ε : ℝ) (hε : ε > 0) (x : ℝ)
     (hx_lo : a + ε ≤ x) (hx_hi : x ≤ b - ε) :
@@ -459,14 +551,41 @@ lemma indicatorApprox_eq_one (a b ε : ℝ) (hε : ε > 0) (x : ℝ)
   rw [h4]
   exact max_eq_right (by linarith)
 
+/-- Square root of the bump function. -/
+noncomputable def sqrtIndicatorApprox (a b ε : ℝ) (hε : ε > 0) : C(ℝ, ℝ) :=
+  ⟨fun x => Real.sqrt (indicatorApprox a b ε hε x),
+   (indicatorApprox a b ε hε).continuous.sqrt⟩
+
+/-- Complex version of the square root bump function for CFC. -/
+noncomputable def sqrtIndicatorApproxComplex (a b ε : ℝ) (hε : ε > 0) : C(ℝ, ℂ) :=
+  ⟨fun x => (sqrtIndicatorApprox a b ε hε x : ℂ),
+   Complex.continuous_ofReal.comp (sqrtIndicatorApprox a b ε hε).continuous⟩
+
+/-- The square root bump function squared equals the bump function. -/
+lemma sqrtIndicatorApprox_sq (a b ε : ℝ) (hε : ε > 0) (x : ℝ) :
+    (sqrtIndicatorApprox a b ε hε x) ^ 2 = indicatorApprox a b ε hε x := by
+  unfold sqrtIndicatorApprox
+  simp only [ContinuousMap.coe_mk]
+  exact Real.sq_sqrt (indicatorApprox_nonneg a b ε hε x)
+
+/-- The square root bump function is non-negative. -/
+lemma sqrtIndicatorApprox_nonneg (a b ε : ℝ) (hε : ε > 0) (x : ℝ) :
+    0 ≤ sqrtIndicatorApprox a b ε hε x := by
+  unfold sqrtIndicatorApprox
+  simp only [ContinuousMap.coe_mk]
+  exact Real.sqrt_nonneg _
+
 /-! ### Spectral measure from functional calculus -/
 
-/-- The bump function operator for a bounded interval [a,b] with approximation parameter ε. -/
+/-- The bump function operator for a bounded interval [a,b] with approximation parameter ε.
+
+    We use cfcViaInverseCayleyC0 (which assigns 0 at w=1) because bump functions
+    vanish at infinity, ensuring continuity on the full spectrum for unbounded operators. -/
 noncomputable def bumpOperator (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
     (a b ε : ℝ) (hε : ε > 0) : H →L[ℂ] H :=
   haveI : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
-  let bump := cfcViaInverseCayley (indicatorApproxComplex a b ε hε)
+  let bump := cfcViaInverseCayleyC0 (indicatorApproxComplex a b ε hε)
   cfc bump C.U
 
 /-- The bump operators are self-adjoint (since bump functions are real-valued). -/
@@ -481,29 +600,358 @@ theorem bumpOperator_self_adjoint (T : UnboundedOperator H) (hT : T.IsDenselyDef
   rw [← cfc_star]
   congr 1
   ext w
-  simp only [cfcViaInverseCayley]
+  simp only [cfcViaInverseCayleyC0]
   split_ifs with h
   · -- w ≠ 1: star(bump(inverseCayley w)) = bump(inverseCayley w) since bump is real
     simp only [indicatorApproxComplex, ContinuousMap.coe_mk]
     rw [Complex.star_def, Complex.conj_ofReal]
-  · -- w = 1: star(bump(0)) = bump(0) since bump(0) is real
-    simp only [indicatorApproxComplex, ContinuousMap.coe_mk]
+  · -- w = 1: star(0) = 0
+    simp only [star_zero]
+
+/-- The square root bump operator. -/
+noncomputable def sqrtBumpOperator (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
+    (a b ε : ℝ) (hε : ε > 0) : H →L[ℂ] H :=
+  haveI : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
+  let sqrtBump := cfcViaInverseCayleyC0 (sqrtIndicatorApproxComplex a b ε hε)
+  cfc sqrtBump C.U
+
+/-- The square root bump operator is self-adjoint (real-valued function). -/
+theorem sqrtBumpOperator_self_adjoint (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
+    (a b ε : ℝ) (hε : ε > 0) :
+    (sqrtBumpOperator T hT hsa C a b ε hε).adjoint = sqrtBumpOperator T hT hsa C a b ε hε := by
+  unfold sqrtBumpOperator
+  haveI hNormal : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
+  rw [← ContinuousLinearMap.star_eq_adjoint]
+  rw [← cfc_star]
+  congr 1
+  ext w
+  simp only [cfcViaInverseCayleyC0]
+  split_ifs with h
+  · simp only [sqrtIndicatorApproxComplex, ContinuousMap.coe_mk]
     rw [Complex.star_def, Complex.conj_ofReal]
+  · simp only [star_zero]
+
+/-! ### Unitary properties of Cayley transform -/
+
+/-- The Cayley transform is a unitary element (in the sense of unitary submonoid). -/
+lemma cayleyTransform_mem_unitary (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) : C.U ∈ unitary (H →L[ℂ] H) := by
+  rw [Unitary.mem_iff]
+  have hU_left : C.U.adjoint ∘L C.U = 1 := C.adjoint_eq_inv
+  have hU_right : C.U ∘L C.U.adjoint = 1 := cayley_unitary T hT hsa C
+  constructor
+  · -- star(U) * U = 1
+    rw [ContinuousLinearMap.star_eq_adjoint]
+    exact hU_left
+  · -- U * star(U) = 1
+    rw [ContinuousLinearMap.star_eq_adjoint]
+    exact hU_right
+
+/-- The spectrum of the Cayley transform is on the unit circle. -/
+lemma spectrum_norm_eq_one_cayley (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (z : ℂ) (hz : z ∈ spectrum ℂ C.U) :
+    ‖z‖ = 1 :=
+  spectrum.norm_eq_one_of_unitary (cayleyTransform_mem_unitary T hT hsa C) hz
+
+/-- For z on the unit circle with |z - 1| < 1, the inverse Cayley map has large absolute value.
+
+    **Key formula:** For ‖z‖ = 1 and z ≠ 1:
+    |inverseCayleyMap(z)| = √((1 + Re(z)) / (1 - Re(z)))
+
+    **Bound:** If |z - 1| < δ ≤ 1, then Re(z) > 1 - δ²/2 (using |z-1|² = 2(1 - Re(z))),
+    so 1 + Re(z) > 2 - δ²/2 > 3/2 for δ < 1. Thus |inverseCayleyMap(z)| > 1/δ. -/
+lemma inverseCayleyMap_abs_large_near_one (z : ℂ) (hz : z ≠ 1) (hon_circle : ‖z‖ = 1)
+    (hclose : ‖z - 1‖ < 1) : |inverseCayleyMap z hz| > 1 / ‖z - 1‖ := by
+  -- Use the formula: inverseCayleyMap z = -2 Im(z) / |1 - z|²
+  -- For |z| = 1: |inverseCayleyMap z| = √((1 + Re(z)) / (1 - Re(z)))
+  unfold inverseCayleyMap
+  -- Step 1: Compute |1 - z|² = 2(1 - Re(z)) for |z| = 1
+  have h_norm_sq : ‖z - 1‖^2 = 2 * (1 - z.re) := by
+    have habs : Complex.normSq z = 1 := by
+      rw [Complex.normSq_eq_norm_sq, hon_circle, one_pow]
+    have hre_im : z.re * z.re + z.im * z.im = 1 := by
+      rw [← Complex.normSq_apply, habs]
+    calc ‖z - 1‖^2 = Complex.normSq (z - 1) := by rw [Complex.normSq_eq_norm_sq]
+      _ = (z.re - 1) * (z.re - 1) + z.im * z.im := by rw [Complex.normSq_apply]; simp
+      _ = z.re * z.re - 2*z.re + 1 + z.im * z.im := by ring
+      _ = 1 - 2*z.re + 1 := by linarith
+      _ = 2 * (1 - z.re) := by ring
+  -- Step 2: Since |z - 1| < 1, we have 1 - Re(z) < 1/2, so Re(z) > 1/2
+  have hre_bound : z.re > 1/2 := by
+    have h1 : ‖z - 1‖^2 < 1 := by nlinarith [hclose, norm_nonneg (z - 1)]
+    rw [h_norm_sq] at h1
+    linarith
+  -- Step 3: Compute Im(z)² = 1 - Re(z)² for |z| = 1
+  have him_sq : z.im^2 = (1 - z.re) * (1 + z.re) := by
+    have habs : Complex.normSq z = 1 := by
+      rw [Complex.normSq_eq_norm_sq, hon_circle, one_pow]
+    have hre_im : z.re * z.re + z.im * z.im = 1 := by rw [← Complex.normSq_apply, habs]
+    have hre_im' : z.re^2 + z.im^2 = 1 := by convert hre_im using 2 <;> ring
+    nlinarith
+  -- Step 4: The key computation for inverseCayleyMap
+  -- inverseCayleyMap z = (I * (1 + z) / (1 - z)).re
+  -- For |z| = 1: inverseCayleyMap z = -2 Im(z) / |1-z|²
+  have h_one_minus_ne : (1 : ℂ) - z ≠ 0 := by
+    simp only [ne_eq, sub_eq_zero]
+    exact fun h => hz h.symm
+  have h_inv_cayley_formula : (Complex.I * (1 + z) / (1 - z)).re = -2 * z.im / ‖z - 1‖^2 := by
+    have h1mz_sq : Complex.normSq (1 - z) = ‖z - 1‖^2 := by
+      rw [Complex.normSq_eq_norm_sq, norm_sub_rev]
+    -- I * (1 + z) = i(1 + re(z) + i·im(z)) = -im(z) + i(1 + re(z))
+    -- (1 - z) = 1 - re(z) - i·im(z)
+    -- Re((a + bi) / (c + di)) = (ac + bd) / (c² + d²)
+    -- where a = -im(z), b = 1 + re(z), c = 1 - re(z), d = -im(z)
+    -- ac + bd = -im(z)(1 - re(z)) + (1 + re(z))(-im(z)) = -im(z) + im(z)re(z) - im(z) - im(z)re(z) = -2 im(z)
+    rw [Complex.div_re, h1mz_sq]
+    have h1 : (Complex.I * (1 + z)).re = -z.im := by simp [Complex.I_re, Complex.I_im]
+    have h2 : (Complex.I * (1 + z)).im = 1 + z.re := by simp [Complex.I_re, Complex.I_im]
+    have h3 : (1 - z : ℂ).re = 1 - z.re := by simp
+    have h4 : (1 - z : ℂ).im = -z.im := by simp
+    rw [h1, h2, h3, h4]
+    ring
+  rw [h_inv_cayley_formula]
+  -- Step 5: Bound |inverseCayleyMap z| = 2|Im(z)| / |z-1|²
+  have h_norm_pos : ‖z - 1‖ > 0 := by
+    have hne : z - 1 ≠ 0 := sub_ne_zero.mpr hz
+    exact norm_pos_iff.mpr hne
+  have h_norm_sq_pos : ‖z - 1‖^2 > 0 := sq_pos_of_pos h_norm_pos
+  have h_abs : |(-2 : ℝ) * z.im / ‖z - 1‖^2| = 2 * |z.im| / ‖z - 1‖^2 := by
+    rw [abs_div, abs_mul]
+    simp only [abs_neg, abs_two]
+    rw [abs_of_pos h_norm_sq_pos]
+  rw [h_abs]
+  -- Step 6: Show 2|Im(z)|/|z-1|² > 1/|z-1|
+  -- Equivalently: 2|Im(z)| > |z-1| (after multiplying by |z-1|)
+  have him_lower : 4 * z.im^2 > ‖z - 1‖^2 := by
+    rw [h_norm_sq, him_sq]
+    -- 4 (1 - Re)(1 + Re) > 2(1 - Re)
+    -- Since Re > 1/2, we have 1 + Re > 3/2 and 1 - Re > 0
+    have hpos : 1 - z.re > 0 := by linarith
+    have hpos2 : 1 + z.re > 3/2 := by linarith
+    calc 4 * ((1 - z.re) * (1 + z.re)) = 4 * (1 - z.re) * (1 + z.re) := by ring
+      _ > 4 * (1 - z.re) * (3/2) := by nlinarith
+      _ = 6 * (1 - z.re) := by ring
+      _ > 2 * (1 - z.re) := by nlinarith
+  -- Convert from squared inequality to linear
+  have him_abs_lower : 2 * |z.im| > ‖z - 1‖ := by
+    have h1 : (2 * |z.im|)^2 > ‖z - 1‖^2 := by
+      calc (2 * |z.im|)^2 = 4 * z.im^2 := by rw [mul_pow, sq_abs]; ring
+        _ > ‖z - 1‖^2 := him_lower
+    have h2 : 2 * |z.im| ≥ 0 := by positivity
+    have h3 : ‖z - 1‖ ≥ 0 := norm_nonneg _
+    nlinarith [sq_nonneg (2 * |z.im|), sq_nonneg ‖z - 1‖]
+  -- Now prove: 2|Im(z)|/|z-1|² > 1/|z-1|
+  -- This is equivalent to: 2|Im(z)|/|z-1| > 1, i.e., 2|Im(z)| > |z-1|
+  have key : 2 * |z.im| / ‖z - 1‖ > 1 := by
+    rw [gt_iff_lt, one_lt_div h_norm_pos]
+    exact him_abs_lower
+  have step1 : 2 * |z.im| / ‖z - 1‖^2 = (2 * |z.im| / ‖z - 1‖) / ‖z - 1‖ := by
+    have hne : ‖z - 1‖ ≠ 0 := ne_of_gt h_norm_pos
+    field_simp [hne]
+  rw [step1]
+  exact div_lt_div_of_pos_right key h_norm_pos
 
 /-- The bump operators are positive contractions (0 ≤ bump ≤ 1 implies 0 ≤ P ≤ 1). -/
 theorem bumpOperator_nonneg (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
     (a b ε : ℝ) (hε : ε > 0) (x : H) :
     0 ≤ RCLike.re (@inner ℂ H _ x (bumpOperator T hT hsa C a b ε hε x)) := by
-  -- This follows from: bump ≥ 0, bump is real-valued, and cfc preserves positivity
-  -- For self-adjoint operators with nonnegative spectrum functions, ⟨x, Ax⟩ ≥ 0
-  unfold bumpOperator
+  -- STRATEGY: Show P = Q² where Q = sqrtBumpOperator is self-adjoint, then ⟨x, Px⟩ = ‖Qx‖² ≥ 0
   haveI hNormal : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
-  -- The bump function is nonnegative, so cfc(bump) is a positive operator
-  -- ⟨x, cfc(bump) x⟩ ≥ 0 for positive operators
-  -- This requires cfc_nonneg_of_nonneg or similar from Mathlib
-  -- For now, we use the fact that real bump functions give real inner products
-  sorry
+  -- Q = sqrt(bump) operator is self-adjoint
+  have hQ_sa := sqrtBumpOperator_self_adjoint T hT hsa C a b ε hε
+  let Q := sqrtBumpOperator T hT hsa C a b ε hε
+  -- For self-adjoint Q: ⟨x, Q²x⟩ = ⟨Qx, Qx⟩ = ‖Qx‖²
+  have hinner_sq : @inner ℂ H _ x (Q (Q x)) = @inner ℂ H _ (Q x) (Q x) := by
+    have h1 : @inner ℂ H _ (Q.adjoint x) (Q x) = @inner ℂ H _ x (Q (Q x)) :=
+      ContinuousLinearMap.adjoint_inner_left Q (Q x) x
+    rw [hQ_sa] at h1
+    exact h1.symm
+  -- ⟨Qx, Qx⟩ = ‖Qx‖² which has re ≥ 0
+  have hQx_norm : RCLike.re (@inner ℂ H _ (Q x) (Q x)) = ‖Q x‖^2 := inner_self_eq_norm_sq (Q x)
+  -- Now we need: P = Q² (bump = sqrt(bump)²)
+  have hP_eq_Q2 : bumpOperator T hT hsa C a b ε hε = Q * Q := by
+    simp only [bumpOperator]
+    -- bump = sqrt(bump) * sqrt(bump) pointwise, then use cfc_mul
+    have hbump_eq : cfcViaInverseCayleyC0 (indicatorApproxComplex a b ε hε) =
+        fun w => cfcViaInverseCayleyC0 (sqrtIndicatorApproxComplex a b ε hε) w *
+                 cfcViaInverseCayleyC0 (sqrtIndicatorApproxComplex a b ε hε) w := by
+      ext w
+      simp only [cfcViaInverseCayleyC0]
+      split_ifs with h
+      · -- w ≠ 1: show bump(t) = sqrt(bump(t))² at t = inverseCayleyMap w h
+        simp only [indicatorApproxComplex, sqrtIndicatorApproxComplex, ContinuousMap.coe_mk]
+        let t := inverseCayleyMap w h
+        have hsq : (sqrtIndicatorApprox a b ε hε t : ℂ) *
+                   (sqrtIndicatorApprox a b ε hε t : ℂ) =
+                   (indicatorApprox a b ε hε t : ℂ) := by
+          rw [← Complex.ofReal_mul]
+          congr 1
+          have h1 := sqrtIndicatorApprox_sq a b ε hε t
+          have : sqrtIndicatorApprox a b ε hε t * sqrtIndicatorApprox a b ε hε t =
+                 (sqrtIndicatorApprox a b ε hε t) ^ 2 := by ring
+          rw [this, h1]
+        exact hsq.symm
+      · -- w = 1: show 0 = 0 * 0
+        ring
+    rw [hbump_eq]
+    -- cfc (f * f) = cfc f * cfc f by cfc_mul, which requires continuity on spectrum
+    let f := cfcViaInverseCayleyC0 (sqrtIndicatorApproxComplex a b ε hε)
+    show cfc (fun w => f w * f w) C.U = cfc f C.U * cfc f C.U
+    -- Prove continuity of f on spectrum
+    have hf_cont : ContinuousOn f (spectrum ℂ C.U) := by
+      have hf_cont_away : ContinuousOn f {z | z ≠ 1} :=
+        cfcViaInverseCayleyC0_continuousOn (sqrtIndicatorApproxComplex a b ε hε)
+      intro w hw
+      by_cases h1 : w = 1
+      · -- At w = 1: f(1) = 0 and f(z) → 0 as z → 1 (bump functions vanish at infinity)
+        subst h1
+        rw [Metric.continuousWithinAt_iff]
+        intro ε' hε'
+        -- For z close to 1, inverseCayleyMap(z) is outside the support of the bump function
+        -- Support of sqrtIndicatorApprox is [a-ε, b+ε]
+        let R := max (|a - ε|) (|b + ε|) + 1
+        -- For |inverseCayleyMap(z)| > R, sqrtIndicatorApprox = 0
+        -- inverseCayleyMap(e^{iθ}) = -cot(θ/2) which → ±∞ as θ → 0
+        -- We need δ such that |z - 1| < δ implies |inverseCayleyMap(z)| > R
+        -- Use δ = 2/(R + 1) (heuristic: small angle θ gives large cot)
+        use min (1/2) (1 / (R + 1))
+        constructor
+        · apply lt_min
+          · norm_num
+          · positivity
+        intro z hz_mem hz_dist
+        -- f(1) = 0
+        have hf1 : f 1 = 0 := by
+          show cfcViaInverseCayleyC0 (sqrtIndicatorApproxComplex a b ε hε) 1 = 0
+          simp only [cfcViaInverseCayleyC0, ne_eq, not_true_eq_false, ↓reduceDIte]
+        rw [hf1, dist_zero_right]
+        -- Show ‖f z‖ < ε'
+        show ‖cfcViaInverseCayleyC0 (sqrtIndicatorApproxComplex a b ε hε) z‖ < ε'
+        simp only [cfcViaInverseCayleyC0]
+        by_cases hz_ne1 : z ≠ 1
+        · -- z ≠ 1: show sqrtIndicatorApprox(inverseCayleyMap z) is small
+          rw [dif_pos hz_ne1]
+          simp only [sqrtIndicatorApproxComplex, ContinuousMap.coe_mk]
+          rw [Complex.norm_real, Real.norm_eq_abs]
+          have hnonneg := sqrtIndicatorApprox_nonneg a b ε hε (inverseCayleyMap z hz_ne1)
+          rw [abs_of_nonneg hnonneg]
+          -- Key insight: for z close to 1, inverseCayleyMap(z) is outside the support
+          -- of the bump function, so sqrtIndicatorApprox = sqrt(0) = 0 < ε'
+          -- We show indicatorApprox(inverseCayleyMap z) = 0 using that:
+          -- 1. |inverseCayleyMap(z)| > R for |z - 1| < 1/(R+1)
+          -- 2. This puts inverseCayleyMap(z) outside [a-ε, b+ε]
+          simp only [sqrtIndicatorApprox, ContinuousMap.coe_mk]
+          -- Show indicatorApprox(inverseCayleyMap z) = 0
+          have hind_zero : indicatorApprox a b ε hε (inverseCayleyMap z hz_ne1) = 0 := by
+            -- Key: for z close to 1, |inverseCayleyMap z| is large
+            -- inverseCayleyMap z = Re(i(1+z)/(1-z))
+            -- For |z - 1| < 1/(R+1) ≤ 1/2, we have |inverseCayleyMap z| > R
+            -- This means inverseCayleyMap z ∉ [a-ε, b+ε] ⊆ [-R+1, R-1]
+            -- The detailed analysis uses properties of the inverse Cayley transform
+            -- For a complete proof, we'd need to show:
+            -- - For spectrum of unitary U, z is on the unit circle
+            -- - inverseCayleyMap(e^{iθ}) = -cot(θ/2) for z = e^{iθ}
+            -- - |cot(θ/2)| ≥ 1/|z-1| for |z-1| ≤ 1
+            -- - So |inverseCayleyMap z| > 1/(1/(R+1)) = R+1 > R
+            -- Using indicatorApprox_eq_zero_outside:
+            apply indicatorApprox_eq_zero_outside
+            -- Need: inverseCayleyMap z ≤ a - ε OR inverseCayleyMap z ≥ b + ε
+            -- Step 1: z is on the unit circle (spectrum of unitary)
+            have hon_circle : ‖z‖ = 1 := spectrum_norm_eq_one_cayley T hT hsa C z hz_mem
+            -- Step 2: |z - 1| < 1/2 < 1
+            have hz_dist_norm : ‖z - 1‖ < min (1/2) (1 / (R + 1)) := by
+              rw [← Complex.dist_eq]; exact hz_dist
+            have hclose : ‖z - 1‖ < 1 := by
+              calc ‖z - 1‖ < min (1/2) (1 / (R + 1)) := hz_dist_norm
+                _ ≤ 1/2 := min_le_left _ _
+                _ < 1 := by norm_num
+            -- Step 3: Use inverseCayleyMap_abs_large_near_one
+            have hinv_large : |inverseCayleyMap z hz_ne1| > 1 / ‖z - 1‖ :=
+              inverseCayleyMap_abs_large_near_one z hz_ne1 hon_circle hclose
+            -- Step 4: Since |z - 1| < 1/(R+1), we have |inverseCayleyMap z| > R + 1
+            have hz_dist_R : ‖z - 1‖ < 1 / (R + 1) := lt_of_lt_of_le hz_dist_norm (min_le_right _ _)
+            have hR_pos : R + 1 > 0 := by
+              have : R = max (|a - ε|) (|b + ε|) + 1 := rfl
+              have h1 : max (|a - ε|) (|b + ε|) ≥ 0 := le_max_of_le_left (abs_nonneg _)
+              linarith
+            have hinv_gt_R : |inverseCayleyMap z hz_ne1| > R := by
+              have h1 : 1 / ‖z - 1‖ > R + 1 := by
+                have hnorm_pos : ‖z - 1‖ > 0 := norm_pos_iff.mpr (sub_ne_zero.mpr hz_ne1)
+                rw [gt_iff_lt, lt_div_iff₀ hnorm_pos]
+                calc (R + 1) * ‖z - 1‖ < (R + 1) * (1 / (R + 1)) := by
+                      apply mul_lt_mul_of_pos_left hz_dist_R hR_pos
+                  _ = 1 := mul_one_div_cancel (ne_of_gt hR_pos)
+              calc |inverseCayleyMap z hz_ne1| > 1 / ‖z - 1‖ := hinv_large
+                _ > R + 1 := h1
+                _ > R := by linarith
+            -- Step 5: |x| > R implies x ≤ a - ε or x ≥ b + ε
+            -- where R = max(|a-ε|, |b+ε|) + 1
+            have hR_bound : R > max (|a - ε|) (|b + ε|) := by
+              have : R = max (|a - ε|) (|b + ε|) + 1 := rfl
+              linarith
+            -- |inverseCayleyMap z| > R means inverseCayleyMap z > R or inverseCayleyMap z < -R
+            set t := inverseCayleyMap z hz_ne1 with ht_def
+            by_cases ht_pos : t ≥ 0
+            · -- t ≥ 0 and |t| > R means t > R
+              right
+              have ht_gt_R : t > R := by
+                have : |t| = t := abs_of_nonneg ht_pos
+                linarith
+              have hmax : R > |b + ε| := lt_of_le_of_lt (le_max_right _ _) hR_bound
+              have h1 : t > b + ε := calc t > R := ht_gt_R
+                  _ > |b + ε| := hmax
+                  _ ≥ b + ε := le_abs_self _
+              exact le_of_lt h1
+            · -- t < 0 and |t| > R means t < -R
+              left
+              push_neg at ht_pos
+              have ht_lt_neg_R : t < -R := by
+                have : |t| = -t := abs_of_neg ht_pos
+                linarith
+              have hmax : R > |a - ε| := lt_of_le_of_lt (le_max_left _ _) hR_bound
+              have h1 : t < a - ε := calc t < -R := ht_lt_neg_R
+                  _ < -|a - ε| := by linarith
+                  _ ≤ a - ε := neg_abs_le _
+              exact le_of_lt h1
+          rw [hind_zero, Real.sqrt_zero]
+          exact hε'
+        · -- z = 1: ‖0‖ < ε'
+          push_neg at hz_ne1
+          rw [dif_neg (not_ne_iff.mpr hz_ne1)]
+          simp only [norm_zero, hε']
+      · -- At w ≠ 1: use continuity away from 1
+        have hmem : w ∈ {z : ℂ | z ≠ 1} := h1
+        have hcont_at_w := hf_cont_away w hmem
+        rw [Metric.continuousWithinAt_iff] at hcont_at_w ⊢
+        intro ε' hε'
+        obtain ⟨δ₁, hδ₁_pos, hδ₁⟩ := hcont_at_w ε' hε'
+        have hw_dist : 0 < dist w 1 := by rw [dist_pos]; exact h1
+        use min δ₁ (dist w 1 / 2)
+        constructor
+        · exact lt_min hδ₁_pos (half_pos hw_dist)
+        intro z hz_mem hz_dist
+        apply hδ₁
+        · simp only [Set.mem_setOf_eq]
+          intro hz_eq_1
+          rw [hz_eq_1] at hz_dist
+          have h1 : dist w 1 / 2 < dist w 1 := half_lt_self hw_dist
+          rw [dist_comm] at hz_dist
+          have h2 : dist w 1 < min δ₁ (dist w 1 / 2) := hz_dist
+          linarith [min_le_right δ₁ (dist w 1 / 2)]
+        · exact lt_of_lt_of_le hz_dist (min_le_left δ₁ _)
+    exact cfc_mul f f C.U hf_cont hf_cont
+  -- Now combine: ⟨x, Px⟩ = ⟨x, Q²x⟩ = ⟨Qx, Qx⟩ and re(⟨Qx, Qx⟩) = ‖Qx‖² ≥ 0
+  have hcalc : RCLike.re (@inner ℂ H _ x (bumpOperator T hT hsa C a b ε hε x)) = ‖Q x‖^2 := by
+    calc RCLike.re (@inner ℂ H _ x (bumpOperator T hT hsa C a b ε hε x))
+        = RCLike.re (@inner ℂ H _ x ((Q * Q) x)) := by rw [hP_eq_Q2]
+      _ = RCLike.re (@inner ℂ H _ x (Q (Q x))) := rfl
+      _ = RCLike.re (@inner ℂ H _ (Q x) (Q x)) := by rw [hinner_sq]
+      _ = ‖Q x‖^2 := hQx_norm
+  rw [hcalc]
+  exact sq_nonneg ‖Q x‖
 
 /-- Bump function difference is bounded by 1. -/
 lemma indicatorApprox_diff_le (a b ε₁ ε₂ : ℝ) (hε₁ : ε₁ > 0) (hε₂ : ε₂ > 0) (x : ℝ) :
@@ -525,7 +973,7 @@ theorem bumpOperator_norm_le_one (T : UnboundedOperator H) (hT : T.IsDenselyDefi
   -- Use norm_cfc_le: if ‖f(x)‖ ≤ c for x ∈ spectrum, then ‖cfc(f)‖ ≤ c
   apply norm_cfc_le (by norm_num : (0 : ℝ) ≤ 1)
   intro w _
-  simp only [cfcViaInverseCayley]
+  simp only [cfcViaInverseCayleyC0]
   split_ifs with h
   · -- w ≠ 1
     simp only [indicatorApproxComplex, ContinuousMap.coe_mk]
@@ -536,14 +984,9 @@ theorem bumpOperator_norm_le_one (T : UnboundedOperator H) (hT : T.IsDenselyDefi
           simp only [Complex.norm_real, Real.norm_eq_abs]
       _ = (indicatorApprox a b ε hε) (inverseCayleyMap w h) := abs_of_nonneg h1
       _ ≤ 1 := h2
-  · -- w = 1
-    simp only [indicatorApproxComplex, ContinuousMap.coe_mk]
-    have h1 := indicatorApprox_nonneg a b ε hε 0
-    have h2 := indicatorApprox_le_one a b ε hε 0
-    calc ‖(↑((indicatorApprox a b ε hε) 0) : ℂ)‖
-        = |(indicatorApprox a b ε hε) 0| := by simp only [Complex.norm_real, Real.norm_eq_abs]
-      _ = (indicatorApprox a b ε hε) 0 := abs_of_nonneg h1
-      _ ≤ 1 := h2
+  · -- w = 1: f(1) = 0, so ‖0‖ ≤ 1
+    simp only [norm_zero]
+    norm_num
 
 /-- The sequence of bump operator inner products is Cauchy.
 
@@ -792,6 +1235,80 @@ theorem spectralProjectionInterval_inner (T : UnboundedOperator H) (hT : T.IsDen
   -- Use sesquilinearToOperator_inner directly (no Classical.choose needed)
   exact (sesquilinearToOperator_inner B hlin hconj hbnd x y).symm
 
+/-- The diagonal spectral form (x = y case) is real-valued.
+
+    This follows from the bump operators being self-adjoint:
+    ⟨x, Px⟩ = ⟨Px, x⟩ = conj⟨x, Px⟩, so ⟨x, Px⟩ ∈ ℝ. -/
+theorem spectralFormInterval_diagonal_real (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (a b : ℝ) (x : H) :
+    (spectralFormInterval T hT hsa C a b x x).im = 0 := by
+  -- For self-adjoint P: ⟨x, Px⟩ = ⟨Px, x⟩ = conj⟨x, Px⟩
+  -- So ⟨x, Px⟩ is real (im = 0)
+  unfold spectralFormInterval
+  -- The sequence has real terms (each bump operator is self-adjoint)
+  have hcauchy := bumpOperator_inner_cauchy T hT hsa C a b x x
+  have hspec := Classical.choose_spec (cauchySeq_tendsto_of_complete hcauchy)
+  -- Each term ⟨x, P_n x⟩ has im = 0 because P_n is self-adjoint
+  have hreal : ∀ n : ℕ, (if hn : n > 0 then
+      @inner ℂ H _ x (bumpOperator T hT hsa C a b ((1 : ℝ)/n) (by positivity) x) else 0).im = 0 := by
+    intro n
+    split_ifs with hn
+    · -- P_n is self-adjoint, so ⟨x, P_n x⟩ is real
+      have hn_pos : (1 : ℝ)/n > 0 := by positivity
+      have hSA := bumpOperator_self_adjoint T hT hsa C a b (1/n) hn_pos
+      -- For self-adjoint P: ⟨x, Px⟩ = ⟨Px, x⟩ = conj⟨x, Px⟩
+      have h2 : @inner ℂ H _ x (bumpOperator T hT hsa C a b (1/n) hn_pos x) =
+                starRingEnd ℂ (@inner ℂ H _ (bumpOperator T hT hsa C a b (1/n) hn_pos x) x) := by
+        rw [inner_conj_symm]
+      have h3 : @inner ℂ H _ (bumpOperator T hT hsa C a b (1/n) hn_pos x) x =
+                @inner ℂ H _ x (bumpOperator T hT hsa C a b (1/n) hn_pos x) := by
+        rw [← ContinuousLinearMap.adjoint_inner_right, hSA]
+      rw [h3] at h2
+      -- h2: ⟨x, Px⟩ = conj⟨x, Px⟩, so ⟨x, Px⟩ is real
+      exact Complex.conj_eq_iff_im.mp h2.symm
+    · rfl
+  -- The limit of a sequence with im = 0 has im = 0
+  -- Use that ℝ is closed in ℂ, so limits of real sequences are real
+  have hclosed : IsClosed {z : ℂ | z.im = 0} := by
+    have : {z : ℂ | z.im = 0} = Complex.im ⁻¹' {0} := rfl
+    rw [this]
+    exact IsClosed.preimage Complex.continuous_im isClosed_singleton
+  -- All terms of the sequence are in the closed set {z | z.im = 0}
+  have hmem : ∀ n : ℕ, (if hn : n > 0 then
+      @inner ℂ H _ x (bumpOperator T hT hsa C a b ((1 : ℝ)/n) (by positivity) x) else 0) ∈
+      {z : ℂ | z.im = 0} := by
+    intro n
+    simp only [Set.mem_setOf_eq]
+    exact hreal n
+  -- The limit is in the closed set
+  exact hclosed.mem_of_tendsto hspec (Filter.Eventually.of_forall hmem)
+
+/-- The diagonal spectral form (x = y case) is non-negative.
+
+    This follows from the bump operators being positive:
+    ⟨x, Px⟩ ≥ 0 for positive P. -/
+theorem spectralFormInterval_diagonal_nonneg (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (a b : ℝ) (x : H) :
+    0 ≤ (spectralFormInterval T hT hsa C a b x x).re := by
+  -- The limit of ⟨x, bump_ε(T)x⟩ where bump_ε ≥ 0
+  -- Since bump_ε(T) is positive, ⟨x, bump_ε(T)x⟩ ≥ 0
+  -- The limit of non-negative reals is non-negative
+  sorry
+
+/-- The spectral form is monotone in the interval: [a,b] ⊆ [c,d] implies
+    spectralFormInterval a b x x ≤ spectralFormInterval c d x x.
+
+    This follows from P([a,b]) ≤ P([c,d]) when [a,b] ⊆ [c,d]. -/
+theorem spectralFormInterval_mono_interval (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
+    (a b c d : ℝ) (hab : a ≤ b) (hcd : c ≤ d) (hac : c ≤ a) (hbd : b ≤ d) (x : H) :
+    (spectralFormInterval T hT hsa C a b x x).re ≤
+    (spectralFormInterval T hT hsa C c d x x).re := by
+  -- If [a,b] ⊆ [c,d], then χ_{[a,b]} ≤ χ_{[c,d]} pointwise
+  -- By CFC positivity, P([a,b]) ≤ P([c,d]) in the Loewner order
+  -- Hence ⟨x, P([a,b])x⟩ ≤ ⟨x, P([c,d])x⟩
+  sorry
+
 /-- For a bounded interval [a, b], the spectral projection is idempotent: P² = P. -/
 theorem spectralProjectionInterval_idempotent (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (a b : ℝ) :
@@ -914,55 +1431,117 @@ noncomputable def spectralProjectionHalfLine (T : UnboundedOperator H) (hT : T.I
   -- Apply sesquilinearToOperator to construct the operator directly
   sesquilinearToOperator B hlin hconj hbnd
 
-/-- The spectral measure on Borel sets, defined via Carathéodory extension.
+/-! ### Spectral Measure via Stieltjes Functions
 
-    For any Borel set E, μ_{x,y}(E) is the unique complex measure satisfying:
-    1. μ_{x,y}([a, b]) = spectralFormInterval a b x y for bounded intervals
-    2. σ-additivity: μ_{x,y}(⋃ E_n) = Σ μ_{x,y}(E_n) for disjoint E_n
-    3. Boundedness: |μ_{x,y}(E)| ≤ ‖x‖ · ‖y‖
+The spectral measure μ_{x,y}(E) = ⟨x, P(E)y⟩ for Borel sets E is constructed using:
+1. Diagonal measures μ_{x,x} via Stieltjes functions F_x(t) = ⟨x, P((-∞,t])x⟩
+2. Polarization to recover the full sesquilinear measure from diagonal measures
+-/
 
-    The existence and uniqueness follows from the Carathéodory extension theorem
-    applied to the premeasure on intervals.
+/-- The diagonal spectral distribution function F_x(t) = ⟨x, P((-∞,t])x⟩.
 
-    **Construction:**
-    The definition requires the full Carathéodory extension machinery:
-    1. Define μ on intervals: μ([a,b]) = spectralFormInterval a b
-    2. Extend to outer measure via infimum over interval covers
-    3. Restrict to Carathéodory-measurable sets (contains all Borel sets)
+    This is a real-valued, monotone non-decreasing, right-continuous function
+    that gives rise to a positive Borel measure via Mathlib's StieltjesFunction.
 
-    For now, we provide the correct type signature and use sorry for the
-    implementation, pending connection to CaratheodoryExtension.lean. -/
+    Properties:
+    - F_x(-∞) = 0 (limit as t → -∞)
+    - F_x(+∞) = ‖x‖² (limit as t → +∞)
+    - μ_{x,x}((a,b]) = F_x(b) - F_x(a) -/
+noncomputable def spectralDistributionDiagonal (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) : ℝ → ℝ :=
+  fun t => (spectralFormHalfLine T hT hsa C t x x).re
+
+/-- The diagonal spectral distribution is monotone. -/
+theorem spectralDistributionDiagonal_mono (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) :
+    Monotone (spectralDistributionDiagonal T hT hsa C x) := by
+  intro a b hab
+  unfold spectralDistributionDiagonal
+  -- F_x(t) = ‖P((-∞,t])x‖² which is monotone because P((-∞,a]) ≤ P((-∞,b])
+  -- as projections when a ≤ b
+  sorry
+
+/-- The diagonal spectral distribution is right-continuous. -/
+theorem spectralDistributionDiagonal_rightContinuous (T : UnboundedOperator H)
+    (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) :
+    ∀ t, ContinuousWithinAt (spectralDistributionDiagonal T hT hsa C x) (Set.Ici t) t := by
+  intro t
+  unfold spectralDistributionDiagonal
+  -- Right-continuity follows from the strong operator topology continuity
+  -- of spectral projections
+  sorry
+
+/-- The diagonal spectral distribution is non-negative. -/
+theorem spectralDistributionDiagonal_nonneg (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) :
+    ∀ t, 0 ≤ spectralDistributionDiagonal T hT hsa C x t := by
+  intro t
+  unfold spectralDistributionDiagonal
+  -- F_x(t) = ⟨x, P((-∞,t])x⟩ = ‖P((-∞,t])x‖² ≥ 0
+  sorry
+
+/-- The diagonal spectral distribution tends to 0 as t → -∞. -/
+theorem spectralDistributionDiagonal_tendsto_atBot (T : UnboundedOperator H)
+    (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) :
+    Tendsto (spectralDistributionDiagonal T hT hsa C x) atBot (nhds 0) := by
+  unfold spectralDistributionDiagonal
+  -- P((-∞, t]) → 0 in SOT as t → -∞
+  sorry
+
+/-- The diagonal spectral distribution tends to ‖x‖² as t → +∞. -/
+theorem spectralDistributionDiagonal_tendsto_atTop (T : UnboundedOperator H)
+    (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) :
+    Tendsto (spectralDistributionDiagonal T hT hsa C x) atTop (nhds (‖x‖^2)) := by
+  unfold spectralDistributionDiagonal
+  -- P((-∞, t]) → I in SOT as t → +∞, so ⟨x, Ix⟩ = ‖x‖²
+  sorry
+
+/-- Convert the diagonal spectral distribution to a Stieltjes function. -/
+noncomputable def spectralStieltjes (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) : StieltjesFunction ℝ where
+  toFun := spectralDistributionDiagonal T hT hsa C x
+  mono' := spectralDistributionDiagonal_mono T hT hsa C x
+  right_continuous' := spectralDistributionDiagonal_rightContinuous T hT hsa C x
+
+/-- The diagonal spectral measure μ_{x,x} as a Borel measure on ℝ.
+
+    This is the unique measure satisfying μ_{x,x}((a,b]) = F_x(b) - F_x(a). -/
+noncomputable def spectralMeasureDiagonal (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa) (x : H) : MeasureTheory.Measure ℝ :=
+  (spectralStieltjes T hT hsa C x).measure
+
+/-- The complex spectral measure μ_{x,y}(E) = ⟨x, P(E)y⟩ via polarization.
+
+    CONSTRUCTION: For any Borel set E, we define μ_{x,y}(E) using the polarization identity:
+    μ_{x,y}(E) = (1/4)[μ_{x+y,x+y}(E) - μ_{x-y,x-y}(E) + i·μ_{x+iy,x+iy}(E) - i·μ_{x-iy,x-iy}(E)]
+
+    This extends the diagonal measures (which are real positive Borel measures on ℝ)
+    to the full sesquilinear complex spectral measure.
+
+    The key properties:
+    - μ_{x,y}(∅) = 0
+    - μ_{x,y}(ℝ) = ⟨x, y⟩
+    - μ_{x,y} is σ-additive (inherited from the diagonal measures)
+    - μ_{x,y}(E) = ⟨x, P(E)y⟩ where P is the spectral projection -/
 noncomputable def spectralMeasureBorel (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
     (E : Set ℝ) (x y : H) : ℂ :=
   haveI : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
-  -- The spectral measure μ_{x,y}(E) for a Borel set E.
+  -- Use polarization identity to construct μ_{x,y} from diagonal measures μ_{z,z}
+  -- μ_{x,y}(E) = (1/4)[μ_{x+y,x+y}(E) - μ_{x-y,x-y}(E) + i·μ_{x+iy,x+iy}(E) - i·μ_{x-iy,x-iy}(E)]
   --
-  -- IMPLEMENTATION NOTE: This requires the Carathéodory extension from
-  -- the interval premeasure defined by spectralFormInterval.
+  -- Each diagonal measure μ_{z,z} is a positive Borel measure on ℝ, constructed via
+  -- the Stieltjes function F_z(λ) = ⟨z, P((-∞,λ])z⟩.
   --
-  -- The construction is:
-  -- 1. Define premeasure on intervals: μ₀([a,b]) := spectralFormInterval a b x y
-  -- 2. Use CaratheodoryExtension.lean to extend to all Borel sets
-  -- 3. The extension is unique by σ-additivity and regularity
-  --
-  -- Special cases that can be computed directly:
-  -- - μ(∅) = 0
-  -- - μ([a,b]) = spectralFormInterval a b x y
-  -- - μ((-∞, a]) = spectralFormHalfLine a x y
-  -- - μ(ℝ) = ⟨x, y⟩
-  --
-  -- For now, we provide the type-correct placeholder.
-  -- The actual implementation connects to CaratheodoryExtension.SpectralPremeasure.
-  if E = ∅ then 0
-  else if h : ∃ a b : ℝ, a ≤ b ∧ E = Set.Icc a b then
-    -- For intervals, use the interval formula directly
-    spectralFormInterval T hT hsa C h.choose h.choose_spec.choose x y
-  else
-    -- For general Borel sets, use Carathéodory extension (requires full machinery)
-    -- This is the limit: μ(E) = lim_{n→∞} μ(E ∩ [-n, n])
-    -- where μ(E ∩ [-n, n]) is computed via the outer measure construction.
-    sorry
+  -- For MeasurableSet E, we can evaluate μ_{z,z}(E) using Mathlib's measure theory.
+  let μ_pp := spectralMeasureDiagonal T hT hsa C (x + y)
+  let μ_mm := spectralMeasureDiagonal T hT hsa C (x - y)
+  let μ_piq := spectralMeasureDiagonal T hT hsa C (x + Complex.I • y)
+  let μ_miq := spectralMeasureDiagonal T hT hsa C (x - Complex.I • y)
+  -- Convert ENNReal measures to ℂ via polarization
+  -- Note: The diagonal measures are finite (bounded by ‖z‖²), so toReal is well-defined
+  (1/4 : ℂ) * ((μ_pp E).toReal - (μ_mm E).toReal +
+              Complex.I * (μ_piq E).toReal - Complex.I * (μ_miq E).toReal)
 
 /-- The spectral measure is linear in the second argument. -/
 theorem spectralMeasureBorel_linear_right (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
@@ -1080,7 +1659,23 @@ theorem spectralProjection_isPVM (T : UnboundedOperator H) (hT : T.IsDenselyDefi
   -- the spectral measure, which require the full Carathéodory construction.
   constructor
   · -- P(∅) = 0: follows from μ_{x,y}(∅) = 0 for all x, y
-    sorry
+    -- spectralMeasureBorel uses polarization: 1/4 * (μ_{x+y} - μ_{x-y} + i*μ_{x+iy} - i*μ_{x-iy})
+    -- Each diagonal measure gives μ(∅) = 0 (Stieltjes measures are outer measures)
+    -- So the polarization formula gives 1/4 * (0 - 0 + i*0 - i*0) = 0
+    ext y
+    apply ext_inner_left ℂ
+    intro x
+    rw [ContinuousLinearMap.zero_apply, inner_zero_right]
+    show @inner ℂ H _ x (spectralProjection T hT hsa C ∅ y) = 0
+    unfold spectralProjection
+    rw [← sesquilinearToOperator_inner]
+    -- Goal: spectralMeasureBorel T hT hsa C ∅ x y = 0
+    unfold spectralMeasureBorel
+    -- The diagonal measures all give 0 for ∅ by measure_empty
+    -- μ(∅) = 0 for any measure, and toReal 0 = 0
+    simp only [MeasureTheory.measure_empty, ENNReal.toReal_zero, sub_self]
+    -- Now: 1/4 * (0 + I*0 - I*0) = 0
+    ring
   constructor
   · -- P(ℝ) = 1: follows from μ_{x,y}(ℝ) = ⟨x, y⟩
     sorry

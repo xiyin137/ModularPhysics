@@ -233,6 +233,19 @@ structure Partition (a b : ℝ) (hab : a ≤ b) where
   /-- Points are strictly increasing -/
   strict_mono : StrictMono points
 
+/-- The trivial partition of [a, b] with just a single subinterval [a, b].
+    This exists when a < b. -/
+noncomputable def Partition.trivial {a b : ℝ} (hab : a < b) :
+    Partition a b (le_of_lt hab) where
+  n := 1
+  points := ![a, b]
+  first := by simp [Matrix.cons_val_zero]
+  last := by simp [Matrix.cons_val_one, Matrix.head_cons]
+  strict_mono := by
+    intro i j hij
+    fin_cases i <;> fin_cases j <;> simp_all [Matrix.cons_val_zero, Matrix.cons_val_one,
+      Matrix.head_cons]
+
 /-- The variation of μ over a partition: Σᵢ ‖μ([tᵢ, tᵢ₊₁])‖ -/
 noncomputable def partitionVariation (a b : ℝ) (hab : a ≤ b)
     (P : Partition a b hab) : ℝ :=
@@ -262,9 +275,32 @@ def toIntervalPremeasure : IntervalPremeasure where
   toFun := fun a b hab => totalVariation μ a b hab
   point_zero := fun a => by
     simp only [totalVariation, partitionVariation]
-    -- For a = b, the only partition has n = 0, so the sum is empty = 0
-    -- The sup over a singleton {0} is 0
-    sorry
+    -- For a = a, the only partition has n = 0, so the sum is empty = 0
+    -- The sup of 0 is 0
+    apply le_antisymm
+    · -- Upper bound: all partitions have variation 0
+      apply iSup_le
+      intro P
+      -- For a = a with strict_mono, we must have n = 0
+      -- Because points 0 = a and points n = a, but strict_mono means points 0 < points n if n > 0
+      have hn : P.n = 0 := by
+        by_contra h
+        push_neg at h
+        have h0 : 0 < P.n := Nat.pos_of_ne_zero h
+        have hfirst := P.first
+        have hlast := P.last
+        have hlt : (⟨0, Nat.zero_lt_succ P.n⟩ : Fin (P.n + 1)) <
+                   (⟨P.n, Nat.lt_succ_self P.n⟩ : Fin (P.n + 1)) := by
+          exact h0
+        have hpts := P.strict_mono hlt
+        rw [hfirst, hlast] at hpts
+        exact lt_irrefl a hpts
+      -- Now use hn : P.n = 0 to show the sum is empty
+      have hempty : (Finset.univ : Finset (Fin P.n)) = ∅ := by
+        rw [hn]
+        rfl
+      simp only [hempty, Finset.sum_empty, ENNReal.ofReal_zero, le_refl]
+    · exact zero_le _
   additive := fun a b c hab hbc => by
     -- Key property: partitions of [a,c] correspond to merged partitions of [a,b] ∪ [b,c]
     -- Any partition of [a,c] refines to one through b (adding b if needed)
