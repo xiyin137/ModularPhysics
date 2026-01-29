@@ -1787,6 +1787,176 @@ theorem spectralMeasurePolarized_bounded (U : H →L[ℂ] H) (hU : U ∈ unitary
             exact mul_nonneg hy_pos.le hx_pos.le
         _ = 2 * ‖x‖ * ‖y‖ := by ring
 
+/-- The polarized spectral measure has Hermitian symmetry: B(x, y) = conj(B(y, x)).
+
+    This is the key property that makes P(E) = sesquilinearToOperator(B) self-adjoint.
+
+    Proof uses the relation D(I·a, y) = -D(a, I·y) where D(a,b) = μ(a+b) - μ(a-b). -/
+theorem spectralMeasurePolarized_conj_symm (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (x y : H) :
+    spectralMeasurePolarized U hU x y E hE = star (spectralMeasurePolarized U hU y x E hE) := by
+  -- Define μ for convenience
+  let μ := fun z => (spectralMeasureDiagonal U hU z E).toReal
+  -- Key properties of μ
+  have hμ_neg : ∀ w, μ (-w) = μ w := fun w => by
+    have h := spectralMeasureDiagonal_smul_sq U hU (-1) w E hE
+    simp only [norm_neg, norm_one, one_pow, one_mul, neg_one_smul] at h
+    exact h
+  have hμ_I : ∀ w, μ (Complex.I • w) = μ w := fun w => by
+    have h := spectralMeasureDiagonal_smul_sq U hU Complex.I w E hE
+    simp only [Complex.norm_I, one_pow, one_mul] at h
+    exact h
+  -- Define D(a, b) = μ(a+b) - μ(a-b)
+  let D := fun a b => μ (a + b) - μ (a - b)
+  -- Key relation: D(I·a, y) = -D(a, I·y)
+  -- From conjugate-linearity proof, we established this
+  have hD_rel : ∀ a : H, D (Complex.I • a) y = -D a (Complex.I • y) := by
+    intro a
+    -- Use parallelogram identities as in conjugate-linearity proof
+    have hpara_Ia_y := spectralMeasureDiagonal_parallelogram U hU (Complex.I • a) y E hE
+    have hpara_a_Iy := spectralMeasureDiagonal_parallelogram U hU a (Complex.I • y) E hE
+    change μ (Complex.I • a + y) + μ (Complex.I • a - y) = 2 * μ (Complex.I • a) + 2 * μ y at hpara_Ia_y
+    change μ (a + Complex.I • y) + μ (a - Complex.I • y) = 2 * μ a + 2 * μ (Complex.I • y) at hpara_a_Iy
+    -- μ(I•a) = μ(a), μ(I•y) = μ(y)
+    rw [hμ_I a] at hpara_Ia_y
+    rw [hμ_I y] at hpara_a_Iy
+    -- So both sums equal 2μ(a) + 2μ(y)
+    have hsum_eq : μ (Complex.I • a + y) + μ (Complex.I • a - y) = μ (a + Complex.I • y) + μ (a - Complex.I • y) := by
+      rw [hpara_Ia_y, hpara_a_Iy]
+    -- Scale relations
+    have hscale_1pI : ∀ z, μ ((1 + Complex.I) • z) = 2 * μ z := by
+      intro z
+      have h := spectralMeasureDiagonal_smul_sq U hU (1 + Complex.I) z E hE
+      have hnorm : ‖(1 : ℂ) + Complex.I‖ = Real.sqrt 2 := by
+        have h1 : (1 : ℂ) + Complex.I = (1 : ℝ) + (1 : ℝ) * Complex.I := by simp
+        have h2 : Complex.normSq ((1 : ℂ) + Complex.I) = 2 := by
+          rw [h1, Complex.normSq_add_mul_I]; norm_num
+        have h3 : ‖(1 : ℂ) + Complex.I‖^2 = 2 := by rw [← Complex.normSq_eq_norm_sq, h2]
+        rw [← Real.sqrt_sq (norm_nonneg _), h3]
+      rw [hnorm, Real.sq_sqrt (by linarith : (0:ℝ) ≤ 2)] at h
+      exact h
+    have hscale_Im1 : ∀ z, μ ((Complex.I - 1) • z) = 2 * μ z := by
+      intro z
+      have h := spectralMeasureDiagonal_smul_sq U hU (Complex.I - 1) z E hE
+      have hnorm : ‖Complex.I - (1 : ℂ)‖ = Real.sqrt 2 := by
+        have h1 : Complex.I - (1 : ℂ) = (-1 : ℝ) + (1 : ℝ) * Complex.I := by simp; ring
+        have h2 : Complex.normSq (Complex.I - (1 : ℂ)) = 2 := by
+          rw [h1, Complex.normSq_add_mul_I]; norm_num
+        have h3 : ‖Complex.I - (1 : ℂ)‖^2 = 2 := by rw [← Complex.normSq_eq_norm_sq, h2]
+        rw [← Real.sqrt_sq (norm_nonneg _), h3]
+      rw [hnorm, Real.sq_sqrt (by linarith : (0:ℝ) ≤ 2)] at h
+      exact h
+    -- Key lemmas from parallelogram
+    have hkey1 : μ (Complex.I • a + y) + μ (a + Complex.I • y) = μ (a + y) + μ (a - y) := by
+      have hpara := spectralMeasureDiagonal_parallelogram U hU (Complex.I • a + y) (a + Complex.I • y) E hE
+      have heq1 : Complex.I • a + y + (a + Complex.I • y) = (1 + Complex.I) • (a + y) := by
+        rw [add_smul, one_smul, smul_add]; abel
+      have heq2 : Complex.I • a + y - (a + Complex.I • y) = (Complex.I - 1) • (a - y) := by
+        rw [sub_smul, one_smul, smul_sub]; abel
+      change μ (Complex.I • a + y + (a + Complex.I • y)) + μ (Complex.I • a + y - (a + Complex.I • y)) =
+          2 * μ (Complex.I • a + y) + 2 * μ (a + Complex.I • y) at hpara
+      rw [heq1, heq2, hscale_1pI, hscale_Im1] at hpara
+      linarith
+    have hkey2 : μ (Complex.I • a - y) + μ (a - Complex.I • y) = μ (a + y) + μ (a - y) := by
+      have hpara := spectralMeasureDiagonal_parallelogram U hU (Complex.I • a - y) (a - Complex.I • y) E hE
+      have heq1 : Complex.I • a - y + (a - Complex.I • y) = (1 + Complex.I) • (a - y) := by
+        rw [add_smul, one_smul, smul_sub]; abel
+      have heq2 : Complex.I • a - y - (a - Complex.I • y) = (Complex.I - 1) • (a + y) := by
+        rw [sub_smul, one_smul, smul_add]; abel
+      change μ (Complex.I • a - y + (a - Complex.I • y)) + μ (Complex.I • a - y - (a - Complex.I • y)) =
+          2 * μ (Complex.I • a - y) + 2 * μ (a - Complex.I • y) at hpara
+      rw [heq1, heq2, hscale_1pI, hscale_Im1] at hpara
+      linarith
+    -- From hkey1 and hkey2: D(I•a, y) = -D(a, I•y)
+    have h1 := hkey1
+    have h2 := hkey2
+    -- h1: μ(I•a+y) + μ(a+I•y) = μ(a+y) + μ(a-y)
+    -- h2: μ(I•a-y) + μ(a-I•y) = μ(a+y) + μ(a-y)
+    -- Subtracting: (μ(I•a+y) - μ(I•a-y)) = -(μ(a+I•y) - μ(a-I•y))
+    simp only [D]
+    linarith
+  -- Now prove the main theorem using direct equality
+  -- B(x, y) = (1/4)[μ(x+y) - μ(x-y) - I*μ(x+I·y) + I*μ(x-I·y)]
+  -- star(B(y, x)) = (1/4)[μ(y+x) - μ(y-x) + I*μ(y+I·x) - I*μ(y-I·x)] (conjugating flips I to -I)
+  -- We show these are equal using hD_rel and commutativity/neg-symmetry of μ
+  simp only [spectralMeasurePolarized]
+  -- Use the key D relation
+  have hD := hD_rel x
+  simp only [D] at hD
+  -- Key equalities: y + x = x + y, y - x = -(x - y), etc.
+  have hyx : y + x = x + y := add_comm y x
+  have hymx : y - x = -(x - y) := (neg_sub x y).symm
+  have hyIx : y + Complex.I • x = Complex.I • x + y := add_comm _ _
+  have hymIx : y - Complex.I • x = -(Complex.I • x - y) := (neg_sub (Complex.I • x) y).symm
+  -- Equalities for spectralMeasureDiagonal
+  have hμyx : (spectralMeasureDiagonal U hU (y + x) E).toReal = μ (x + y) := by
+    simp only [μ, hyx]
+  have hμymx : (spectralMeasureDiagonal U hU (y - x) E).toReal = μ (x - y) := by
+    simp only [μ, hymx, hμ_neg]
+  have hμyIx : (spectralMeasureDiagonal U hU (y + Complex.I • x) E).toReal = μ (Complex.I • x + y) := by
+    simp only [μ, hyIx]
+  have hμymIx : (spectralMeasureDiagonal U hU (y - Complex.I • x) E).toReal = μ (Complex.I • x - y) := by
+    simp only [μ, hymIx, hμ_neg]
+  -- Key relation: μ(I·x+y) - μ(I·x-y) = μ(x-I·y) - μ(x+I·y)
+  have hkey : μ (Complex.I • x + y) - μ (Complex.I • x - y) =
+      μ (x - Complex.I • y) - μ (x + Complex.I • y) := by
+    simp only [μ] at hD
+    linarith
+  -- Work with explicit form (already unfolded above)
+  -- star(1/4 * expr) = star(1/4) * star(expr) = (1/4) * star(expr)
+  rw [star_mul']
+  -- star(1/4) = 1/4 since 1/4 is real
+  have hstar_coeff : star (1 / 4 : ℂ) = 1 / 4 := by
+    have h1 : (1 : ℂ) / 4 = (1/4 : ℝ) := by norm_num
+    rw [h1, RCLike.star_def, Complex.conj_ofReal]
+  rw [hstar_coeff]
+  -- Suffices to show LHS_expr = star(RHS_expr)
+  congr 1
+  -- Compute star of the RHS expression using conv to work inside star
+  -- RHS = μ(y+x) - μ(y-x) - I*μ(y+I·x) + I*μ(y-I·x)
+  -- star(RHS) = μ(y+x) - μ(y-x) + I*μ(y+I·x) - I*μ(y-I·x)  (since μ values are real, star(I)=-I)
+  conv_rhs => rw [star_add, star_sub, star_sub, star_mul, star_mul]
+  simp only [Complex.star_def, Complex.conj_I, Complex.conj_ofReal]
+  -- Now convert using the equalities
+  rw [hμyx, hμymx, hμyIx, hμymIx]
+  -- LHS = μ(x+y) - μ(x-y) - I*μ(x+I·y) + I*μ(x-I·y)
+  -- RHS (after star) = μ(x+y) - μ(x-y) + I*μ(I·x+y) - I*μ(I·x-y)
+  -- Need: -I*μ(x+I·y) + I*μ(x-I·y) = I*μ(I·x+y) - I*μ(I·x-y)
+  simp only [μ]
+  -- Apply hkey: μ(x-I·y) - μ(x+I·y) = μ(I·x+y) - μ(I·x-y)
+  -- Need: LHS - RHS = 0, i.e.,
+  -- -I*μ(x+I·y) + I*μ(x-I·y) - I*μ(I·x+y) + I*μ(I·x-y) = 0
+  -- = I * (μ(x-I·y) - μ(x+I·y) - μ(I·x+y) + μ(I·x-y)) = I * 0 = 0
+  have hkey' : (↑(spectralMeasureDiagonal U hU (x - Complex.I • y) E).toReal : ℂ) -
+      ↑(spectralMeasureDiagonal U hU (x + Complex.I • y) E).toReal =
+      (↑(spectralMeasureDiagonal U hU (Complex.I • x + y) E).toReal : ℂ) -
+      ↑(spectralMeasureDiagonal U hU (Complex.I • x - y) E).toReal := by
+    -- hkey: μ (I • x + y) - μ (I • x - y) = μ (x - I • y) - μ (x + I • y)
+    simp only [μ] at hkey
+    -- Convert to ℂ
+    have h : (↑((spectralMeasureDiagonal U hU (Complex.I • x + y) E).toReal -
+        (spectralMeasureDiagonal U hU (Complex.I • x - y) E).toReal) : ℂ) =
+        ↑((spectralMeasureDiagonal U hU (x - Complex.I • y) E).toReal -
+        (spectralMeasureDiagonal U hU (x + Complex.I • y) E).toReal) := by exact congrArg _ hkey
+    push_cast at h
+    -- h says: (μ(I•x+y) - μ(I•x-y)) = (μ(x-I•y) - μ(x+I•y))
+    -- We need: (μ(x-I•y) - μ(x+I•y)) = (μ(I•x+y) - μ(I•x-y))
+    exact h.symm
+  -- Use hkey' to conclude
+  calc ↑(spectralMeasureDiagonal U hU (x + y) E).toReal -
+      ↑(spectralMeasureDiagonal U hU (x - y) E).toReal -
+      Complex.I * ↑(spectralMeasureDiagonal U hU (x + Complex.I • y) E).toReal +
+      Complex.I * ↑(spectralMeasureDiagonal U hU (x - Complex.I • y) E).toReal
+      = ↑(spectralMeasureDiagonal U hU (x + y) E).toReal -
+        ↑(spectralMeasureDiagonal U hU (x - y) E).toReal +
+        Complex.I * (↑(spectralMeasureDiagonal U hU (x - Complex.I • y) E).toReal -
+          ↑(spectralMeasureDiagonal U hU (x + Complex.I • y) E).toReal) := by ring
+    _ = ↑(spectralMeasureDiagonal U hU (x + y) E).toReal -
+        ↑(spectralMeasureDiagonal U hU (x - y) E).toReal +
+        Complex.I * (↑(spectralMeasureDiagonal U hU (Complex.I • x + y) E).toReal -
+          ↑(spectralMeasureDiagonal U hU (Complex.I • x - y) E).toReal) := by rw [hkey']
+    _ = _ := by ring
+
 /-- The spectral projection for a Borel set E ⊆ Circle.
 
     Constructed using sesquilinearToOperator from SpectralIntegral.lean:
@@ -1896,7 +2066,39 @@ theorem spectralProjection_selfAdjoint (U : H →L[ℂ] H) (hU : U ∈ unitary (
     (E : Set Circle) (hE : MeasurableSet E) :
     (spectralProjectionOfUnitary U hU E hE).adjoint =
     spectralProjectionOfUnitary U hU E hE := by
-  sorry
+  -- P(E) is self-adjoint because B(x, y) = conj(B(y, x)) (Hermitian symmetry)
+  -- This means ⟨x, P(E) y⟩ = B(x, y) = conj(B(y, x)) = conj(⟨y, P(E) x⟩) = ⟨P(E) x, y⟩
+  -- Hence P(E)* = P(E)
+  set P := spectralProjectionOfUnitary U hU E hE with hP_def
+  -- We need to show P.adjoint = P
+  -- First, use ext to reduce to showing P.adjoint y = P y for all y
+  ext y
+  -- Then use ext_inner_left to reduce to showing ⟨x, P.adjoint y⟩ = ⟨x, P y⟩ for all x
+  apply ext_inner_left ℂ
+  intro x
+  -- Goal: ⟨x, P.adjoint y⟩ = ⟨x, P y⟩
+  -- LHS: ⟨x, P.adjoint y⟩ = ⟨P x, y⟩ (by adjoint_inner_right)
+  rw [ContinuousLinearMap.adjoint_inner_right]
+  -- Now goal is: ⟨P x, y⟩ = ⟨x, P y⟩
+  -- From construction: ⟨x, P y⟩ = B(x, y) = spectralMeasurePolarized x y
+  -- And: ⟨P x, y⟩ = conj(⟨y, P x⟩) = conj(B(y, x)) = B(x, y) by conj_symm
+  have hinner_left : @inner ℂ H _ x (P y) = spectralMeasurePolarized U hU x y E hE := by
+    rw [hP_def]
+    unfold spectralProjectionOfUnitary
+    rw [← sesquilinearToOperator_inner]
+  have hinner_right : @inner ℂ H _ (P x) y = spectralMeasurePolarized U hU x y E hE := by
+    -- ⟨P x, y⟩ = conj(⟨y, P x⟩) = conj(B(y, x)) = B(x, y)
+    have h2 : @inner ℂ H _ y (P x) = spectralMeasurePolarized U hU y x E hE := by
+      rw [hP_def]
+      unfold spectralProjectionOfUnitary
+      rw [← sesquilinearToOperator_inner]
+    -- Use inner_conj_symm: starRingEnd ℂ (inner ℂ y (P x)) = inner ℂ (P x) y
+    -- star (B(y,x)) = B(x,y)
+    rw [(inner_conj_symm (P x) y).symm, h2]
+    -- Goal: starRingEnd ℂ (spectralMeasurePolarized U hU y x E hE) = spectralMeasurePolarized U hU x y E hE
+    -- starRingEnd ℂ = star for ℂ (definitionally)
+    exact (spectralMeasurePolarized_conj_symm U hU E hE x y).symm
+  rw [hinner_right, hinner_left]
 
 /-! ### The Spectral Theorem -/
 
