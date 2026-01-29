@@ -4,6 +4,7 @@ Released under Apache 2.0 license.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralMeasurePolarizedViaRMK
+import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralProjectionLemmas
 import Mathlib.Topology.MetricSpace.ThickenedIndicator
 import Mathlib.MeasureTheory.Measure.HasOuterApproxClosed
 import Mathlib.Analysis.CStarAlgebra.ContinuousFunctionalCalculus.Order
@@ -1641,6 +1642,1042 @@ theorem spectralProjection_idempotent (U : H →L[ℂ] H) (hU : U ∈ unitary (H
   -- Apply the product formula: B(Px, Py, Circle) = B(x, y, E)
   exact spectralProjection_polarized_product U hU E hE x y
 
+/-- Key identity for spectral projection multiplicativity:
+    ⟨P(E) x, P(F) y⟩ = ⟨P(E∩F) x, P(E∩F) y⟩ for all x, y.
+
+    This is the crucial lemma showing that the "mixed" inner product of projections
+    onto different spectral sets equals the inner product of projections onto their intersection.
+
+    The proof uses decomposition relative to range(P(E∩F)):
+    - PE, PF fix range(PEF)
+    - Vectors orthogonal to range(PEF) contribute zero to the mixed inner product -/
+theorem spectralProjection_inner_product_intersection (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E F : Set Circle) (hE : MeasurableSet E) (hF : MeasurableSet F) (x y : H) :
+    let PE := spectralProjectionOfUnitary U hU E hE
+    let PF := spectralProjectionOfUnitary U hU F hF
+    let PEF := spectralProjectionOfUnitary U hU (E ∩ F) (hE.inter hF)
+    @inner ℂ H _ (PE x) (PF y) = @inner ℂ H _ (PEF x) (PEF y) := by
+  intro PE PF PEF
+  have hPE_adj := spectralProjection_selfAdjoint U hU E hE
+  have hPF_adj := spectralProjection_selfAdjoint U hU F hF
+  have hPEF_adj := spectralProjection_selfAdjoint U hU (E ∩ F) (hE.inter hF)
+  have hPEF_idem := spectralProjection_idempotent U hU (E ∩ F) (hE.inter hF)
+  have hPEF_le_PE := spectralProjection_mono U hU (E ∩ F) E (hE.inter hF) hE Set.inter_subset_left
+  have hPEF_le_PF := spectralProjection_mono U hU (E ∩ F) F (hE.inter hF) hF Set.inter_subset_right
+  -- PE and PF fix range(PEF)
+  have hPE_fixes := ContinuousLinearMap.fixes_range_of_le_of_pos_le_one PE PEF
+    (spectralProjection_nonneg U hU E hE) (spectralProjection_le_one U hU E hE)
+    hPE_adj hPEF_idem hPEF_adj hPEF_le_PE
+  have hPF_fixes := ContinuousLinearMap.fixes_range_of_le_of_pos_le_one PF PEF
+    (spectralProjection_nonneg U hU F hF) (spectralProjection_le_one U hU F hF)
+    hPF_adj hPEF_idem hPEF_adj hPEF_le_PF
+  have hPE_PEF : ∀ z, PE (PEF z) = PEF z := fun z => hPE_fixes (PEF z) (by
+    calc PEF (PEF z) = (PEF ∘L PEF) z := rfl
+      _ = PEF z := by rw [hPEF_idem])
+  have hPF_PEF : ∀ z, PF (PEF z) = PEF z := fun z => hPF_fixes (PEF z) (by
+    calc PEF (PEF z) = (PEF ∘L PEF) z := rfl
+      _ = PEF z := by rw [hPEF_idem])
+  -- The key is showing ⟨PE u, PF v⟩ = ⟨PEF u, PEF v⟩.
+  -- Using self-adjointness: ⟨PE u, PF v⟩ = ⟨u, PE (PF v)⟩
+  -- We'll show PE ∘ PF = PEF on all vectors via the inner product characterization.
+  -- For now, we use the decomposition approach with a sorry for the key term.
+  -- Decompose x = PEF x + (x - PEF x) and y = PEF y + (y - PEF y)
+  have hx_decomp : x = PEF x + (x - PEF x) := (add_sub_cancel (PEF x) x).symm
+  have hy_decomp : y = PEF y + (y - PEF y) := (add_sub_cancel (PEF y) y).symm
+  have hPEF_x2 : PEF (x - PEF x) = 0 := by
+    rw [map_sub]
+    calc PEF x - PEF (PEF x) = PEF x - (PEF ∘L PEF) x := rfl
+      _ = PEF x - PEF x := by rw [hPEF_idem]
+      _ = 0 := sub_self _
+  have hPEF_y2 : PEF (y - PEF y) = 0 := by
+    rw [map_sub]
+    calc PEF y - PEF (PEF y) = PEF y - (PEF ∘L PEF) y := rfl
+      _ = PEF y - PEF y := by rw [hPEF_idem]
+      _ = 0 := sub_self _
+  -- Compute ⟨PE x, PF y⟩ using decomposition
+  calc @inner ℂ H _ (PE x) (PF y)
+      = @inner ℂ H _ (PE (PEF x + (x - PEF x))) (PF (PEF y + (y - PEF y))) := by
+          conv_lhs => rw [hx_decomp, hy_decomp]
+    _ = @inner ℂ H _ (PE (PEF x) + PE (x - PEF x)) (PF (PEF y) + PF (y - PEF y)) := by
+          simp only [map_add]
+    _ = @inner ℂ H _ (PEF x + PE (x - PEF x)) (PEF y + PF (y - PEF y)) := by
+          rw [hPE_PEF, hPF_PEF]
+    _ = @inner ℂ H _ (PEF x) (PEF y) + @inner ℂ H _ (PEF x) (PF (y - PEF y)) +
+        @inner ℂ H _ (PE (x - PEF x)) (PEF y) + @inner ℂ H _ (PE (x - PEF x)) (PF (y - PEF y)) := by
+          simp only [inner_add_left, inner_add_right]
+          ring
+    _ = @inner ℂ H _ (PEF x) (PEF y) + 0 + 0 + 0 := by
+          -- Term 2: ⟨PEF x, PF (y - PEF y)⟩ = ⟨PF (PEF x), y - PEF y⟩ = ⟨PEF x, y - PEF y⟩
+          --       = ⟨x, PEF (y - PEF y)⟩ = ⟨x, 0⟩ = 0
+          have h2 : @inner ℂ H _ (PEF x) (PF (y - PEF y)) = 0 := by
+            -- ⟨PEF x, PF (y - PEF y)⟩ = ⟨PF (PEF x), y - PEF y⟩  [PF self-adjoint]
+            --                        = ⟨PEF x, y - PEF y⟩        [PF fixes range(PEF)]
+            --                        = ⟨x, PEF (y - PEF y)⟩      [PEF self-adjoint]
+            --                        = ⟨x, 0⟩ = 0                [PEF (y - PEF y) = 0]
+            have step1 : @inner ℂ H _ (PEF x) (PF (y - PEF y)) =
+                @inner ℂ H _ (PF (PEF x)) (y - PEF y) := by
+              rw [← ContinuousLinearMap.adjoint_inner_right PF, hPF_adj]
+            have step2 : @inner ℂ H _ (PF (PEF x)) (y - PEF y) = @inner ℂ H _ (PEF x) (y - PEF y) := by
+              rw [hPF_PEF x]
+            have step3 : @inner ℂ H _ (PEF x) (y - PEF y) = @inner ℂ H _ x (PEF (y - PEF y)) := by
+              rw [← ContinuousLinearMap.adjoint_inner_right PEF, hPEF_adj]
+            rw [step1, step2, step3, hPEF_y2, inner_zero_right]
+          -- Term 3: ⟨PE (x - PEF x), PEF y⟩ = ⟨x - PEF x, PE (PEF y)⟩ = ⟨x - PEF x, PEF y⟩
+          --       = ⟨PEF (x - PEF x), y⟩ = ⟨0, y⟩ = 0
+          have h3 : @inner ℂ H _ (PE (x - PEF x)) (PEF y) = 0 := by
+            -- ⟨PE (x - PEF x), PEF y⟩ = ⟨x - PEF x, PE (PEF y)⟩  [PE self-adjoint]
+            --                        = ⟨x - PEF x, PEF y⟩        [PE fixes range(PEF)]
+            --                        = ⟨PEF (x - PEF x), y⟩      [PEF self-adjoint]
+            --                        = ⟨0, y⟩ = 0                [PEF (x - PEF x) = 0]
+            have step1 : @inner ℂ H _ (PE (x - PEF x)) (PEF y) =
+                @inner ℂ H _ (x - PEF x) (PE (PEF y)) := by
+              rw [← ContinuousLinearMap.adjoint_inner_right PE, hPE_adj]
+            have step2 : @inner ℂ H _ (x - PEF x) (PE (PEF y)) = @inner ℂ H _ (x - PEF x) (PEF y) := by
+              rw [hPE_PEF y]
+            have step3 : @inner ℂ H _ (x - PEF x) (PEF y) = @inner ℂ H _ (PEF (x - PEF x)) y := by
+              rw [← ContinuousLinearMap.adjoint_inner_right PEF, hPEF_adj]
+            rw [step1, step2, step3, hPEF_x2, inner_zero_left]
+          -- Term 4: ⟨PE (x - PEF x), PF (y - PEF y)⟩ = 0 (key spectral identity)
+          have h4 : @inner ℂ H _ (PE (x - PEF x)) (PF (y - PEF y)) = 0 := by
+            -- **Proof Strategy:**
+            -- We show ⟨PE u, PF v⟩ = 0 for u, v with PEF u = 0, PEF v = 0.
+            -- The key is establishing: ⟨PE a, PF b⟩ = spectralMeasurePolarized a b (E∩F) for all a, b.
+            -- This identity, combined with spectralMeasurePolarized u v (E∩F) = ⟨u, PEF v⟩ = 0,
+            -- gives the result.
+            --
+            -- The identity follows from the "mixed product formula" for spectral measures,
+            -- which can be proven using CFC approximation and multiplicativity.
+            -- For now, we use the direct calculation approach via the decomposition structure.
+            set u := x - PEF x with hu_def
+            set v := y - PEF y with hv_def
+            -- Key observation: PEF ∘ PE = PEF follows from self-adjointness and PE ∘ PEF = PEF.
+            -- This is because (PE ∘ PEF)† = PEF† ∘ PE† = PEF ∘ PE, and PE ∘ PEF = PEF.
+            have hPEF_comp_PE : PEF ∘L PE = PEF := by
+              have h := ContinuousLinearMap.adjoint_comp PE PEF
+              have hPE_comp_PEF : PE ∘L PEF = PEF := by
+                ext z
+                exact hPE_PEF z
+              calc PEF ∘L PE
+                  = (PEF ∘L PE).adjoint.adjoint := by rw [ContinuousLinearMap.adjoint_adjoint]
+                _ = (PE.adjoint ∘L PEF.adjoint).adjoint := by rw [ContinuousLinearMap.adjoint_comp]
+                _ = (PE ∘L PEF).adjoint := by rw [hPE_adj, hPEF_adj]
+                _ = PEF.adjoint := by rw [hPE_comp_PEF]
+                _ = PEF := hPEF_adj
+            -- Similarly: PEF ∘ PF = PEF
+            have hPEF_comp_PF : PEF ∘L PF = PEF := by
+              have hPF_comp_PEF : PF ∘L PEF = PEF := by
+                ext z
+                exact hPF_PEF z
+              calc PEF ∘L PF
+                  = (PEF ∘L PF).adjoint.adjoint := by rw [ContinuousLinearMap.adjoint_adjoint]
+                _ = (PF.adjoint ∘L PEF.adjoint).adjoint := by rw [ContinuousLinearMap.adjoint_comp]
+                _ = (PF ∘L PEF).adjoint := by rw [hPF_adj, hPEF_adj]
+                _ = PEF.adjoint := by rw [hPF_comp_PEF]
+                _ = PEF := hPEF_adj
+            -- From PEF ∘ PE = PEF: for any w, PEF (PE w) = PEF w.
+            -- In particular, PEF (PE u) = PEF u = 0.
+            have hPEF_PE_u : PEF (PE u) = 0 := by
+              calc PEF (PE u) = (PEF ∘L PE) u := rfl
+                _ = PEF u := by rw [hPEF_comp_PE]
+                _ = 0 := hPEF_x2
+            -- Similarly, PEF (PF v) = 0.
+            have hPEF_PF_v : PEF (PF v) = 0 := by
+              calc PEF (PF v) = (PEF ∘L PF) v := rfl
+                _ = PEF v := by rw [hPEF_comp_PF]
+                _ = 0 := hPEF_y2
+            -- Now we use the product formula for closed set approximation.
+            -- The spectral measure Cauchy-Schwarz gives:
+            -- |spectralMeasurePolarized (PE u) (PF v) S|² ≤ μ_{PE u}(S) · μ_{PF v}(S)
+            -- Taking S = E ∩ F: since μ_{PE u}(E∩F) = ‖PEF (PE u)‖² = 0 and
+            --                         μ_{PF v}(E∩F) = ‖PEF (PF v)‖² = 0,
+            -- we get spectralMeasurePolarized (PE u) (PF v) (E∩F) = 0.
+            -- And ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) Circle.
+            --
+            -- The connection between Circle and E∩F uses the product formula:
+            -- ⟨a, PE b⟩ = spectralMeasurePolarized a b E
+            -- So ⟨PE u, PF v⟩ = ⟨u, PE (PF v)⟩ by self-adjointness.
+            --
+            -- Alternative direct approach: use spectral supports.
+            -- PE u has spectral support in E, but PEF (PE u) = 0 means μ_{PE u}(E∩F) = 0.
+            -- So the spectral support of PE u is in E \ (E∩F) = E ∩ Fᶜ.
+            -- Similarly, PF v has spectral support in F ∩ Eᶜ.
+            -- These are disjoint, so ⟨PE u, PF v⟩ = 0.
+            --
+            -- To make this rigorous, we use the spectral measure Cauchy-Schwarz on Circle:
+            -- ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) Circle
+            -- = spectralMeasurePolarized (PE u) (PF v) ((E∩Fᶜ) ∪ (E∩F) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ))
+            -- The only potentially non-zero contribution is from the overlap of supports.
+            -- PE u supported on E∩Fᶜ, PF v supported on Eᶜ∩F, these are disjoint.
+            --
+            -- For rigorous proof, we use the identity:
+            -- ⟨w₁, w₂⟩ = spectralMeasurePolarized w₁ w₂ Circle
+            -- And the bound: when supports are disjoint, the polarized measure is zero.
+            have hinner_Circle : @inner ℂ H _ (PE u) (PF v) =
+                spectralMeasurePolarized U hU (PE u) (PF v) Set.univ MeasurableSet.univ := by
+              exact (spectralMeasurePolarized_univ U hU (PE u) (PF v)).symm
+            rw [hinner_Circle]
+            -- Now decompose Circle = (E∩F) ∪ (E∩Fᶜ) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ) and use additivity.
+            -- Actually, we can directly use that for disjoint spectral supports, the
+            -- polarized measure is zero.
+            --
+            -- Key identity: spectralMeasurePolarized (PE u) (PF v) S
+            -- involves taking the polarized measure of vectors with specific spectral supports.
+            -- When PE u has zero measure on E∩F (since PEF(PE u) = 0) and
+            -- PF v has zero measure on E∩F (since PEF(PF v) = 0), we can use
+            -- the seminorm property of the spectral measure.
+            --
+            -- The cleanest approach is to note that:
+            -- ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) Circle
+            --              = ∑ over decomposition of Circle
+            -- But this gets complicated. Let's use a more direct algebraic approach.
+            --
+            -- Direct proof using norms:
+            -- |⟨PE u, PF v⟩|² ≤ ‖PE u‖² · ‖PF v‖² (Cauchy-Schwarz)
+            -- But this doesn't give us zero.
+            --
+            -- Use the spectral subspace orthogonality:
+            -- PE u is in range(PE) ∩ ker(PEF).
+            -- PF v is in range(PF) ∩ ker(PEF).
+            -- We need to show range(PE) ∩ ker(PEF) ⊥ range(PF) ∩ ker(PEF).
+            --
+            -- This follows from: range(PE - PEF) ⊥ range(PF - PEF) because
+            -- the spectral supports E \ (E∩F) and F \ (E∩F) are disjoint.
+            -- **Proof via spectral support disjointness:**
+            -- PE u has spectral support in E: spectralMeasureDiagonal (PE u) Eᶜ = 0.
+            -- PF v has spectral support in F: spectralMeasureDiagonal (PF v) Fᶜ = 0.
+            --
+            -- Key observation: spectralMeasureDiagonal (PE u) E = ‖PE u‖² (by idempotence)
+            -- and spectralMeasureDiagonal (PE u) Circle = ‖PE u‖², so by additivity:
+            -- spectralMeasureDiagonal (PE u) Eᶜ = 0. Similarly for PF v.
+            --
+            -- Then decompose Circle = (E∩F) ∪ (E∩Fᶜ) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ).
+            -- By Cauchy-Schwarz on each piece:
+            -- - (E∩F): μ_{PE u}(E∩F) = 0 by hPEF_PE_u
+            -- - (E∩Fᶜ): μ_{PF v}(E∩Fᶜ) ≤ μ_{PF v}(Fᶜ) = 0
+            -- - (Eᶜ∩F): μ_{PE u}(Eᶜ∩F) ≤ μ_{PE u}(Eᶜ) = 0
+            -- - (Eᶜ∩Fᶜ): both factors are 0
+            -- So the polarized measure on each piece is 0, hence the total is 0.
+            --
+            -- Key lemmas needed (some may require additional infrastructure):
+            have hμ_PE_u_E : (spectralMeasureDiagonal U hU (PE u) E).toReal = ‖PE u‖^2 := by
+              -- spectralMeasureDiagonal (PE u) E = ‖PE (PE u)‖² = ‖PE u‖²
+              have h := spectralProjection_norm_sq U hU E hE (PE u)
+              simp only at h
+              have hPE_idem : PE (PE u) = PE u := by
+                have hidem := spectralProjection_idempotent U hU E hE
+                calc PE (PE u) = (PE ∘L PE) u := rfl
+                  _ = PE u := by rw [hidem]
+              rw [hPE_idem] at h
+              exact h.symm
+            have hμ_PE_u_Circle : (spectralMeasureDiagonal U hU (PE u) Set.univ).toReal = ‖PE u‖^2 :=
+              spectralMeasureDiagonal_univ U hU (PE u)
+            have hμ_PF_v_F : (spectralMeasureDiagonal U hU (PF v) F).toReal = ‖PF v‖^2 := by
+              have h := spectralProjection_norm_sq U hU F hF (PF v)
+              simp only at h
+              have hPF_idem : PF (PF v) = PF v := by
+                have hidem := spectralProjection_idempotent U hU F hF
+                calc PF (PF v) = (PF ∘L PF) v := rfl
+                  _ = PF v := by rw [hidem]
+              rw [hPF_idem] at h
+              exact h.symm
+            have hμ_PF_v_Circle : (spectralMeasureDiagonal U hU (PF v) Set.univ).toReal = ‖PF v‖^2 :=
+              spectralMeasureDiagonal_univ U hU (PF v)
+            -- **Step 1: Show μ_{PE u}(Eᶜ) = 0**
+            -- From hμ_PE_u_E and hμ_PE_u_Circle: (μ E).toReal = (μ univ).toReal = ‖PE u‖²
+            -- By measure additivity: μ E + μ Eᶜ = μ univ, so μ Eᶜ = 0.
+            let μ_PE_u := spectralMeasureDiagonal U hU (PE u)
+            have hμ_PE_u_Ec : μ_PE_u Eᶜ = 0 := by
+              -- Use measure_add_measure_compl: μ E + μ Eᶜ = μ univ
+              have hadd := MeasureTheory.measure_add_measure_compl (μ := μ_PE_u) hE
+              -- From hμ_PE_u_E and hμ_PE_u_Circle, both toReal values are equal
+              -- So μ E = μ univ (as ENNReal), hence μ Eᶜ = 0
+              have hE_eq_univ : μ_PE_u E = μ_PE_u Set.univ := by
+                have hfinite_E : μ_PE_u E ≠ ⊤ := by
+                  have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PE u)
+                  exact MeasureTheory.measure_ne_top μ_PE_u E
+                have hfinite_univ : μ_PE_u Set.univ ≠ ⊤ := by
+                  have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PE u)
+                  exact MeasureTheory.measure_ne_top μ_PE_u Set.univ
+                apply (ENNReal.toReal_eq_toReal_iff' hfinite_E hfinite_univ).mp
+                rw [hμ_PE_u_E, hμ_PE_u_Circle]
+              -- From hadd: μ E + μ Eᶜ = μ univ, and μ E = μ univ
+              rw [hE_eq_univ] at hadd
+              -- hadd: μ univ + μ Eᶜ = μ univ
+              have h : μ_PE_u Set.univ + μ_PE_u Eᶜ = μ_PE_u Set.univ := hadd
+              have hfinite_univ : μ_PE_u Set.univ ≠ ⊤ := by
+                have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PE u)
+                exact MeasureTheory.measure_ne_top μ_PE_u Set.univ
+              -- From a + b = a with a ≠ ⊤, get b = 0 using subtraction
+              calc μ_PE_u Eᶜ = μ_PE_u Set.univ + μ_PE_u Eᶜ - μ_PE_u Set.univ :=
+                  (ENNReal.add_sub_cancel_left hfinite_univ).symm
+                _ = μ_PE_u Set.univ - μ_PE_u Set.univ := by rw [h]
+                _ = 0 := tsub_self _
+            -- **Step 2: Show μ_{PF v}(Fᶜ) = 0**
+            let μ_PF_v := spectralMeasureDiagonal U hU (PF v)
+            have hμ_PF_v_Fc : μ_PF_v Fᶜ = 0 := by
+              have hadd := MeasureTheory.measure_add_measure_compl (μ := μ_PF_v) hF
+              have hF_eq_univ : μ_PF_v F = μ_PF_v Set.univ := by
+                have hfinite_F : μ_PF_v F ≠ ⊤ := by
+                  have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PF v)
+                  exact MeasureTheory.measure_ne_top μ_PF_v F
+                have hfinite_univ : μ_PF_v Set.univ ≠ ⊤ := by
+                  have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PF v)
+                  exact MeasureTheory.measure_ne_top μ_PF_v Set.univ
+                apply (ENNReal.toReal_eq_toReal_iff' hfinite_F hfinite_univ).mp
+                rw [hμ_PF_v_F, hμ_PF_v_Circle]
+              rw [hF_eq_univ] at hadd
+              have h : μ_PF_v Set.univ + μ_PF_v Fᶜ = μ_PF_v Set.univ := hadd
+              have hfinite_univ : μ_PF_v Set.univ ≠ ⊤ := by
+                have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PF v)
+                exact MeasureTheory.measure_ne_top μ_PF_v Set.univ
+              -- From a + b = a with a ≠ ⊤, get b = 0 using subtraction
+              calc μ_PF_v Fᶜ = μ_PF_v Set.univ + μ_PF_v Fᶜ - μ_PF_v Set.univ :=
+                  (ENNReal.add_sub_cancel_left hfinite_univ).symm
+                _ = μ_PF_v Set.univ - μ_PF_v Set.univ := by rw [h]
+                _ = 0 := tsub_self _
+            -- **Step 3: Use Cauchy-Schwarz bound**
+            -- Key identity: spectralMeasurePolarized a b S = ⟨a, P_S b⟩ = ⟨P_S a, P_S b⟩
+            -- where the last equality uses P_S self-adjoint and idempotent.
+            -- By Cauchy-Schwarz: |⟨P_S a, P_S b⟩|² ≤ ‖P_S a‖² · ‖P_S b‖²
+            -- = (μ_a(S).toReal) · (μ_b(S).toReal)
+            --
+            -- For the inner product on univ (Circle), we use the spectral support:
+            -- The key observation is that we have disjoint spectral supports:
+            -- - PE u has zero measure on E∩F (from hPEF_PE_u: PEF(PE u) = 0 means ‖PEF(PE u)‖² = 0)
+            -- - PF v has zero measure on E∩F (from hPEF_PF_v: PEF(PF v) = 0)
+            -- - PE u has zero measure on Eᶜ (from hμ_PE_u_Ec)
+            -- - PF v has zero measure on Fᶜ (from hμ_PF_v_Fc)
+            --
+            -- We use the direct calculation: ⟨PE u, PF v⟩ = ⟨u, PE(PF v)⟩
+            -- and apply the Cauchy-Schwarz bound on the E∩F component.
+            --
+            -- Actually, the cleanest proof uses that PEF(PE u) = 0 and PEF(PF v) = 0,
+            -- combined with the sesquilinear form structure.
+            -- By symmetry: ⟨PE u, PF v⟩ = ⟨PF(PE u), v⟩ (since PF self-adjoint)
+            -- We need to show this is zero.
+            --
+            -- Key insight: since PEF(PE u) = 0 and PEF(PF v) = 0, both PE u and PF v
+            -- are orthogonal to range(PEF). Moreover, the spectral support structure implies
+            -- that their inner product is zero.
+            --
+            -- Use the following approach:
+            -- |⟨PE u, PF v⟩|² ≤ ‖PE u‖² · ‖PF v‖² (Cauchy-Schwarz)
+            -- But this doesn't give zero directly.
+            --
+            -- The key is the spectral projection structure:
+            -- ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) univ
+            -- Decompose univ = (E∩F) ∪ (E∩Fᶜ) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ)
+            -- On each piece, apply Cauchy-Schwarz with the bound involving μ_{PE u}(S) · μ_{PF v}(S).
+            -- On (E∩F): μ_{PE u}(E∩F) = ‖PEF(PE u)‖² = 0
+            -- On (E∩Fᶜ): μ_{PF v}(E∩Fᶜ) ≤ μ_{PF v}(Fᶜ) = 0
+            -- On (Eᶜ∩F): μ_{PE u}(Eᶜ∩F) ≤ μ_{PE u}(Eᶜ) = 0
+            -- On (Eᶜ∩Fᶜ): μ_{PE u}(Eᶜ∩Fᶜ) ≤ μ_{PE u}(Eᶜ) = 0
+            --
+            -- Since all pieces contribute 0, the total is 0.
+            -- First, show μ_{PE u}(E∩F) = 0
+            have hμ_PE_u_EF : μ_PE_u (E ∩ F) = 0 := by
+              -- μ_{PE u}(E∩F) = ‖PEF(PE u)‖² in toReal, but ‖PEF(PE u)‖² = 0 from hPEF_PE_u
+              have h := spectralProjection_norm_sq U hU (E ∩ F) (hE.inter hF) (PE u)
+              simp only at h
+              rw [hPEF_PE_u, norm_zero, sq, mul_zero] at h
+              -- h : (μ_PE_u (E ∩ F)).toReal = 0
+              have hfinite : μ_PE_u (E ∩ F) ≠ ⊤ := by
+                have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PE u)
+                exact MeasureTheory.measure_ne_top μ_PE_u (E ∩ F)
+              exact ((ENNReal.toReal_eq_zero_iff _).mp h.symm).resolve_right hfinite
+            -- Now use monotonicity to show μ_{PE u}(Eᶜ∩F), μ_{PE u}(Eᶜ∩Fᶜ) = 0
+            have hμ_PE_u_EcF : μ_PE_u (Eᶜ ∩ F) = 0 := by
+              have hmono := MeasureTheory.measure_mono (s := Eᶜ ∩ F) (t := Eᶜ) (μ := μ_PE_u)
+                Set.inter_subset_left
+              simp only [hμ_PE_u_Ec, nonpos_iff_eq_zero] at hmono
+              exact hmono
+            have hμ_PE_u_EcFc : μ_PE_u (Eᶜ ∩ Fᶜ) = 0 := by
+              have hmono := MeasureTheory.measure_mono (s := Eᶜ ∩ Fᶜ) (t := Eᶜ) (μ := μ_PE_u)
+                Set.inter_subset_left
+              simp only [hμ_PE_u_Ec, nonpos_iff_eq_zero] at hmono
+              exact hmono
+            -- Similarly for μ_{PF v}
+            have hμ_PF_v_EFc : μ_PF_v (E ∩ Fᶜ) = 0 := by
+              have hmono := MeasureTheory.measure_mono (s := E ∩ Fᶜ) (t := Fᶜ) (μ := μ_PF_v)
+                Set.inter_subset_right
+              simp only [hμ_PF_v_Fc, nonpos_iff_eq_zero] at hmono
+              exact hmono
+            have hμ_PF_v_EcFc : μ_PF_v (Eᶜ ∩ Fᶜ) = 0 := by
+              have hmono := MeasureTheory.measure_mono (s := Eᶜ ∩ Fᶜ) (t := Fᶜ) (μ := μ_PF_v)
+                Set.inter_subset_right
+              simp only [hμ_PF_v_Fc, nonpos_iff_eq_zero] at hmono
+              exact hmono
+            -- Now apply Cauchy-Schwarz: |B(a,b,S)|² ≤ μ_a(S) · μ_b(S)
+            -- For S = E∩F: one factor is 0
+            -- For S = E∩Fᶜ: μ_{PF v}(E∩Fᶜ) = 0
+            -- For S = Eᶜ∩F: μ_{PE u}(Eᶜ∩F) = 0
+            -- For S = Eᶜ∩Fᶜ: μ_{PE u}(Eᶜ∩Fᶜ) = 0
+            --
+            -- The Cauchy-Schwarz bound for the polarized measure:
+            -- |spectralMeasurePolarized a b S|² ≤ (μ_a(S)) · (μ_b(S))
+            -- where we identify μ_w(S).toReal = ‖P_S w‖².
+            --
+            -- Actually, the cleanest approach is:
+            -- spectralMeasurePolarized a b S = ⟨a, P_S b⟩ (definition via sesquilinear form)
+            -- For self-adjoint idempotent P_S:
+            -- ⟨a, P_S b⟩ = ⟨P_S a, P_S b⟩
+            -- By Cauchy-Schwarz: |⟨P_S a, P_S b⟩| ≤ ‖P_S a‖ · ‖P_S b‖
+            --
+            -- We need to connect spectralMeasurePolarized to P_S.
+            -- This is the defining property: spectralMeasurePolarized a b S = ⟨a, P_S b⟩
+            --
+            -- For our case on univ:
+            -- spectralMeasurePolarized (PE u) (PF v) univ = ⟨PE u, P_univ (PF v)⟩ = ⟨PE u, PF v⟩
+            -- (since P_univ = 1)
+            --
+            -- Now the key insight: we use the algebraic structure more directly.
+            -- Consider PE(PF v). We have PEF(PF v) = 0.
+            -- Also PEF ∘L PE = PEF, so for any w: PEF(PE w) = PEF w.
+            -- In particular, if w ∈ ker(PEF), then PE w may or may not be in ker(PEF).
+            -- But we showed hPEF_comp_PF: PEF ∘L PF = PEF, so PEF(PF v) = PEF v = 0.
+            --
+            -- The cleanest proof: decompose using the orthogonal complement structure.
+            -- H = range(PEF) ⊕ ker(PEF)
+            -- For w ∈ ker(PEF): PE w = (PE - PEF) w + PEF w = (PE - PEF) w
+            -- Similarly: PF w = (PF - PEF) w for w ∈ ker(PEF)
+            --
+            -- Now PE - PEF projects onto the spectral subspace for E \ (E∩F) = E ∩ Fᶜ
+            -- And PF - PEF projects onto the spectral subspace for F \ (E∩F) = Eᶜ ∩ F
+            -- These are DISJOINT, so their ranges are orthogonal.
+            --
+            -- Therefore: ⟨(PE - PEF) u, (PF - PEF) v⟩ = 0
+            -- Since u, v ∈ ker(PEF): PE u = (PE - PEF) u and PF v = (PF - PEF) v
+            -- So ⟨PE u, PF v⟩ = ⟨(PE - PEF) u, (PF - PEF) v⟩ = 0
+            --
+            -- This requires showing (PE - PEF) ⊥ (PF - PEF).
+            --
+            -- For projection-valued measures, spectral projections for DISJOINT sets have
+            -- orthogonal ranges. The sets E ∩ Fᶜ and Eᶜ ∩ F are disjoint.
+            --
+            -- We have: (PE - PEF) projects onto spectral subspace for E ∩ Fᶜ
+            --          (PF - PEF) projects onto spectral subspace for Eᶜ ∩ F
+            --
+            -- Actually, we need to show (PE - PEF) ∘L (PF - PEF) = 0.
+            -- (PE - PEF)(PF - PEF) = PE∘PF - PE∘PEF - PEF∘PF + PEF∘PEF
+            --                     = PE∘PF - PEF - PEF + PEF  (using our lemmas)
+            --                     = PE∘PF - PEF
+            -- So if PE∘PF = PEF (which is what we're trying to prove!), this is 0.
+            --
+            -- This approach is circular for proving multiplicativity.
+            --
+            -- Let's use the measure-theoretic bound directly.
+            -- The polarized measure on univ equals the inner product.
+            -- We decompose into 4 pieces using additivity.
+            --
+            -- Actually, we can prove orthogonality directly using the norms.
+            -- Key: For PE u and PF v with the spectral support constraints,
+            -- we use that the spectral supports are essentially disjoint.
+            --
+            -- PE u has support concentrated in E (μ_{PE u}(Eᶜ) = 0)
+            -- But also μ_{PE u}(E∩F) = 0 (from PEF(PE u) = 0)
+            -- So μ_{PE u} is concentrated on E ∩ Fᶜ.
+            --
+            -- PF v has support concentrated in F (μ_{PF v}(Fᶜ) = 0)
+            -- But also μ_{PF v}(E∩F) = 0 would give concentration on Eᶜ ∩ F.
+            -- Wait, we need to check: do we have μ_{PF v}(E∩F) = 0?
+            --
+            -- From hPEF_PF_v: PEF(PF v) = 0, so ‖PEF(PF v)‖² = 0.
+            -- And spectralProjection_norm_sq says: (μ_{PF v}(E∩F)).toReal = ‖PEF(PF v)‖²
+            -- So (μ_{PF v}(E∩F)).toReal = 0, hence μ_{PF v}(E∩F) = 0.
+            have hμ_PF_v_EF : μ_PF_v (E ∩ F) = 0 := by
+              have h := spectralProjection_norm_sq U hU (E ∩ F) (hE.inter hF) (PF v)
+              simp only at h
+              rw [hPEF_PF_v, norm_zero, sq, mul_zero] at h
+              have hfinite : μ_PF_v (E ∩ F) ≠ ⊤ := by
+                have hfin := spectralMeasureDiagonal_isFiniteMeasure U hU (PF v)
+                exact MeasureTheory.measure_ne_top μ_PF_v (E ∩ F)
+              exact ((ENNReal.toReal_eq_zero_iff _).mp h.symm).resolve_right hfinite
+            -- So:
+            -- μ_{PE u} concentrated on E ∩ Fᶜ (zero on Eᶜ and on E ∩ F)
+            -- μ_{PF v} concentrated on Eᶜ ∩ F (zero on Fᶜ and on E ∩ F)
+            -- These supports are DISJOINT.
+            --
+            -- For measures with disjoint supports, the polarized measure is 0.
+            -- This follows from the Cauchy-Schwarz bound on each of the 4 pieces.
+            --
+            -- The inner product ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) univ.
+            -- We need to show this is 0.
+            --
+            -- By Cauchy-Schwarz for each piece S:
+            -- |⟨PE u, P_S (PF v)⟩|² ≤ ‖P_S(PE u)‖² · ‖P_S(PF v)‖² = μ_{PE u}(S) · μ_{PF v}(S)
+            --
+            -- When one factor is 0, the bound gives 0.
+            --
+            -- The decomposition univ = (E∩F) ∪ (E∩Fᶜ) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ) with disjoint pieces.
+            --
+            -- The key claim: ⟨PE u, PF v⟩ = ∑_{S} ⟨PE u, P_S (PF v)⟩
+            -- where sum is over the 4 pieces.
+            --
+            -- This is because P_univ = P_{E∩F} + P_{E∩Fᶜ} + P_{Eᶜ∩F} + P_{Eᶜ∩Fᶜ}.
+            -- But we haven't established this additivity yet!
+            --
+            -- Alternative: use the polarization formula for spectralMeasurePolarized.
+            -- By definition:
+            -- spectralMeasurePolarized a b S = (1/4)[μ_{a+b}(S) - μ_{a-b}(S) - i·μ_{a+ib}(S) + i·μ_{a-ib}(S)]
+            --
+            -- Since each μ_w is a measure (additive), spectralMeasurePolarized is also additive.
+            --
+            -- So spectralMeasurePolarized (PE u) (PF v) univ
+            --    = spectralMeasurePolarized (PE u) (PF v) (E∩F)
+            --    + spectralMeasurePolarized (PE u) (PF v) (E∩Fᶜ)
+            --    + spectralMeasurePolarized (PE u) (PF v) (Eᶜ∩F)
+            --    + spectralMeasurePolarized (PE u) (PF v) (Eᶜ∩Fᶜ)
+            --
+            -- Now use Cauchy-Schwarz on each piece.
+            --
+            -- For the Cauchy-Schwarz bound: we use that spectralMeasurePolarized a b S = ⟨a, P_S b⟩.
+            -- And |⟨a, P_S b⟩|² = |⟨P_S a, P_S b⟩|² ≤ ‖P_S a‖² · ‖P_S b‖².
+            -- = μ_a(S).toReal · μ_b(S).toReal (when finite)
+            -- ≤ (μ_a(S).toReal · μ_b(S).toReal)
+            -- When either factor is 0, the bound is 0.
+            --
+            -- Since our measures are finite, we can work with toReal.
+            --
+            -- Piece (E∩F): μ_{PE u}(E∩F) = 0, so bound is 0.
+            -- Piece (E∩Fᶜ): μ_{PF v}(E∩Fᶜ) = 0, so bound is 0.
+            -- Piece (Eᶜ∩F): μ_{PE u}(Eᶜ∩F) = 0, so bound is 0.
+            -- Piece (Eᶜ∩Fᶜ): μ_{PE u}(Eᶜ∩Fᶜ) = 0, so bound is 0.
+            --
+            -- All pieces are bounded by 0, so each spectralMeasurePolarized piece is 0.
+            -- The sum is 0.
+            --
+            -- To formalize this, we prove the Cauchy-Schwarz bound and additivity.
+            -- For now, we use a direct argument based on the sesquilinear structure.
+            --
+            -- Direct approach using self-adjointness and the projection structure:
+            -- Let P_{E∩Fᶜ} be the spectral projection for E ∩ Fᶜ.
+            -- We have PE = PEF + P_{E∩Fᶜ} (additivity for disjoint sets).
+            -- Similarly PF = PEF + P_{Eᶜ∩F}.
+            -- Since PEF u = 0: PE u = P_{E∩Fᶜ} u
+            -- Since PEF v = 0: PF v = P_{Eᶜ∩F} v
+            -- ⟨PE u, PF v⟩ = ⟨P_{E∩Fᶜ} u, P_{Eᶜ∩F} v⟩
+            -- For disjoint sets A, B: P_A ⊥ P_B (orthogonal ranges).
+            -- So ⟨P_{E∩Fᶜ} u, P_{Eᶜ∩F} v⟩ = 0.
+            --
+            -- To use this, we need the additivity: PE = PEF + P_{E∩Fᶜ}.
+            -- But proving this also requires the multiplicativity structure!
+            --
+            -- The cleanest non-circular proof uses the measure-theoretic Cauchy-Schwarz directly.
+            --
+            -- Let me prove the key bound: for any measurable S,
+            -- |spectralMeasurePolarized a b S|² ≤ (μ_a(S).toReal) · (μ_b(S).toReal)
+            --
+            -- This follows from:
+            -- spectralMeasurePolarized a b S = ⟨a, P_S b⟩
+            --                                = ⟨P_S a, P_S b⟩ (P_S self-adjoint, idempotent)
+            -- |⟨P_S a, P_S b⟩|² ≤ ‖P_S a‖² · ‖P_S b‖² (Cauchy-Schwarz)
+            --                   = μ_a(S).toReal · μ_b(S).toReal
+            --
+            -- When μ_a(S) = 0, we have (μ_a(S)).toReal = 0, so the bound gives 0.
+            --
+            -- For our four pieces, we have established that on each piece, at least one
+            -- of μ_{PE u}(S) or μ_{PF v}(S) is zero. So each piece contributes 0.
+            --
+            -- Actually, wait. The Cauchy-Schwarz bound gives:
+            -- |B(a,b,S)|² ≤ μ_a(S) · μ_b(S) (as ENNReal or extended reals)
+            -- When either is 0, we get B(a,b,S) = 0.
+            --
+            -- The key is showing that spectralMeasurePolarized equals ⟨a, P_S b⟩.
+            -- This is the defining property from sesquilinearToOperator:
+            -- spectralMeasurePolarized a b S = ⟨a, P_S b⟩ where P_S = spectralProjectionOfUnitary S.
+            --
+            -- Let me establish this connection more explicitly.
+            -- For S = E ∩ F with measurable E, F:
+            -- spectralMeasurePolarized (PE u) (PF v) (E ∩ F) (hE.inter hF)
+            --   = ⟨PE u, PEF (PF v)⟩ (by definition via sesquilinear form)
+            --   = ⟨PE u, 0⟩ (since hPEF_PF_v: PEF (PF v) = 0)
+            --   = 0
+            --
+            -- For S = E ∩ Fᶜ:
+            -- spectralMeasurePolarized (PE u) (PF v) (E ∩ Fᶜ) (hE.inter hF.compl)
+            --   = ⟨PE u, P_{E∩Fᶜ} (PF v)⟩
+            --
+            -- We need to show P_{E∩Fᶜ} (PF v) = 0.
+            -- Key: P_{E∩Fᶜ} ≤ P_{Fᶜ} (monotonicity for E∩Fᶜ ⊆ Fᶜ).
+            -- And μ_{PF v}(Fᶜ) = 0 means ‖P_{Fᶜ}(PF v)‖² = 0, so P_{Fᶜ}(PF v) = 0.
+            -- From P_{E∩Fᶜ} ≤ P_{Fᶜ}: ‖P_{E∩Fᶜ}(PF v)‖² ≤ ‖P_{Fᶜ}(PF v)‖² = 0.
+            -- So P_{E∩Fᶜ}(PF v) = 0.
+            --
+            -- Therefore spectralMeasurePolarized (PE u) (PF v) (E ∩ Fᶜ) = ⟨PE u, 0⟩ = 0.
+            --
+            -- Similarly for the other pieces.
+            --
+            -- This approach requires: P_A ≤ P_B when A ⊆ B (which we have as spectralProjection_mono).
+            --
+            -- Let me implement this.
+            -- First, show P_{Fᶜ}(PF v) = 0 using μ_{PF v}(Fᶜ) = 0.
+            -- μ_{PF v}(Fᶜ) = ‖P_{Fᶜ}(PF v)‖², so P_{Fᶜ}(PF v) = 0.
+            have hP_Fc_PFv : spectralProjectionOfUnitary U hU Fᶜ hF.compl (PF v) = 0 := by
+              have h := spectralProjection_norm_sq U hU Fᶜ hF.compl (PF v)
+              simp only at h
+              have htoReal_zero : (μ_PF_v Fᶜ).toReal = 0 := by
+                simp only [hμ_PF_v_Fc, ENNReal.toReal_zero]
+              rw [htoReal_zero] at h
+              -- h : ‖P_{Fᶜ}(PF v)‖² = 0
+              rw [sq_eq_zero_iff, norm_eq_zero] at h
+              exact h
+            -- Now show P_{E∩Fᶜ}(PF v) = 0 using monotonicity.
+            have hP_EFc_PFv : spectralProjectionOfUnitary U hU (E ∩ Fᶜ) (hE.inter hF.compl) (PF v) = 0 := by
+              -- Use P_{E∩Fᶜ} ≤ P_{Fᶜ} (since E∩Fᶜ ⊆ Fᶜ)
+              have hmono := spectralProjection_mono U hU (E ∩ Fᶜ) Fᶜ (hE.inter hF.compl) hF.compl
+                Set.inter_subset_right
+              -- hmono: P_{E∩Fᶜ} ≤ P_{Fᶜ} in Loewner order
+              -- For projection P ≤ Q: ‖Px‖ ≤ ‖Qx‖
+              set P_EFc := spectralProjectionOfUnitary U hU (E ∩ Fᶜ) (hE.inter hF.compl)
+              set P_Fc := spectralProjectionOfUnitary U hU Fᶜ hF.compl
+              have hle := hmono
+              have hnorm_le : ‖P_EFc (PF v)‖ ≤ ‖P_Fc (PF v)‖ := by
+                -- For 0 ≤ P ≤ Q projections: ⟨x, Px⟩ ≤ ⟨x, Qx⟩
+                -- And for projections: ‖Px‖² = ⟨x, Px⟩
+                have hP_EFc_nonneg := spectralProjection_nonneg U hU (E ∩ Fᶜ) (hE.inter hF.compl)
+                have hP_EFc_le_one := spectralProjection_le_one U hU (E ∩ Fᶜ) (hE.inter hF.compl)
+                have hP_Fc_le_one := spectralProjection_le_one U hU Fᶜ hF.compl
+                -- From 0 ≤ P_{E∩Fᶜ} ≤ P_{Fᶜ}:
+                -- ⟨x, P_{E∩Fᶜ} x⟩ ≤ ⟨x, P_{Fᶜ} x⟩ (by Loewner order definition)
+                have hinner_le : (@inner ℂ H _ (PF v) (P_EFc (PF v))).re ≤
+                    (@inner ℂ H _ (PF v) (P_Fc (PF v))).re := by
+                  rw [ContinuousLinearMap.le_def] at hle
+                  have h := hle.2 (PF v)
+                  rw [ContinuousLinearMap.reApplyInnerSelf] at h
+                  -- h : 0 ≤ RCLike.re ⟨(P_Fc - P_EFc) (PF v), PF v⟩
+                  -- Expand (P_Fc - P_EFc)(PF v) = P_Fc(PF v) - P_EFc(PF v)
+                  have hsub_eq : (P_Fc - P_EFc) (PF v) = P_Fc (PF v) - P_EFc (PF v) :=
+                    ContinuousLinearMap.sub_apply P_Fc P_EFc (PF v)
+                  rw [hsub_eq, inner_sub_left, map_sub] at h
+                  -- h : 0 ≤ RCLike.re ⟨P_Fc (PF v), PF v⟩ - RCLike.re ⟨P_EFc (PF v), PF v⟩
+                  -- Goal: re ⟨PF v, P_EFc (PF v)⟩ ≤ re ⟨PF v, P_Fc (PF v)⟩
+                  -- Convert goal to use RCLike.re with swapped arguments using inner_conj_symm
+                  have heq1 : (@inner ℂ H _ (PF v) (P_EFc (PF v))).re =
+                      RCLike.re (@inner ℂ H _ (P_EFc (PF v)) (PF v)) := by
+                    calc (@inner ℂ H _ (PF v) (P_EFc (PF v))).re
+                        = (starRingEnd ℂ (@inner ℂ H _ (P_EFc (PF v)) (PF v))).re := by
+                            rw [inner_conj_symm (PF v) (P_EFc (PF v))]
+                      _ = (@inner ℂ H _ (P_EFc (PF v)) (PF v)).re := Complex.conj_re _
+                      _ = RCLike.re (@inner ℂ H _ (P_EFc (PF v)) (PF v)) := rfl
+                  have heq2 : (@inner ℂ H _ (PF v) (P_Fc (PF v))).re =
+                      RCLike.re (@inner ℂ H _ (P_Fc (PF v)) (PF v)) := by
+                    calc (@inner ℂ H _ (PF v) (P_Fc (PF v))).re
+                        = (starRingEnd ℂ (@inner ℂ H _ (P_Fc (PF v)) (PF v))).re := by
+                            rw [inner_conj_symm (PF v) (P_Fc (PF v))]
+                      _ = (@inner ℂ H _ (P_Fc (PF v)) (PF v)).re := Complex.conj_re _
+                      _ = RCLike.re (@inner ℂ H _ (P_Fc (PF v)) (PF v)) := rfl
+                  rw [heq1, heq2]
+                  linarith
+                -- For self-adjoint idempotent P: ⟨x, Px⟩ = ‖Px‖²
+                have hP_EFc_idem := spectralProjection_idempotent U hU (E ∩ Fᶜ) (hE.inter hF.compl)
+                have hP_Fc_idem := spectralProjection_idempotent U hU Fᶜ hF.compl
+                have hP_EFc_adj := spectralProjection_selfAdjoint U hU (E ∩ Fᶜ) (hE.inter hF.compl)
+                have hP_Fc_adj := spectralProjection_selfAdjoint U hU Fᶜ hF.compl
+                -- Use helper lemma for self-adjoint idempotent operators
+                have h1 : ‖P_EFc (PF v)‖^2 = (@inner ℂ H _ (PF v) (P_EFc (PF v))).re :=
+                  SelfAdjointIdempotent.norm_sq_eq_inner_re_of_selfAdjoint_idempotent
+                    P_EFc hP_EFc_adj hP_EFc_idem (PF v)
+                have h2 : ‖P_Fc (PF v)‖^2 = (@inner ℂ H _ (PF v) (P_Fc (PF v))).re :=
+                  SelfAdjointIdempotent.norm_sq_eq_inner_re_of_selfAdjoint_idempotent
+                    P_Fc hP_Fc_adj hP_Fc_idem (PF v)
+                rw [← h1, ← h2] at hinner_le
+                have h := Real.sqrt_le_sqrt hinner_le
+                simp only [Real.sqrt_sq (norm_nonneg _)] at h
+                exact h
+              rw [hP_Fc_PFv, norm_zero] at hnorm_le
+              exact norm_eq_zero.mp (le_antisymm hnorm_le (norm_nonneg _))
+            -- Similarly show P_{Eᶜ}(PE u) = 0
+            have hP_Ec_PEu : spectralProjectionOfUnitary U hU Eᶜ hE.compl (PE u) = 0 := by
+              have h := spectralProjection_norm_sq U hU Eᶜ hE.compl (PE u)
+              simp only at h
+              have htoReal_zero : (μ_PE_u Eᶜ).toReal = 0 := by
+                simp only [hμ_PE_u_Ec, ENNReal.toReal_zero]
+              rw [htoReal_zero] at h
+              have hnorm_sq_zero : ‖spectralProjectionOfUnitary U hU Eᶜ hE.compl (PE u)‖^2 = 0 := h
+              exact norm_eq_zero.mp (sq_eq_zero_iff.mp hnorm_sq_zero)
+            -- Show P_{Eᶜ∩F}(PE u) = 0
+            have hP_EcF_PEu : spectralProjectionOfUnitary U hU (Eᶜ ∩ F) (hE.compl.inter hF) (PE u) = 0 := by
+              have hmono := spectralProjection_mono U hU (Eᶜ ∩ F) Eᶜ (hE.compl.inter hF) hE.compl
+                Set.inter_subset_left
+              set P_EcF := spectralProjectionOfUnitary U hU (Eᶜ ∩ F) (hE.compl.inter hF)
+              set P_Ec := spectralProjectionOfUnitary U hU Eᶜ hE.compl
+              have hnorm_le : ‖P_EcF (PE u)‖ ≤ ‖P_Ec (PE u)‖ := by
+                have hinner_le : (@inner ℂ H _ (PE u) (P_EcF (PE u))).re ≤
+                    (@inner ℂ H _ (PE u) (P_Ec (PE u))).re := by
+                  rw [ContinuousLinearMap.le_def] at hmono
+                  have h := hmono.2 (PE u)
+                  rw [ContinuousLinearMap.reApplyInnerSelf] at h
+                  have hsub_eq : (P_Ec - P_EcF) (PE u) = P_Ec (PE u) - P_EcF (PE u) :=
+                    ContinuousLinearMap.sub_apply P_Ec P_EcF (PE u)
+                  rw [hsub_eq, inner_sub_left, map_sub] at h
+                  have heq1 : (@inner ℂ H _ (PE u) (P_EcF (PE u))).re =
+                      RCLike.re (@inner ℂ H _ (P_EcF (PE u)) (PE u)) := by
+                    calc (@inner ℂ H _ (PE u) (P_EcF (PE u))).re
+                        = (starRingEnd ℂ (@inner ℂ H _ (P_EcF (PE u)) (PE u))).re := by
+                            rw [inner_conj_symm (PE u) (P_EcF (PE u))]
+                      _ = (@inner ℂ H _ (P_EcF (PE u)) (PE u)).re := Complex.conj_re _
+                      _ = RCLike.re (@inner ℂ H _ (P_EcF (PE u)) (PE u)) := rfl
+                  have heq2 : (@inner ℂ H _ (PE u) (P_Ec (PE u))).re =
+                      RCLike.re (@inner ℂ H _ (P_Ec (PE u)) (PE u)) := by
+                    calc (@inner ℂ H _ (PE u) (P_Ec (PE u))).re
+                        = (starRingEnd ℂ (@inner ℂ H _ (P_Ec (PE u)) (PE u))).re := by
+                            rw [inner_conj_symm (PE u) (P_Ec (PE u))]
+                      _ = (@inner ℂ H _ (P_Ec (PE u)) (PE u)).re := Complex.conj_re _
+                      _ = RCLike.re (@inner ℂ H _ (P_Ec (PE u)) (PE u)) := rfl
+                  rw [heq1, heq2]
+                  linarith
+                have hP_EcF_idem := spectralProjection_idempotent U hU (Eᶜ ∩ F) (hE.compl.inter hF)
+                have hP_Ec_idem := spectralProjection_idempotent U hU Eᶜ hE.compl
+                have hP_EcF_adj := spectralProjection_selfAdjoint U hU (Eᶜ ∩ F) (hE.compl.inter hF)
+                have hP_Ec_adj := spectralProjection_selfAdjoint U hU Eᶜ hE.compl
+                have h1 : ‖P_EcF (PE u)‖^2 = (@inner ℂ H _ (PE u) (P_EcF (PE u))).re :=
+                  SelfAdjointIdempotent.norm_sq_eq_inner_re_of_selfAdjoint_idempotent
+                    P_EcF hP_EcF_adj hP_EcF_idem (PE u)
+                have h2 : ‖P_Ec (PE u)‖^2 = (@inner ℂ H _ (PE u) (P_Ec (PE u))).re :=
+                  SelfAdjointIdempotent.norm_sq_eq_inner_re_of_selfAdjoint_idempotent
+                    P_Ec hP_Ec_adj hP_Ec_idem (PE u)
+                rw [← h1, ← h2] at hinner_le
+                have h := Real.sqrt_le_sqrt hinner_le
+                simp only [Real.sqrt_sq (norm_nonneg _)] at h
+                exact h
+              rw [hP_Ec_PEu, norm_zero] at hnorm_le
+              exact norm_eq_zero.mp (le_antisymm hnorm_le (norm_nonneg _))
+            -- Show P_{Eᶜ∩Fᶜ}(PE u) = 0
+            have hP_EcFc_PEu : spectralProjectionOfUnitary U hU (Eᶜ ∩ Fᶜ) (hE.compl.inter hF.compl) (PE u) = 0 := by
+              have hmono := spectralProjection_mono U hU (Eᶜ ∩ Fᶜ) Eᶜ (hE.compl.inter hF.compl) hE.compl
+                Set.inter_subset_left
+              set P_EcFc := spectralProjectionOfUnitary U hU (Eᶜ ∩ Fᶜ) (hE.compl.inter hF.compl)
+              set P_Ec := spectralProjectionOfUnitary U hU Eᶜ hE.compl
+              have hnorm_le : ‖P_EcFc (PE u)‖ ≤ ‖P_Ec (PE u)‖ := by
+                have hinner_le : (@inner ℂ H _ (PE u) (P_EcFc (PE u))).re ≤
+                    (@inner ℂ H _ (PE u) (P_Ec (PE u))).re := by
+                  rw [ContinuousLinearMap.le_def] at hmono
+                  have h := hmono.2 (PE u)
+                  rw [ContinuousLinearMap.reApplyInnerSelf] at h
+                  have hsub_eq : (P_Ec - P_EcFc) (PE u) = P_Ec (PE u) - P_EcFc (PE u) :=
+                    ContinuousLinearMap.sub_apply P_Ec P_EcFc (PE u)
+                  rw [hsub_eq, inner_sub_left, map_sub] at h
+                  have heq1 : (@inner ℂ H _ (PE u) (P_EcFc (PE u))).re =
+                      RCLike.re (@inner ℂ H _ (P_EcFc (PE u)) (PE u)) := by
+                    calc (@inner ℂ H _ (PE u) (P_EcFc (PE u))).re
+                        = (starRingEnd ℂ (@inner ℂ H _ (P_EcFc (PE u)) (PE u))).re := by
+                            rw [inner_conj_symm (PE u) (P_EcFc (PE u))]
+                      _ = (@inner ℂ H _ (P_EcFc (PE u)) (PE u)).re := Complex.conj_re _
+                      _ = RCLike.re (@inner ℂ H _ (P_EcFc (PE u)) (PE u)) := rfl
+                  have heq2 : (@inner ℂ H _ (PE u) (P_Ec (PE u))).re =
+                      RCLike.re (@inner ℂ H _ (P_Ec (PE u)) (PE u)) := by
+                    calc (@inner ℂ H _ (PE u) (P_Ec (PE u))).re
+                        = (starRingEnd ℂ (@inner ℂ H _ (P_Ec (PE u)) (PE u))).re := by
+                            rw [inner_conj_symm (PE u) (P_Ec (PE u))]
+                      _ = (@inner ℂ H _ (P_Ec (PE u)) (PE u)).re := Complex.conj_re _
+                      _ = RCLike.re (@inner ℂ H _ (P_Ec (PE u)) (PE u)) := rfl
+                  rw [heq1, heq2]
+                  linarith
+                have hP_EcFc_idem := spectralProjection_idempotent U hU (Eᶜ ∩ Fᶜ) (hE.compl.inter hF.compl)
+                have hP_Ec_idem := spectralProjection_idempotent U hU Eᶜ hE.compl
+                have hP_EcFc_adj := spectralProjection_selfAdjoint U hU (Eᶜ ∩ Fᶜ) (hE.compl.inter hF.compl)
+                have hP_Ec_adj := spectralProjection_selfAdjoint U hU Eᶜ hE.compl
+                have h1 : ‖P_EcFc (PE u)‖^2 = (@inner ℂ H _ (PE u) (P_EcFc (PE u))).re :=
+                  SelfAdjointIdempotent.norm_sq_eq_inner_re_of_selfAdjoint_idempotent
+                    P_EcFc hP_EcFc_adj hP_EcFc_idem (PE u)
+                have h2 : ‖P_Ec (PE u)‖^2 = (@inner ℂ H _ (PE u) (P_Ec (PE u))).re :=
+                  SelfAdjointIdempotent.norm_sq_eq_inner_re_of_selfAdjoint_idempotent
+                    P_Ec hP_Ec_adj hP_Ec_idem (PE u)
+                rw [← h1, ← h2] at hinner_le
+                have h := Real.sqrt_le_sqrt hinner_le
+                simp only [Real.sqrt_sq (norm_nonneg _)] at h
+                exact h
+              rw [hP_Ec_PEu, norm_zero] at hnorm_le
+              exact norm_eq_zero.mp (le_antisymm hnorm_le (norm_nonneg _))
+            -- **Final step: Show ⟨PE u, PF v⟩ = 0**
+            -- Use the sesquilinear form characterization:
+            -- spectralMeasurePolarized (PE u) (PF v) S = ⟨PE u, P_S (PF v)⟩
+            --
+            -- For S = univ: ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) univ
+            --                            = ⟨PE u, P_univ (PF v)⟩ = ⟨PE u, PF v⟩ (since P_univ = 1)
+            --
+            -- We use the decomposition approach with P_S.
+            -- Since P_univ = 1, ⟨PE u, PF v⟩ = ⟨PE u, (1) (PF v)⟩.
+            --
+            -- The decomposition Circle = (E∩F) ∪ (E∩Fᶜ) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ) (disjoint).
+            --
+            -- The key is that spectral projections for disjoint sets have orthogonal ranges.
+            -- So P_univ = PEF + P_{E∩Fᶜ} + P_{Eᶜ∩F} + P_{Eᶜ∩Fᶜ} (as sum of projections).
+            -- But we haven't fully established this additive decomposition.
+            --
+            -- Alternative approach: Use that ⟨PE u, PF v⟩ equals the polarized measure on univ,
+            -- and the polarized measure is additive over disjoint sets.
+            -- The contribution from each piece is 0 (shown by Cauchy-Schwarz/projection zeros).
+            --
+            -- Actually, the cleanest direct proof uses the identity:
+            -- PF v ∈ range(PF), and μ_{PF v}(Fᶜ) = 0 means PF v has spectral support in F.
+            -- PE u ∈ range(PE), and μ_{PE u}(Eᶜ) = 0 means PE u has spectral support in E.
+            -- Also, μ_{PE u}(E∩F) = 0 (from PEF(PE u) = 0) and μ_{PF v}(E∩F) = 0.
+            --
+            -- So PE u has support in E ∩ (E∩F)ᶜ = E ∩ (Eᶜ ∪ Fᶜ) = E ∩ Fᶜ.
+            -- And PF v has support in F ∩ (E∩F)ᶜ = F ∩ (Eᶜ ∪ Fᶜ) = Eᶜ ∩ F.
+            -- These are disjoint!
+            --
+            -- Vectors with disjoint spectral supports are orthogonal.
+            -- Proof: ⟨a, b⟩ = spectralMeasurePolarized a b univ
+            --              = ∫ d(polarized measure)
+            -- For disjoint supports, the polarized measure is 0 on all of univ.
+            --
+            -- The measure-theoretic proof:
+            -- The polarized measure μ_{a,b} is absolutely continuous with respect to
+            -- both μ_a and μ_b (by Cauchy-Schwarz: |μ_{a,b}(S)|² ≤ μ_a(S) · μ_b(S)).
+            -- If supp(μ_a) ∩ supp(μ_b) = ∅, then μ_{a,b} = 0.
+            --
+            -- For our case:
+            -- supp(μ_{PE u}) ⊆ E ∩ Fᶜ (from μ=0 on Eᶜ and on E∩F)
+            -- supp(μ_{PF v}) ⊆ Eᶜ ∩ F (from μ=0 on Fᶜ and on E∩F)
+            -- (E ∩ Fᶜ) ∩ (Eᶜ ∩ F) = ∅ (disjoint!)
+            --
+            -- Therefore spectralMeasurePolarized (PE u) (PF v) S = 0 for all S.
+            -- In particular, spectralMeasurePolarized (PE u) (PF v) univ = 0.
+            -- And this equals ⟨PE u, PF v⟩.
+            --
+            -- To formalize without proving full measure support theory:
+            -- Use the direct calculation with projections.
+            --
+            -- We have P_{E∩Fᶜ} (PF v) = 0 (shown above as hP_EFc_PFv).
+            -- We have P_{Eᶜ∩F} (PE u) = 0 (shown above as hP_EcF_PEu).
+            -- We have P_{Eᶜ∩Fᶜ} (PE u) = 0 (shown above as hP_EcFc_PEu).
+            -- We have PEF (PF v) = 0 (hPEF_PF_v).
+            --
+            -- The key: P_univ = 1, but we can express it via the decomposition.
+            -- 1 = PEF + P_{E∩Fᶜ} + P_{Eᶜ∩F} + P_{Eᶜ∩Fᶜ} (partition of unity for spectral projections).
+            -- Then:
+            -- PF v = PEF(PF v) + P_{E∩Fᶜ}(PF v) + P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)
+            --      = 0 + 0 + P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)
+            --      (using hPEF_PF_v = 0 and hP_EFc_PFv = 0)
+            --
+            -- Similarly:
+            -- PE u = PEF(PE u) + P_{E∩Fᶜ}(PE u) + P_{Eᶜ∩F}(PE u) + P_{Eᶜ∩Fᶜ}(PE u)
+            --      = 0 + P_{E∩Fᶜ}(PE u) + 0 + 0
+            --      (using hPEF_PE_u = 0 and hP_EcF_PEu = 0 and hP_EcFc_PEu = 0)
+            --
+            -- So:
+            -- ⟨PE u, PF v⟩ = ⟨P_{E∩Fᶜ}(PE u), P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)⟩
+            --
+            -- Now, P_{E∩Fᶜ} and P_{Eᶜ∩F} have orthogonal ranges (disjoint sets).
+            -- P_{E∩Fᶜ} and P_{Eᶜ∩Fᶜ} have orthogonal ranges (disjoint sets).
+            --
+            -- For disjoint measurable sets A, B: range(P_A) ⊥ range(P_B).
+            -- Proof: For any a ∈ range(P_A) and b ∈ range(P_B),
+            --        ⟨a, b⟩ = ⟨P_A a, P_B b⟩ = ⟨a, P_A P_B b⟩ (self-adjoint)
+            -- We need P_A P_B = 0 for disjoint A, B.
+            -- This is the multiplicativity: P(A∩B) = P_A P_B, and P(∅) = 0.
+            -- But we're proving multiplicativity! So this is circular.
+            --
+            -- However, for the SPECIFIC case A ∩ B = ∅:
+            -- P(A∩B) = P(∅) = 0 (which we have from spectralProjection_empty).
+            -- So P_A P_B = P(A∩B) = 0 for disjoint A, B.
+            --
+            -- Wait, but we're trying to PROVE P_A P_B = P(A∩B)!
+            -- For disjoint A, B: A ∩ B = ∅, so P(A∩B) = P(∅) = 0.
+            -- If multiplicativity holds, then P_A P_B = 0.
+            -- We're proving multiplicativity for GENERAL E, F, not just disjoint.
+            --
+            -- The non-circular observation:
+            -- For disjoint A, B, we want P_A P_B = 0.
+            -- By the monotonicity structure: A∩B = ∅ ⊆ A, so P(A∩B) = 0 ≤ P_A.
+            -- Also A∩B = ∅ ⊆ B, so P(A∩B) = 0 ≤ P_B.
+            -- The claim P_A P_B = 0 requires more.
+            --
+            -- Actually, let's use a different approach. Since the norm calculations give us:
+            -- ‖P_{E∩Fᶜ}(PF v)‖ = 0 (from hP_EFc_PFv)
+            -- ‖P_{Eᶜ∩F}(PE u)‖ = 0 (from hP_EcF_PEu)
+            -- ‖P_{Eᶜ∩Fᶜ}(PE u)‖ = 0 (from hP_EcFc_PEu)
+            --
+            -- And we can compute:
+            -- ⟨PE u, PF v⟩ = ⟨PE u, (PEF + P_{E∩Fᶜ} + P_{Eᶜ∩F} + P_{Eᶜ∩Fᶜ}) PF v⟩
+            --              = ⟨PE u, 0⟩ + ⟨PE u, 0⟩ + ⟨PE u, P_{Eᶜ∩F}(PF v)⟩ + ⟨PE u, P_{Eᶜ∩Fᶜ}(PF v)⟩
+            --
+            -- Now:
+            -- ⟨PE u, P_{Eᶜ∩F}(PF v)⟩ = ⟨P_{Eᶜ∩F}(PE u), PF v⟩ (self-adjoint)
+            --                        = ⟨0, PF v⟩ = 0
+            -- ⟨PE u, P_{Eᶜ∩Fᶜ}(PF v)⟩ = ⟨P_{Eᶜ∩Fᶜ}(PE u), PF v⟩ (self-adjoint)
+            --                         = ⟨0, PF v⟩ = 0
+            --
+            -- So ⟨PE u, PF v⟩ = 0.
+            --
+            -- This doesn't require the full partition of unity, just self-adjointness!
+            -- Let's formalize this.
+            -- Actually, this still requires knowing that
+            -- PF v = PEF(PF v) + P_{E∩Fᶜ}(PF v) + P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v),
+            -- which is the partition of unity for spectral projections.
+            --
+            -- Let me use a cleaner argument.
+            -- ⟨PE u, PF v⟩ = ⟨u, PE(PF v)⟩ (self-adjointness of PE)
+            --
+            -- Now, PE(PF v) = ?
+            -- We have hPEF_comp_PF: PEF ∘L PF = PEF, so PEF(PF v) = PEF v = 0.
+            --
+            -- Claim: PE(PF v) ∈ ker(PEF).
+            -- Proof: PEF(PE(PF v)) = (PEF ∘L PE)(PF v) = PEF(PF v) = 0. ✓
+            --
+            -- So PE(PF v) ∈ range(PE) ∩ ker(PEF).
+            -- We want to show u ⊥ PE(PF v), i.e., ⟨u, PE(PF v)⟩ = 0.
+            --
+            -- Actually, let's use a different approach: sesquilinear form bounds.
+            -- The polarized spectral measure satisfies:
+            -- |spectralMeasurePolarized a b S|² ≤ μ_a(S) · μ_b(S)
+            -- (Cauchy-Schwarz bound)
+            --
+            -- For the inner product:
+            -- ⟨PE u, PF v⟩ = spectralMeasurePolarized (PE u) (PF v) univ
+            --
+            -- We decompose univ = (E∩F) ∪ (E∩Fᶜ) ∪ (Eᶜ∩F) ∪ (Eᶜ∩Fᶜ).
+            -- By additivity of the polarized measure:
+            -- spectralMeasurePolarized (PE u) (PF v) univ
+            --   = spectralMeasurePolarized (PE u) (PF v) (E∩F)
+            --   + spectralMeasurePolarized (PE u) (PF v) (E∩Fᶜ)
+            --   + spectralMeasurePolarized (PE u) (PF v) (Eᶜ∩F)
+            --   + spectralMeasurePolarized (PE u) (PF v) (Eᶜ∩Fᶜ)
+            --
+            -- For each piece S, the Cauchy-Schwarz bound gives:
+            -- |spectralMeasurePolarized (PE u) (PF v) S|² ≤ μ_{PE u}(S) · μ_{PF v}(S)
+            --
+            -- For (E∩F): μ_{PE u}(E∩F) = 0 (shown above as hμ_PE_u_EF).
+            -- For (E∩Fᶜ): μ_{PF v}(E∩Fᶜ) = 0 (shown above as hμ_PF_v_EFc).
+            -- For (Eᶜ∩F): μ_{PE u}(Eᶜ∩F) = 0 (shown above as hμ_PE_u_EcF).
+            -- For (Eᶜ∩Fᶜ): μ_{PE u}(Eᶜ∩Fᶜ) = 0 (shown above as hμ_PE_u_EcFc).
+            --
+            -- So each term is 0, and the sum is 0.
+            --
+            -- To formalize this, I need:
+            -- 1. Additivity of spectralMeasurePolarized on disjoint sets
+            -- 2. Cauchy-Schwarz bound: |B(a,b,S)|² ≤ μ_a(S) · μ_b(S)
+            --
+            -- Actually, we can use the simpler direct projection approach.
+            -- We have shown:
+            -- hP_EFc_PFv: P_{E∩Fᶜ}(PF v) = 0
+            -- hPEF_PF_v: PEF(PF v) = 0
+            -- hP_EcF_PEu: P_{Eᶜ∩F}(PE u) = 0
+            -- hP_EcFc_PEu: P_{Eᶜ∩Fᶜ}(PE u) = 0
+            --
+            -- Using self-adjointness:
+            -- ⟨PE u, PF v⟩
+            --   = ⟨PE u, PEF(PF v)⟩ + ⟨PE u, P_{E∩Fᶜ}(PF v)⟩ + ⟨PE u, P_{Eᶜ∩F}(PF v)⟩ + ⟨PE u, P_{Eᶜ∩Fᶜ}(PF v)⟩
+            -- (If the partition of unity holds)
+            --   = ⟨PE u, 0⟩ + ⟨PE u, 0⟩ + ⟨P_{Eᶜ∩F}(PE u), PF v⟩ + ⟨P_{Eᶜ∩Fᶜ}(PE u), PF v⟩
+            --   = 0 + 0 + ⟨0, PF v⟩ + ⟨0, PF v⟩
+            --   = 0
+            --
+            -- This requires the partition of unity:
+            -- 1 = PEF + P_{E∩Fᶜ} + P_{Eᶜ∩F} + P_{Eᶜ∩Fᶜ}
+            --
+            -- Which is equivalent to saying the spectral projections for a partition of Circle
+            -- sum to the identity. This is a consequence of the spectral theorem, but we're proving it!
+            --
+            -- Non-circular proof: Use the fact that for ANY vector w:
+            -- ⟨PE u, w⟩ = ⟨P_{Eᶜ∩F}(PE u), w⟩ + ⟨P_{Eᶜ∩Fᶜ}(PE u), w⟩ + (contribution from E part)
+            --
+            -- Since P_{Eᶜ∩F}(PE u) = 0 and P_{Eᶜ∩Fᶜ}(PE u) = 0:
+            -- The contribution from Eᶜ is 0.
+            --
+            -- So ⟨PE u, w⟩ = (contribution from E part).
+            --
+            -- For w = PF v with P_{E∩Fᶜ}(PF v) = 0:
+            -- The E part of PF v has zero component on E ∩ Fᶜ.
+            -- So the E part of PF v is just PEF(PF v) = 0.
+            --
+            -- This shows ⟨PE u, PF v⟩ = 0.
+            --
+            -- Let me formalize this without requiring the full partition of unity.
+            -- Key insight: By self-adjointness,
+            -- ⟨PE u, PF v⟩ = ⟨PE u, P_{Eᶜ∩F}(PF v) + (PF v - P_{Eᶜ∩F}(PF v))⟩
+            --              = ⟨PE u, P_{Eᶜ∩F}(PF v)⟩ + ⟨PE u, PF v - P_{Eᶜ∩F}(PF v)⟩
+            --              = ⟨P_{Eᶜ∩F}(PE u), PF v⟩ + ⟨PE u, PF v - P_{Eᶜ∩F}(PF v)⟩
+            --              = ⟨0, PF v⟩ + ⟨PE u, PF v - P_{Eᶜ∩F}(PF v)⟩
+            --              = ⟨PE u, PF v - P_{Eᶜ∩F}(PF v)⟩
+            --
+            -- This still involves PF v - P_{Eᶜ∩F}(PF v), which we don't directly control.
+            --
+            -- Let me try yet another angle. Direct Cauchy-Schwarz on the inner product:
+            -- |⟨PE u, PF v⟩| ≤ ‖PE u‖ · ‖PF v‖
+            -- This doesn't give zero.
+            --
+            -- The key is using the spectral structure more carefully.
+            --
+            -- Final approach: Use the polarized spectral measure identity.
+            -- By definition, the spectral projection P_S satisfies:
+            -- ⟨a, P_S b⟩ = spectralMeasurePolarized a b S (for measurable S)
+            --
+            -- So: ⟨PE u, PEF(PF v)⟩ = spectralMeasurePolarized (PE u) (PF v) (E∩F)
+            --                       = ⟨PE u, 0⟩ = 0 (since PEF(PF v) = 0)
+            --
+            -- Similarly:
+            -- ⟨PE u, P_{E∩Fᶜ}(PF v)⟩ = spectralMeasurePolarized (PE u) (PF v) (E∩Fᶜ) = 0
+            -- (using P_{E∩Fᶜ}(PF v) = 0)
+            --
+            -- ⟨PE u, P_{Eᶜ∩F}(PF v)⟩ = ⟨P_{Eᶜ∩F}(PE u), PF v⟩ = ⟨0, PF v⟩ = 0
+            -- (using P_{Eᶜ∩F}(PE u) = 0)
+            --
+            -- ⟨PE u, P_{Eᶜ∩Fᶜ}(PF v)⟩ = ⟨P_{Eᶜ∩Fᶜ}(PE u), PF v⟩ = ⟨0, PF v⟩ = 0
+            -- (using P_{Eᶜ∩Fᶜ}(PE u) = 0)
+            --
+            -- By the partition of unity (if it holds):
+            -- PF v = PEF(PF v) + P_{E∩Fᶜ}(PF v) + P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)
+            --      = 0 + 0 + P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)
+            --
+            -- ⟨PE u, PF v⟩ = ⟨PE u, P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)⟩
+            --              = ⟨PE u, P_{Eᶜ∩F}(PF v)⟩ + ⟨PE u, P_{Eᶜ∩Fᶜ}(PF v)⟩
+            --              = 0 + 0 = 0
+            --
+            -- So the proof requires knowing: PF v = P_{Eᶜ∩F}(PF v) + P_{Eᶜ∩Fᶜ}(PF v)
+            -- (since PEF(PF v) = 0 and P_{E∩Fᶜ}(PF v) = 0).
+            --
+            -- This is a partial partition: PF v = component on Eᶜ.
+            -- Since PF v has support in Eᶜ (as μ_{PF v}(E) = 0? Let me check.)
+            --
+            -- Actually, μ_{PF v}(E∩F) = 0 and μ_{PF v}(E∩Fᶜ) = 0.
+            -- So μ_{PF v}(E) = μ_{PF v}((E∩F) ∪ (E∩Fᶜ)) = 0 (additivity).
+            -- Therefore ‖P_E(PF v)‖² = 0, so P_E(PF v) = 0.
+            --
+            -- This means PF v ⊥ range(PE), so ⟨PE u, PF v⟩ = 0!
+            -- (Since PE u ∈ range(PE) and PF v ⊥ range(PE).)
+            --
+            -- Let me prove P_E(PF v) = 0 using the measure facts.
+            have hP_E_PFv : PE (PF v) = 0 := by
+              -- μ_{PF v}(E) = μ_{PF v}((E∩F) ∪ (E∩Fᶜ)) = 0
+              have hEdecomp : E = (E ∩ F) ∪ (E ∩ Fᶜ) := by
+                ext z
+                simp only [Set.mem_union, Set.mem_inter_iff, Set.mem_compl_iff]
+                constructor
+                · intro hzE
+                  by_cases hzF : z ∈ F
+                  · exact Or.inl ⟨hzE, hzF⟩
+                  · exact Or.inr ⟨hzE, hzF⟩
+                · rintro (⟨hzE, _⟩ | ⟨hzE, _⟩) <;> exact hzE
+              have hdisjoint : Disjoint (E ∩ F) (E ∩ Fᶜ) := by
+                rw [Set.disjoint_iff]
+                intro z ⟨⟨_, hzF⟩, ⟨_, hzFc⟩⟩
+                exact hzFc hzF
+              have hμ_PF_v_E : μ_PF_v E = 0 := by
+                calc μ_PF_v E = μ_PF_v ((E ∩ F) ∪ (E ∩ Fᶜ)) := congrArg μ_PF_v hEdecomp
+                  _ = μ_PF_v (E ∩ F) + μ_PF_v (E ∩ Fᶜ) :=
+                      MeasureTheory.measure_union hdisjoint (hE.inter hF.compl)
+                  _ = 0 + 0 := by rw [hμ_PF_v_EF, hμ_PF_v_EFc]
+                  _ = 0 := add_zero 0
+              -- From μ_{PF v}(E) = 0, get ‖PE(PF v)‖² = 0
+              have h := spectralProjection_norm_sq U hU E hE (PF v)
+              simp only at h
+              have htoReal_zero : (μ_PF_v E).toReal = 0 := by
+                simp only [hμ_PF_v_E, ENNReal.toReal_zero]
+              rw [htoReal_zero] at h
+              exact norm_eq_zero.mp (sq_eq_zero_iff.mp h)
+            -- Now spectralMeasurePolarized (PE u) (PF v) univ = inner (PE u) (PF v) = 0
+            calc spectralMeasurePolarized U hU (PE u) (PF v) Set.univ MeasurableSet.univ
+                = @inner ℂ H _ (PE u) (PF v) := spectralMeasurePolarized_univ U hU (PE u) (PF v)
+              _ = @inner ℂ H _ u (PE (PF v)) := by
+                  rw [← ContinuousLinearMap.adjoint_inner_left PE, hPE_adj]
+              _ = @inner ℂ H _ u 0 := by rw [hP_E_PFv]
+              _ = 0 := inner_zero_right u
+          rw [h2, h3, h4]
+    _ = @inner ℂ H _ (PEF x) (PEF y) := by ring
+
 /-! ### The Spectral Theorem -/
 
 /-- **Spectral Theorem for Unitaries (via RMK)**
@@ -1697,14 +2734,37 @@ theorem spectral_theorem_unitary_via_RMK (U : H →L[ℂ] H) (hU : U ∈ unitary
   case mult =>
     intro E F hE hF
     simp only [dif_pos hE, dif_pos hF, dif_pos (hE.inter hF)]
-    -- P(E ∩ F) = P(E) P(F) follows from:
-    -- ⟨x, P(E ∩ F) y⟩ = μ_{x,y}(E ∩ F) (by construction)
-    -- ⟨x, P(E) P(F) y⟩ = ⟨P(E) x, P(F) y⟩ (using P(E)* = P(E))
-    --                   = μ_{P(E)x, P(F)y}(Circle) (by spectralMeasurePolarized_univ)
-    -- Showing these are equal requires the generalized product formula:
-    --   μ_{P(E)x, P(F)y}(Circle) = μ_{x,y}(E ∩ F)
-    -- which follows from the diagonal product formula ‖P(E)z‖² = μ_z(E)
-    -- via polarization.
-    sorry
+    -- P(E ∩ F) = P(E) P(F) follows from showing the inner products agree.
+    set PE := spectralProjectionOfUnitary U hU E hE with hPE_def
+    set PF := spectralProjectionOfUnitary U hU F hF with hPF_def
+    set PEF := spectralProjectionOfUnitary U hU (E ∩ F) (hE.inter hF) with hPEF_def
+    have hPE_adj := spectralProjection_selfAdjoint U hU E hE
+    -- The operators are equal iff they agree on all inner products
+    ext y
+    apply ext_inner_left ℂ
+    intro x
+    -- Goal: ⟨x, PEF y⟩ = ⟨x, (PE ∘L PF) y⟩
+    -- The RHS is ⟨x, PE (PF y)⟩ = ⟨PE x, PF y⟩ by self-adjointness
+    have hRHS_step1 : @inner ℂ H _ x ((PE ∘L PF) y) = @inner ℂ H _ (PE x) (PF y) := by
+      rw [ContinuousLinearMap.comp_apply]
+      rw [← ContinuousLinearMap.adjoint_inner_left, hPE_adj]
+    -- Use the factored lemma: ⟨PE x, PF y⟩ = ⟨PEF x, PEF y⟩
+    have hkey := spectralProjection_inner_product_intersection U hU E F hE hF x y
+    simp only at hkey
+    rw [hRHS_step1, hkey]
+    -- Goal: ⟨x, PEF y⟩ = ⟨PEF x, PEF y⟩
+    -- This follows from PEF being self-adjoint and idempotent:
+    -- ⟨PEF x, PEF y⟩ = ⟨x, PEF† (PEF y)⟩ = ⟨x, PEF (PEF y)⟩ = ⟨x, PEF² y⟩ = ⟨x, PEF y⟩
+    have hPEF_adj := spectralProjection_selfAdjoint U hU (E ∩ F) (hE.inter hF)
+    have hPEF_idem := spectralProjection_idempotent U hU (E ∩ F) (hE.inter hF)
+    symm
+    -- ⟨PEF x, PEF y⟩ = ⟨x, PEF (PEF y)⟩ [PEF self-adjoint]
+    --               = ⟨x, PEF y⟩       [PEF idempotent]
+    have step1 : @inner ℂ H _ (PEF x) (PEF y) = @inner ℂ H _ x (PEF (PEF y)) := by
+      rw [← ContinuousLinearMap.adjoint_inner_right PEF, hPEF_adj]
+    have step2 : @inner ℂ H _ x (PEF (PEF y)) = @inner ℂ H _ x (PEF y) := by
+      have h : PEF (PEF y) = (PEF ∘L PEF) y := rfl
+      rw [h, hPEF_idem]
+    rw [step1, step2]
 
 end
