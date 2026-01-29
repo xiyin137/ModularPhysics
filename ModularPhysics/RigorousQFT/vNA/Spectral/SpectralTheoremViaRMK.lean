@@ -388,17 +388,60 @@ theorem spectralMeasureDiagonal_integral (U : H →L[ℂ] H) (hU : U ∈ unitary
     ∫ z, f z ∂(spectralMeasureDiagonal U hU x) = (spectralFunctionalCc U hU x) f :=
   RealRMK.integral_rieszMeasure (spectralFunctionalCc U hU x) f
 
+/-- The circleRealToComplex of the constant 1 function is constant 1 on the spectrum. -/
+lemma circleRealToComplex_one_eq_one_on_spectrum (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H)) :
+    Set.EqOn (circleRealToComplex (1 : C(Circle, ℝ))) 1 (spectrum ℂ U) := by
+  intro z hz
+  have hspec : spectrum ℂ U ⊆ Metric.sphere (0 : ℂ) 1 := spectrum.subset_circle_of_unitary hU
+  have hz_sphere : z ∈ Metric.sphere (0 : ℂ) 1 := hspec hz
+  simp only [circleRealToComplex, hz_sphere, dite_true, ContinuousMap.one_apply, Complex.ofReal_one,
+    Pi.one_apply]
+
+/-- CFC of the constant 1 function is the identity. -/
+lemma cfcOfCircleReal_one (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H)) :
+    cfcOfCircleReal U hU 1 = 1 := by
+  haveI : IsStarNormal U := unitary_isStarNormal U hU
+  unfold cfcOfCircleReal
+  -- circleRealToComplex 1 equals the constant 1 on the spectrum
+  have heq : Set.EqOn (circleRealToComplex (1 : C(Circle, ℝ))) 1 (spectrum ℂ U) :=
+    circleRealToComplex_one_eq_one_on_spectrum U hU
+  -- cfc of functions that agree on spectrum are equal
+  rw [cfc_congr heq, cfc_one ℂ U]
+
 /-- The total measure of Circle equals ‖z‖².
     This follows from: μ_z(Circle) = ∫ 1 dμ_z = Λ_z(1) = Re⟨z, cfc(1,U)z⟩ = Re⟨z, z⟩ = ‖z‖² -/
 theorem spectralMeasureDiagonal_univ (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
     (z : H) : (spectralMeasureDiagonal U hU z Set.univ).toReal = ‖z‖ ^ 2 := by
-  haveI : IsStarNormal U := unitary_isStarNormal U hU
-  -- The key is that the spectral functional of the constant 1 gives ‖z‖²
-  -- and the integral of 1 against the measure gives the total mass
-  -- Technical: This requires computing the RMK measure of the full space
-  -- For now, we use the fact that for Circle (compact), μ(Circle) = Λ(1) by RMK
-  -- and Λ_z(1) = Re⟨z, cfc(1,U)z⟩ = Re⟨z, z⟩ = ‖z‖²
-  sorry
+  haveI hfin : IsFiniteMeasure (spectralMeasureDiagonal U hU z) :=
+    spectralMeasureDiagonal_isFiniteMeasure U hU z
+  -- For the constant 1 function as C_c(Circle, ℝ)
+  let one_cc : C_c(Circle, ℝ) := ⟨1, HasCompactSupport.of_compactSpace 1⟩
+  -- Measure.real is (μ s).toReal
+  have hreal : (spectralMeasureDiagonal U hU z Set.univ).toReal =
+      (spectralMeasureDiagonal U hU z).real Set.univ := rfl
+  rw [hreal]
+  -- μ.real univ = ∫ 1 dμ for finite measures (from integral_const)
+  have hconst := MeasureTheory.integral_const (μ := spectralMeasureDiagonal U hU z) (1 : ℝ)
+  simp only [smul_eq_mul, mul_one] at hconst
+  rw [← hconst]
+  -- Convert to integral of one_cc and use RMK
+  have heq : ∫ _ : Circle, (1 : ℝ) ∂(spectralMeasureDiagonal U hU z) =
+      ∫ x : Circle, one_cc x ∂(spectralMeasureDiagonal U hU z) := by
+    congr 1
+  rw [heq, spectralMeasureDiagonal_integral U hU z one_cc]
+  -- Λ_z(1) = spectralFunctionalAux U hU z (1 : C(Circle, ℝ))
+  show spectralFunctionalAux U hU z one_cc.toContinuousMap = ‖z‖ ^ 2
+  -- one_cc.toContinuousMap = 1
+  have hone : one_cc.toContinuousMap = 1 := rfl
+  rw [hone]
+  -- spectralFunctionalAux U hU z 1 = Re⟨z, cfcOfCircleReal U hU 1 z⟩
+  unfold spectralFunctionalAux
+  rw [cfcOfCircleReal_one U hU]
+  -- Re⟨z, 1 z⟩ = Re⟨z, z⟩ = ‖z‖²
+  simp only [ContinuousLinearMap.one_apply]
+  rw [inner_self_eq_norm_sq_to_K]
+  -- Goal: (↑‖z‖ ^ 2).re = ‖z‖ ^ 2
+  norm_cast
 
 /-! ### Polarization to Complex Measure -/
 
@@ -521,6 +564,137 @@ theorem spectralFunctionalAux_polarization (U : H →L[ℂ] H) (hU : U ∈ unita
   rw [hmul_div]
   exact hpol.symm
 
+/-- The spectral functional scales quadratically: Λ_{cz}(f) = |c|² Λ_z(f).
+    This is the key property making μ_z(E) a quadratic form in z. -/
+theorem spectralFunctionalAux_smul_sq (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (c : ℂ) (z : H) (f : C(Circle, ℝ)) :
+    spectralFunctionalAux U hU (c • z) f = ‖c‖^2 * spectralFunctionalAux U hU z f := by
+  haveI : IsStarNormal U := unitary_isStarNormal U hU
+  unfold spectralFunctionalAux cfcOfCircleReal
+  set A := cfc (circleRealToComplex f) U with hA_def
+  -- ⟨cz, A(cz)⟩ = ⟨cz, c·Az⟩ = c̄·c·⟨z, Az⟩ = |c|²·⟨z, Az⟩
+  calc (@inner ℂ H _ (c • z) (A (c • z))).re
+      = (@inner ℂ H _ (c • z) (c • A z)).re := by rw [map_smul]
+    _ = (starRingEnd ℂ c * c * @inner ℂ H _ z (A z)).re := by
+        rw [inner_smul_left, inner_smul_right]; ring_nf
+    _ = (Complex.normSq c * @inner ℂ H _ z (A z)).re := by
+        rw [← Complex.normSq_eq_conj_mul_self]
+    _ = ‖c‖^2 * (@inner ℂ H _ z (A z)).re := by
+        rw [Complex.normSq_eq_norm_sq]
+        have h : ((‖c‖^2 : ℝ) : ℂ) * @inner ℂ H _ z (A z) =
+                 (‖c‖^2 : ℝ) * @inner ℂ H _ z (A z) := rfl
+        rw [Complex.mul_re]
+        simp only [Complex.ofReal_re, Complex.ofReal_im, zero_mul, sub_zero]
+
+/-- The diagonal spectral measure satisfies μ_{cz}(E) = |c|² μ_z(E).
+    This follows from the quadratic scaling of the spectral functional. -/
+theorem spectralMeasureDiagonal_smul_sq (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (c : ℂ) (z : H) (E : Set Circle) (_hE : MeasurableSet E) :
+    (spectralMeasureDiagonal U hU (c • z) E).toReal =
+    ‖c‖^2 * (spectralMeasureDiagonal U hU z E).toReal := by
+  -- The key: both measures integrate functions the same way
+  -- For continuous functions f: ∫ f dμ_{cz} = Λ_{cz}(f) = |c|² Λ_z(f) = |c|² ∫ f dμ_z
+  have hint_eq : ∀ f : C_c(Circle, ℝ),
+      ∫ x, f x ∂(spectralMeasureDiagonal U hU (c • z)) =
+      ‖c‖^2 * ∫ x, f x ∂(spectralMeasureDiagonal U hU z) := by
+    intro f
+    rw [spectralMeasureDiagonal_integral U hU (c • z) f]
+    rw [spectralMeasureDiagonal_integral U hU z f]
+    show spectralFunctionalAux U hU (c • z) f.toContinuousMap =
+         ‖c‖^2 * spectralFunctionalAux U hU z f.toContinuousMap
+    exact spectralFunctionalAux_smul_sq U hU c z f.toContinuousMap
+  -- Use the scaling coefficient as NNReal
+  have hr_nonneg : 0 ≤ ‖c‖^2 := sq_nonneg _
+  let r : NNReal := Real.toNNReal (‖c‖^2)
+  have hr_val : (r : ℝ) = ‖c‖^2 := Real.coe_toNNReal _ hr_nonneg
+  -- Apply uniqueness: both measures integrate same → measures related by scaling
+  -- The RMK measure is regular
+  haveI hreg1 : (spectralMeasureDiagonal U hU (c • z)).Regular := RealRMK.regular_rieszMeasure _
+  haveI hreg2 : (spectralMeasureDiagonal U hU z).Regular := RealRMK.regular_rieszMeasure _
+  haveI hreg_scaled : (r • spectralMeasureDiagonal U hU z).Regular := by
+    infer_instance
+  have hμ_eq : spectralMeasureDiagonal U hU (c • z) = r • spectralMeasureDiagonal U hU z := by
+    apply MeasureTheory.Measure.ext_of_integral_eq_on_compactlySupported
+    intro f
+    rw [hint_eq f]
+    -- ∫ f d(r • μ) = r • ∫ f dμ = ‖c‖² * ∫ f dμ
+    rw [MeasureTheory.integral_smul_nnreal_measure (fun x => f x) r]
+    -- r • ∫ f dμ = (r : ℝ) * ∫ f dμ = ‖c‖² * ∫ f dμ
+    rw [NNReal.smul_def, hr_val, smul_eq_mul]
+  -- Now the result follows for the specific set E
+  rw [hμ_eq, MeasureTheory.Measure.coe_nnreal_smul_apply]
+  rw [ENNReal.toReal_mul, ENNReal.coe_toReal, hr_val]
+
+/-- The diagonal spectral measure satisfies the parallelogram identity:
+    μ_{x+y}(E) + μ_{x-y}(E) = 2μ_x(E) + 2μ_y(E).
+    This follows from the parallelogram identity for the spectral functional. -/
+theorem spectralMeasureDiagonal_parallelogram (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (x y : H) (E : Set Circle) (_hE : MeasurableSet E) :
+    (spectralMeasureDiagonal U hU (x + y) E).toReal +
+    (spectralMeasureDiagonal U hU (x - y) E).toReal =
+    2 * (spectralMeasureDiagonal U hU x E).toReal +
+    2 * (spectralMeasureDiagonal U hU y E).toReal := by
+  -- For all continuous f, the integrals satisfy the parallelogram identity
+  have hint_eq : ∀ f : C_c(Circle, ℝ),
+      ∫ z, f z ∂(spectralMeasureDiagonal U hU (x + y)) +
+      ∫ z, f z ∂(spectralMeasureDiagonal U hU (x - y)) =
+      2 * ∫ z, f z ∂(spectralMeasureDiagonal U hU x) +
+      2 * ∫ z, f z ∂(spectralMeasureDiagonal U hU y) := by
+    intro f
+    rw [spectralMeasureDiagonal_integral U hU (x + y) f]
+    rw [spectralMeasureDiagonal_integral U hU (x - y) f]
+    rw [spectralMeasureDiagonal_integral U hU x f]
+    rw [spectralMeasureDiagonal_integral U hU y f]
+    exact spectralFunctionalAux_parallelogram U hU f.toContinuousMap x y
+  -- The measures are regular
+  haveI hreg1 : (spectralMeasureDiagonal U hU (x + y)).Regular := RealRMK.regular_rieszMeasure _
+  haveI hreg2 : (spectralMeasureDiagonal U hU (x - y)).Regular := RealRMK.regular_rieszMeasure _
+  haveI hreg3 : (spectralMeasureDiagonal U hU x).Regular := RealRMK.regular_rieszMeasure _
+  haveI hreg4 : (spectralMeasureDiagonal U hU y).Regular := RealRMK.regular_rieszMeasure _
+  -- Show measure equality: μ_{x+y} + μ_{x-y} = 2•μ_x + 2•μ_y
+  have hμ_eq : spectralMeasureDiagonal U hU (x + y) + spectralMeasureDiagonal U hU (x - y) =
+      (2 : NNReal) • spectralMeasureDiagonal U hU x + (2 : NNReal) • spectralMeasureDiagonal U hU y := by
+    apply MeasureTheory.Measure.ext_of_integral_eq_on_compactlySupported
+    intro f
+    -- Compactly supported continuous functions are integrable on finite measures
+    -- The RMK measure on compact Circle is finite
+    haveI : MeasureTheory.IsFiniteMeasureOnCompacts (spectralMeasureDiagonal U hU (x + y)) := inferInstance
+    haveI : MeasureTheory.IsFiniteMeasureOnCompacts (spectralMeasureDiagonal U hU (x - y)) := inferInstance
+    haveI : MeasureTheory.IsFiniteMeasureOnCompacts ((2 : NNReal) • spectralMeasureDiagonal U hU x) := inferInstance
+    haveI : MeasureTheory.IsFiniteMeasureOnCompacts ((2 : NNReal) • spectralMeasureDiagonal U hU y) := inferInstance
+    have hint : ∀ μ [MeasureTheory.IsFiniteMeasureOnCompacts μ], MeasureTheory.Integrable (fun z => f z) μ :=
+      fun μ _ => f.continuous.integrable_of_hasCompactSupport f.hasCompactSupport
+    rw [MeasureTheory.integral_add_measure (hint _) (hint _)]
+    rw [MeasureTheory.integral_add_measure (hint _) (hint _)]
+    rw [MeasureTheory.integral_smul_nnreal_measure, MeasureTheory.integral_smul_nnreal_measure]
+    simp only [NNReal.smul_def, NNReal.coe_ofNat]
+    exact hint_eq f
+  -- Evaluate at E
+  have heq : (spectralMeasureDiagonal U hU (x + y) + spectralMeasureDiagonal U hU (x - y)) E =
+      ((2 : NNReal) • spectralMeasureDiagonal U hU x + (2 : NNReal) • spectralMeasureDiagonal U hU y) E := by
+    rw [hμ_eq]
+  simp only [MeasureTheory.Measure.add_apply, MeasureTheory.Measure.coe_nnreal_smul_apply] at heq
+  -- Convert from ENNReal to Real
+  have hne1 : (spectralMeasureDiagonal U hU (x + y) E) ≠ ⊤ := MeasureTheory.measure_ne_top _ _
+  have hne2 : (spectralMeasureDiagonal U hU (x - y) E) ≠ ⊤ := MeasureTheory.measure_ne_top _ _
+  have hne3 : (2 : ENNReal) * (spectralMeasureDiagonal U hU x E) ≠ ⊤ :=
+    ENNReal.mul_ne_top ENNReal.coe_ne_top (MeasureTheory.measure_ne_top _ _)
+  have hne4 : (2 : ENNReal) * (spectralMeasureDiagonal U hU y E) ≠ ⊤ :=
+    ENNReal.mul_ne_top ENNReal.coe_ne_top (MeasureTheory.measure_ne_top _ _)
+  calc (spectralMeasureDiagonal U hU (x + y) E).toReal +
+       (spectralMeasureDiagonal U hU (x - y) E).toReal
+      = ((spectralMeasureDiagonal U hU (x + y) E) +
+         (spectralMeasureDiagonal U hU (x - y) E)).toReal := (ENNReal.toReal_add hne1 hne2).symm
+    _ = ((2 : ENNReal) * (spectralMeasureDiagonal U hU x E) +
+         (2 : ENNReal) * (spectralMeasureDiagonal U hU y E)).toReal := by
+           -- heq has ↑2 (coercion from NNReal) but goal has (2 : ENNReal); they're equal
+           convert congrArg ENNReal.toReal heq using 2
+    _ = ((2 : ENNReal) * (spectralMeasureDiagonal U hU x E)).toReal +
+        ((2 : ENNReal) * (spectralMeasureDiagonal U hU y E)).toReal := ENNReal.toReal_add hne3 hne4
+    _ = 2 * (spectralMeasureDiagonal U hU x E).toReal +
+        2 * (spectralMeasureDiagonal U hU y E).toReal := by
+          simp only [ENNReal.toReal_mul, ENNReal.toReal_ofNat]
+
 /-- Polarization identity for measures.
     μ_{x,y}(E) = (1/4)[μ_{x+y}(E) - μ_{x-y}(E) + i·μ_{x+iy}(E) - i·μ_{x-iy}(E)]
 
@@ -549,8 +723,24 @@ theorem spectralMeasurePolarized_integral (U : H →L[ℂ] H) (hU : U ∈ unitar
     let I_idiff := ∫ z, f z ∂(spectralMeasureDiagonal U hU (x - Complex.I • y))
     (1/4 : ℂ) * (I_sum - I_diff - Complex.I * I_isum + Complex.I * I_idiff) =
     @inner ℂ H _ x (cfcOfCircleReal U hU f.toContinuousMap y) := by
-  -- Polarization identity proof - mathematically: 4⟨x, Ay⟩ = Q(x+y) - Q(x-y) - i·Q(x+iy) + i·Q(x-iy)
-  sorry
+  -- Use RMK: ∫ f dμ_z = Λ_z(f) = spectralFunctionalAux U hU z f
+  simp only
+  rw [spectralMeasureDiagonal_integral U hU (x + y) f]
+  rw [spectralMeasureDiagonal_integral U hU (x - y) f]
+  rw [spectralMeasureDiagonal_integral U hU (x + Complex.I • y) f]
+  rw [spectralMeasureDiagonal_integral U hU (x - Complex.I • y) f]
+  -- Now use spectralFunctionalAux_polarization
+  have hpol := spectralFunctionalAux_polarization U hU f.toContinuousMap x y
+  -- hpol says: (1/4) * (Λ_{x+y}(f) - Λ_{x-y}(f) - I*Λ_{x+I•y}(f) + I*Λ_{x-I•y}(f)) = ⟨x, cfc(f)y⟩
+  -- The spectralFunctionalCc is just spectralFunctionalAux applied to f.toContinuousMap
+  show (1 / 4 : ℂ) * ((spectralFunctionalCc U hU (x + y)) f - (spectralFunctionalCc U hU (x - y)) f -
+      Complex.I * (spectralFunctionalCc U hU (x + Complex.I • y)) f +
+      Complex.I * (spectralFunctionalCc U hU (x - Complex.I • y)) f) =
+    @inner ℂ H _ x (cfcOfCircleReal U hU f.toContinuousMap y)
+  -- spectralFunctionalCc U hU z f = spectralFunctionalAux U hU z f.toContinuousMap
+  unfold spectralFunctionalCc
+  simp only [PositiveLinearMap.mk₀]
+  exact hpol
 
 /-! ### Construction of Spectral Projections
 
@@ -602,11 +792,30 @@ theorem spectralMeasurePolarized_conj_linear_left (U : H →L[ℂ] H) (hU : U �
 theorem spectralMeasurePolarized_bounded (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
     (E : Set Circle) (hE : MeasurableSet E) :
     ∃ C : ℝ, ∀ x y : H, ‖spectralMeasurePolarized U hU x y E hE‖ ≤ C * ‖x‖ * ‖y‖ := by
-  -- Each diagonal measure satisfies μ_z(E) ≤ μ_z(Circle) ≤ ‖z‖²
-  -- (This uses that the positive functional Λ_z(1) = Re⟨z, cfc(1)z⟩ = ‖z‖²)
-  -- By polarization bounds, |μ_{x,y}(E)| ≤ 4 * ‖x‖ * ‖y‖
-  use 4
+  -- Each diagonal measure satisfies μ_z(E) ≤ μ_z(Circle) = ‖z‖²
+  -- By polarization bounds: |B(x,y)| ≤ (1/4)(‖x+y‖² + ‖x-y‖² + ‖x+iy‖² + ‖x-iy‖²) = ‖x‖² + ‖y‖²
+  -- This bound is not multiplicative, but since B(x,0) = B(0,y) = 0, it suffices.
+  -- For a proper multiplicative bound, we'd need sesquilinearity + Cauchy-Schwarz.
+  -- For now, use ‖x‖² + ‖y‖² ≤ (‖x‖ + ‖y‖)², so |B(x,y)| ≤ (‖x‖ + ‖y‖)² ≤ 2(‖x‖² + ‖y‖²)
+  -- But actually, for the operator construction, we just need SOME bound.
+  use 2
   intro x y
+  -- Bound each diagonal measure by the total measure, which equals ‖z‖²
+  have hbound : ∀ z : H, (spectralMeasureDiagonal U hU z E).toReal ≤ ‖z‖^2 := by
+    intro z
+    -- The RMK measure on a compact space is finite
+    haveI : MeasureTheory.IsFiniteMeasure (spectralMeasureDiagonal U hU z) :=
+      spectralMeasureDiagonal_isFiniteMeasure U hU z
+    have hmono := MeasureTheory.measure_mono (μ := spectralMeasureDiagonal U hU z) (Set.subset_univ E)
+    have huniv := spectralMeasureDiagonal_univ U hU z
+    exact le_trans (ENNReal.toReal_mono (MeasureTheory.measure_ne_top _ _) hmono)
+                   (le_of_eq huniv)
+  -- Use triangle inequality and the bound
+  unfold spectralMeasurePolarized
+  -- |B(x,y)| ≤ (1/4)(μ₁ + μ₂ + μ₃ + μ₄) ≤ (1/4)(‖x+y‖² + ‖x-y‖² + ‖x+iy‖² + ‖x-iy‖²)
+  --         = (1/4)(4‖x‖² + 4‖y‖²) = ‖x‖² + ‖y‖² ≤ (‖x‖ + ‖y‖)² ≤ 2(‖x‖² + ‖y‖²)
+  -- For ‖x‖ ≤ 1, ‖y‖ ≤ 1: ‖x‖² + ‖y‖² ≤ 2 ≤ 2·1·1
+  -- General case needs more care with the bound
   sorry
 
 /-- The spectral projection for a Borel set E ⊆ Circle.
@@ -676,10 +885,14 @@ theorem spectralMeasurePolarized_univ (U : H →L[ℂ] H) (hU : U ∈ unitary (H
   simp only [Complex.ofReal_pow]
   -- The LHS is: (1/4) * (‖x+y‖² - ‖x-y‖² - I*‖x+I•y‖² + I*‖x-I•y‖²)
   -- The RHS is: ((‖x+y‖)² - (‖x-y‖)² + ((‖x-I•y‖)² - (‖x+I•y‖)²)*I)/4
-  -- Both sides are algebraically equal
-  -- For simplicity, defer to sorry - the algebraic identity is straightforward
-  -- TODO: Complete this proof with careful algebraic manipulation
-  sorry
+  -- Need to show: (1/4) * (a - b - I*c + I*d) = (a - b + (d-c)*I) / 4
+  -- where a = ‖x+y‖², b = ‖x-y‖², c = ‖x+I•y‖², d = ‖x-I•y‖²
+  -- We have: RCLike.I (for ℂ) = Complex.I
+  have hI : (RCLike.I : ℂ) = Complex.I := rfl
+  simp only [hI]
+  -- Both sides have the same terms, just in different order
+  ring_nf
+  ac_rfl
 
 /-- P(Circle) = 1 -/
 theorem spectralProjection_univ (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H)) :
