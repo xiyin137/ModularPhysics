@@ -3,59 +3,28 @@ Copyright (c) 2025 ModularPhysics Contributors. All rights reserved.
 Released under Apache 2.0 license.
 Authors: ModularPhysics Contributors
 -/
-import Mathlib.Analysis.Complex.Circle
-import Mathlib.Analysis.CStarAlgebra.ContinuousFunctionalCalculus.Basic
-import Mathlib.Analysis.CStarAlgebra.ContinuousFunctionalCalculus.Unital
-import Mathlib.Analysis.CStarAlgebra.ContinuousFunctionalCalculus.Order
-import Mathlib.Analysis.CStarAlgebra.Spectrum
-import Mathlib.Analysis.InnerProductSpace.Basic
-import Mathlib.Analysis.InnerProductSpace.Adjoint
-import Mathlib.Analysis.InnerProductSpace.Positive
-import Mathlib.Analysis.InnerProductSpace.StarOrder
-import Mathlib.MeasureTheory.Integral.RieszMarkovKakutani.Real
-import Mathlib.MeasureTheory.Constructions.BorelSpace.Basic
-import Mathlib.Topology.ContinuousMap.Compact
+import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralFunctionalViaRMK
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralIntegral
+import ModularPhysics.RigorousQFT.vNA.Spectral.JensenLinearity
 
 /-!
 # Spectral Theorem via Riesz-Markov-Kakutani
 
-This file constructs the spectral measure for unitary operators using the
-Riesz-Markov-Kakutani representation theorem, INDEPENDENT of the bump operator
-Cauchy property in FunctionalCalculusFromCFC.lean.
+This file constructs the spectral projections for unitary operators using the
+spectral functional and diagonal measure from `SpectralFunctionalViaRMK.lean`.
 
 ## Strategy
 
-The key insight is that for a unitary U, we can directly construct a positive
-linear functional using CFC, then apply RMK to obtain the spectral measure.
-
-**Step 1: Positive Linear Functional**
-For each x ∈ H, define Λ_x : C(Circle, ℝ) → ℝ by
-  Λ_x(f) = Re⟨x, cfc(f∘coe, U) x⟩
-where coe : Circle → ℂ is the inclusion.
-
-**Step 2: Positivity (uses cfc_nonneg)**
-If f ≥ 0 on Circle, then cfc(f∘coe, U) ≥ 0 as an operator, so Λ_x(f) ≥ 0.
-
-**Step 3: Apply RMK**
-Since Circle is compact, C_c(Circle, ℝ) = C(Circle, ℝ).
-RMK gives a finite measure μ_x with ∫ f dμ_x = Λ_x(f).
-
-**Step 4: Polarization**
-Define μ_{x,y} by polarization to get a complex measure.
-
-**Step 5: Construct Projections**
-For Borel E ⊆ Circle, define P(E) via sesquilinearToOperator.
-
-**Step 6: PVM Properties**
-Prove P(∅)=0, P(Circle)=1, P(E)²=P(E), P(E)*=P(E), σ-additivity.
+Building on the spectral functional and diagonal measure, we:
+1. Polarize the diagonal measure to get a complex-valued sesquilinear form
+2. Construct spectral projections via sesquilinearToOperator
+3. Prove PVM properties: P(∅)=0, P(Circle)=1, P(E)²=P(E), P(E)*=P(E)
 
 ## Main Results
 
-* `spectralFunctional` : the positive linear functional from CFC
-* `spectralMeasureOfUnitary` : the spectral measure via RMK
+* `spectralMeasurePolarized` : the polarized spectral measure
 * `spectralProjectionOfUnitary` : the spectral projections
-* `unitary_spectral_theorem` : the spectral theorem for unitaries
+* `spectral_theorem_unitary_via_RMK` : the spectral theorem for unitaries
 
 ## References
 
@@ -71,377 +40,6 @@ open Filter Topology Complex MeasureTheory CompactlySupportedContinuousMap
 universe u
 
 variable {H : Type u} [NormedAddCommGroup H] [InnerProductSpace ℂ H] [CompleteSpace H]
-
-/-! ### The circle and continuous functions on it -/
-
-/-- The unit circle in ℂ is compact. -/
-example : CompactSpace Circle := inferInstance
-
-/-- Circle has a measurable space structure (Borel σ-algebra). -/
-instance instMeasurableSpaceCircle : MeasurableSpace Circle := borel Circle
-
-/-- The measurable space on Circle is the Borel σ-algebra. -/
-instance instBorelSpaceCircle : BorelSpace Circle := ⟨rfl⟩
-
-/-- Circle is locally compact (as a compact space). -/
-instance : LocallyCompactSpace Circle := by
-  haveI : CompactSpace Circle := inferInstance
-  infer_instance
-
-/-- For a continuous function f : Circle → ℝ, we can view it as a function ℂ → ℂ
-    by composing with the inclusion and embedding ℝ ↪ ℂ. -/
-def circleRealToComplex (f : C(Circle, ℝ)) : ℂ → ℂ := fun z =>
-  if h : z ∈ Metric.sphere (0 : ℂ) 1 then
-    (f ⟨z, h⟩ : ℂ)
-  else
-    0
-
-/-- The function circleRealToComplex f is continuous on the spectrum of any unitary.
-
-    Technical lemma: On the spectrum (which is contained in the circle), the function
-    `circleRealToComplex f` restricts to `f` composed with the inclusion, which is continuous.
-
-    Key insight: Circle = Submonoid.unitSphere ℂ has carrier Metric.sphere 0 1,
-    so we can use the embedding property of Subtype.val to reduce to continuity of f. -/
-lemma circleRealToComplex_continuousOn_spectrum (f : C(Circle, ℝ)) (U : H →L[ℂ] H)
-    (hU : U ∈ unitary (H →L[ℂ] H)) :
-    ContinuousOn (circleRealToComplex f) (spectrum ℂ U) := by
-  have hspec : spectrum ℂ U ⊆ Metric.sphere (0 : ℂ) 1 :=
-    spectrum.subset_circle_of_unitary hU
-  -- It suffices to show continuity on the sphere, since spectrum ⊆ sphere
-  apply ContinuousOn.mono _ hspec
-  -- Show ContinuousOn (circleRealToComplex f) (Metric.sphere 0 1)
-  -- Use continuousOn_iff_continuous_restrict: reduce to continuity of the restriction
-  rw [continuousOn_iff_continuous_restrict]
-  -- The restricted function: (Metric.sphere 0 1) → ℂ
-  -- For z in the sphere, circleRealToComplex f z = ofReal (f ⟨z, hz⟩)
-  -- We show this equals Complex.ofReal ∘ f ∘ (the "identity" from sphere to Circle)
-  -- Since Circle = Submonoid.unitSphere ℂ has carrier = Metric.sphere 0 1,
-  -- the identity map sphere → Circle is just a type coercion
-  have heq : Set.restrict (Metric.sphere (0 : ℂ) 1) (circleRealToComplex f) =
-             Complex.ofReal ∘ f ∘ (fun z : Metric.sphere (0 : ℂ) 1 => (⟨z.val, z.property⟩ : Circle)) := by
-    funext ⟨z, hz⟩
-    simp only [Set.restrict_apply, Function.comp_apply, circleRealToComplex]
-    -- hz : z ∈ Metric.sphere 0 1, which is the same as Circle membership
-    simp only [hz, dite_true]
-  rw [heq]
-  -- Now show the composition is continuous
-  apply Complex.continuous_ofReal.comp
-  apply f.continuous.comp
-  -- The map sphere → Circle is continuous (it's essentially the identity on subtypes)
-  exact continuous_induced_rng.mpr continuous_subtype_val
-
-/-! ### CFC for unitaries with real-valued functions -/
-
-/-- A unitary operator is star-normal. -/
-theorem unitary_isStarNormal (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H)) :
-    IsStarNormal U := by
-  constructor
-  have hU_left := (Unitary.mem_iff.mp hU).1
-  have hU_right := (Unitary.mem_iff.mp hU).2
-  calc U.adjoint * U = U.adjoint ∘L U := rfl
-    _ = 1 := hU_left
-    _ = U ∘L U.adjoint := hU_right.symm
-    _ = U * U.adjoint := rfl
-
-/-- CFC is available for unitary operators. -/
-lemma unitary_has_cfc : ContinuousFunctionalCalculus ℂ (H →L[ℂ] H) (IsStarNormal ·) := inferInstance
-
-/-- Apply CFC to a real-valued function on the circle.
-    The result is a bounded operator on H. -/
-def cfcOfCircleReal (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (f : C(Circle, ℝ)) : H →L[ℂ] H :=
-  haveI : IsStarNormal U := unitary_isStarNormal U hU
-  cfc (circleRealToComplex f) U
-
-/-- CFC of a real-valued function is self-adjoint. -/
-theorem cfcOfCircleReal_isSelfAdjoint (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (f : C(Circle, ℝ)) : IsSelfAdjoint (cfcOfCircleReal U hU f) := by
-  haveI : IsStarNormal U := unitary_isStarNormal U hU
-  unfold cfcOfCircleReal
-  rw [IsSelfAdjoint, ← cfc_star (circleRealToComplex f) U]
-  congr 1
-  funext z
-  simp only [circleRealToComplex]
-  split_ifs with h
-  · -- star of a real number is itself: (x : ℂ)* = x for x : ℝ
-    have : (f ⟨z, h⟩ : ℂ) = Complex.ofReal (f ⟨z, h⟩) := rfl
-    rw [this, Complex.star_def, Complex.conj_ofReal]
-  · simp only [star_zero]
-
-set_option maxHeartbeats 400000 in
-/-- For a nonnegative function f, the inner product ⟨x, cfc(f)x⟩ is real and nonnegative.
-
-    This is the KEY lemma for the RMK approach.
-    The proof uses that for f ≥ 0, we can write f = (√f)² and use CFC multiplicativity.
-    Then cfc(f) = T² where T is self-adjoint, so cfc(f) = T*T and ⟨x, T*Tx⟩ = ‖Tx‖² ≥ 0. -/
-theorem cfcOfCircleReal_inner_nonneg (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (f : C(Circle, ℝ)) (hf : ∀ z : Circle, 0 ≤ f z) (x : H) :
-    0 ≤ (@inner ℂ H _ x (cfcOfCircleReal U hU f x)).re := by
-  haveI hU_normal : IsStarNormal U := unitary_isStarNormal U hU
-  -- Define g = √f, which is continuous since f ≥ 0
-  let g : C(Circle, ℝ) := ⟨fun z => Real.sqrt (f z), f.continuous.sqrt⟩
-  -- g² = f since f ≥ 0
-  have hg_sq : ∀ z : Circle, g z ^ 2 = f z := fun z => Real.sq_sqrt (hf z)
-  -- T := cfc(circleRealToComplex g) U is self-adjoint
-  let T := cfc (circleRealToComplex g) U
-  have hT_eq : T = cfcOfCircleReal U hU g := rfl
-  have hT_sa : IsSelfAdjoint T := by rw [hT_eq]; exact cfcOfCircleReal_isSelfAdjoint U hU g
-  -- T.adjoint = T
-  have hT_adj : T.adjoint = T := by
-    rw [IsSelfAdjoint, ContinuousLinearMap.star_eq_adjoint] at hT_sa
-    exact hT_sa
-  -- circleRealToComplex f = (circleRealToComplex g) * (circleRealToComplex g) pointwise
-  have hcircle_f : ∀ z, circleRealToComplex f z = circleRealToComplex g z * circleRealToComplex g z := by
-    intro z
-    simp only [circleRealToComplex]
-    split_ifs with h
-    · simp only [g, ContinuousMap.coe_mk]
-      -- Goal: (f ⟨z, h⟩ : ℂ) = (√(f ⟨z, h⟩) : ℂ) * (√(f ⟨z, h⟩) : ℂ)
-      -- Use that (a : ℂ) * (b : ℂ) = ((a * b) : ℂ) and √x * √x = x for x ≥ 0
-      rw [← Complex.ofReal_mul, ← sq, Real.sq_sqrt (hf ⟨z, h⟩)]
-    · simp
-  -- cfcOfCircleReal U hU f = T * T (using CFC multiplicativity)
-  have hcont_g := circleRealToComplex_continuousOn_spectrum g U hU
-  have hcfc_eq : cfcOfCircleReal U hU f = T * T := by
-    unfold cfcOfCircleReal
-    have hfun_eq : circleRealToComplex f = fun z => circleRealToComplex g z * circleRealToComplex g z := by
-      funext z; exact hcircle_f z
-    rw [hfun_eq]
-    -- Use cfc_mul: cfc (fun x => f x * g x) = cfc f * cfc g
-    rw [cfc_mul (circleRealToComplex g) (circleRealToComplex g) U hcont_g hcont_g]
-  -- T * T = T ∘L T as operators
-  have hcfc_sq : cfcOfCircleReal U hU f = T ∘L T := by
-    rw [hcfc_eq]; rfl
-  -- ⟨x, (T∘T)x⟩ = ⟨x, T(Tx)⟩ = ⟨T* x, Tx⟩ = ⟨Tx, Tx⟩ = ‖Tx‖² ≥ 0
-  rw [hcfc_sq]
-  simp only [ContinuousLinearMap.comp_apply]
-  -- Use that T* T is positive: ⟨x, T*T x⟩ = ⟨Tx, Tx⟩ = ‖Tx‖² ≥ 0
-  -- Since T = T*, we have T*T = T∘T
-  calc (@inner ℂ H _ x (T (T x))).re
-      = (@inner ℂ H _ x (T.adjoint (T x))).re := by rw [hT_adj]
-    _ = (@inner ℂ H _ (T x) (T x)).re := by
-        rw [ContinuousLinearMap.adjoint_inner_right T x (T x)]
-    _ = ‖T x‖ ^ 2 := by
-        rw [inner_self_eq_norm_sq_to_K]
-        norm_cast
-    _ ≥ 0 := sq_nonneg _
-
-/-- The inner product ⟨x, cfc(f)x⟩ is real for self-adjoint cfc(f). -/
-theorem cfcOfCircleReal_inner_real (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (f : C(Circle, ℝ)) (x : H) :
-    (@inner ℂ H _ x (cfcOfCircleReal U hU f x)).im = 0 := by
-  -- For self-adjoint A, ⟨x, Ax⟩ = ⟨Ax, x⟩ = conj⟨x, Ax⟩, so it's real
-  have hsa := cfcOfCircleReal_isSelfAdjoint U hU f
-  set A := cfcOfCircleReal U hU f with hA_def
-  -- IsSelfAdjoint means star A = A, which for CLMs means A.adjoint = A
-  have hadj : A.adjoint = A := by
-    rw [IsSelfAdjoint, ContinuousLinearMap.star_eq_adjoint] at hsa
-    exact hsa
-  -- adjoint_inner_right: ⟨x, A.adjoint y⟩ = ⟨A x, y⟩
-  -- So ⟨x, A.adjoint x⟩ = ⟨A x, x⟩
-  have h1 : @inner ℂ H _ x (A.adjoint x) = @inner ℂ H _ (A x) x :=
-    ContinuousLinearMap.adjoint_inner_right A x x
-  -- Since A.adjoint = A: ⟨x, Ax⟩ = ⟨Ax, x⟩
-  rw [hadj] at h1
-  -- inner_conj_symm: conj(⟨x, Ax⟩) = ⟨Ax, x⟩
-  -- So ⟨Ax, x⟩ = conj(⟨x, Ax⟩)
-  have h2 : @inner ℂ H _ (A x) x = starRingEnd ℂ (@inner ℂ H _ x (A x)) :=
-    (inner_conj_symm (A x) x).symm
-  -- Combining: ⟨x, Ax⟩ = conj(⟨x, Ax⟩)
-  have h3 : @inner ℂ H _ x (A x) = starRingEnd ℂ (@inner ℂ H _ x (A x)) := h1.trans h2
-  -- z = conj(z) implies z.im = 0
-  set z := @inner ℂ H _ x (A x) with hz_def
-  -- h3 says z = conj(z)
-  -- conj(z).im = -z.im, so if z = conj(z), then z.im = -z.im, hence z.im = 0
-  have hconj_im : (starRingEnd ℂ z).im = -z.im := Complex.conj_im z
-  -- From h3: z.im = (conj z).im = -z.im
-  have him_eq : z.im = -z.im := by
-    have : z.im = (starRingEnd ℂ z).im := congrArg Complex.im h3
-    rw [hconj_im] at this
-    exact this
-  -- z.im = -z.im means 2 * z.im = 0, so z.im = 0
-  linarith
-
-/-! ### Positive Linear Functional from CFC -/
-
-/-- The spectral functional Λ_x : C(Circle, ℝ) → ℝ defined by
-    Λ_x(f) = Re⟨x, cfc(f, U) x⟩ -/
-def spectralFunctionalAux (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : C(Circle, ℝ) → ℝ :=
-  fun f => (@inner ℂ H _ x (cfcOfCircleReal U hU f x)).re
-
-/-- Spectral functional is linear. -/
-theorem spectralFunctionalAux_linear (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : IsLinearMap ℝ (spectralFunctionalAux U hU x) := by
-  haveI : IsStarNormal U := unitary_isStarNormal U hU
-  constructor
-  · -- Additivity
-    intro f g
-    simp only [spectralFunctionalAux, cfcOfCircleReal]
-    -- cfc(f + g) = cfc(f) + cfc(g)
-    have hadd : cfc (circleRealToComplex (f + g)) U =
-                cfc (circleRealToComplex f) U + cfc (circleRealToComplex g) U := by
-      have hcont_f := circleRealToComplex_continuousOn_spectrum f U hU
-      have hcont_g := circleRealToComplex_continuousOn_spectrum g U hU
-      have heq : circleRealToComplex (f + g) = circleRealToComplex f + circleRealToComplex g := by
-        funext z
-        simp only [circleRealToComplex, ContinuousMap.coe_add, Pi.add_apply]
-        split_ifs with h <;> simp [Complex.ofReal_add]
-      rw [heq]
-      exact cfc_add (a := U) (circleRealToComplex f) (circleRealToComplex g) hcont_f hcont_g
-    rw [hadd, ContinuousLinearMap.add_apply, inner_add_right, Complex.add_re]
-  · -- Scalar multiplication
-    intro c f
-    simp only [spectralFunctionalAux, cfcOfCircleReal]
-    -- cfc(c • f) = c • cfc(f) where c is real
-    have hsmul : cfc (circleRealToComplex (c • f)) U =
-                 (c : ℂ) • cfc (circleRealToComplex f) U := by
-      have hcont := circleRealToComplex_continuousOn_spectrum f U hU
-      have heq : circleRealToComplex (c • f) = (c : ℂ) • circleRealToComplex f := by
-        funext z
-        simp only [circleRealToComplex, ContinuousMap.coe_smul, Pi.smul_apply, smul_eq_mul]
-        split_ifs with h
-        · simp only [Complex.ofReal_mul]
-        · simp
-      rw [heq]
-      exact cfc_smul (a := U) (↑c) (circleRealToComplex f) hcont
-    rw [hsmul, ContinuousLinearMap.smul_apply, inner_smul_right]
-    -- (c : ℂ) * inner x y has Re part = c * Re(inner x y)
-    rw [Complex.mul_re, Complex.ofReal_re, Complex.ofReal_im, zero_mul, sub_zero, smul_eq_mul]
-
-/-- Spectral functional is positive. -/
-theorem spectralFunctionalAux_nonneg (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) (f : C(Circle, ℝ)) (hf : 0 ≤ f) :
-    0 ≤ spectralFunctionalAux U hU x f := by
-  simp only [spectralFunctionalAux]
-  apply cfcOfCircleReal_inner_nonneg
-  intro z
-  exact hf z
-
-/-- Convert spectralFunctionalAux to a linear map. -/
-def spectralFunctionalLinear (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : C(Circle, ℝ) →ₗ[ℝ] ℝ where
-  toFun := spectralFunctionalAux U hU x
-  map_add' := (spectralFunctionalAux_linear U hU x).map_add
-  map_smul' := fun c f => by
-    simp only [RingHom.id_apply]
-    exact (spectralFunctionalAux_linear U hU x).map_smul c f
-
-/-- The spectral functional as a positive linear map. -/
-def spectralFunctional (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : C(Circle, ℝ) →ₚ[ℝ] ℝ := by
-  -- Circle is compact, so C(Circle, ℝ) = C_c(Circle, ℝ)
-  -- We need to construct C_c(Circle, ℝ) →ₚ[ℝ] ℝ
-  -- First, use that C(Circle, ℝ) has the structure we need
-  refine PositiveLinearMap.mk₀ (spectralFunctionalLinear U hU x) ?_
-  intro f hf
-  exact spectralFunctionalAux_nonneg U hU x f hf
-
-/-! ### Spectral Measure via RMK -/
-
-/-- Convert C(Circle, ℝ) to C_c(Circle, ℝ) using compactness. -/
-def circleCompactSupport : C(Circle, ℝ) ≃ C_c(Circle, ℝ) :=
-  continuousMapEquiv
-
-/-- The spectral functional on C_c(Circle, ℝ). -/
-def spectralFunctionalCc (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : C_c(Circle, ℝ) →ₚ[ℝ] ℝ := by
-  -- Transfer the positive linear map through the equivalence
-  -- Since Circle is compact, C_c(Circle, ℝ) ≃ C(Circle, ℝ) via continuousMapEquiv
-  refine PositiveLinearMap.mk₀ ?_ ?_
-  · -- The underlying linear map: C_c(Circle, ℝ) →ₗ[ℝ] ℝ
-    -- We apply spectralFunctionalAux to the underlying continuous map
-    exact {
-      toFun := fun f => spectralFunctionalAux U hU x f.toContinuousMap
-      map_add' := fun f g => by
-        -- (f + g).toContinuousMap = f.toContinuousMap + g.toContinuousMap
-        have h : (f + g).toContinuousMap = f.toContinuousMap + g.toContinuousMap := rfl
-        rw [h]
-        exact (spectralFunctionalAux_linear U hU x).map_add _ _
-      map_smul' := fun c f => by
-        -- (c • f).toContinuousMap = c • f.toContinuousMap
-        have h : (c • f).toContinuousMap = c • f.toContinuousMap := rfl
-        simp only [RingHom.id_apply, h]
-        exact (spectralFunctionalAux_linear U hU x).map_smul c _
-    }
-  · -- Positivity
-    intro f hf
-    apply spectralFunctionalAux_nonneg
-    exact hf
-
-/-- The spectral measure for the vector x, obtained via RMK. -/
-def spectralMeasureDiagonal (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : MeasureTheory.Measure Circle :=
-  RealRMK.rieszMeasure (spectralFunctionalCc U hU x)
-
-/-- The spectral measure is finite (since Circle is compact). -/
-theorem spectralMeasureDiagonal_isFiniteMeasure (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) : IsFiniteMeasure (spectralMeasureDiagonal U hU x) := by
-  -- Circle is compact, so RMK produces a finite measure
-  unfold spectralMeasureDiagonal
-  infer_instance
-
-/-- The spectral measure integrates to give the spectral functional. -/
-theorem spectralMeasureDiagonal_integral (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (x : H) (f : C_c(Circle, ℝ)) :
-    ∫ z, f z ∂(spectralMeasureDiagonal U hU x) = (spectralFunctionalCc U hU x) f :=
-  RealRMK.integral_rieszMeasure (spectralFunctionalCc U hU x) f
-
-/-- The circleRealToComplex of the constant 1 function is constant 1 on the spectrum. -/
-lemma circleRealToComplex_one_eq_one_on_spectrum (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H)) :
-    Set.EqOn (circleRealToComplex (1 : C(Circle, ℝ))) 1 (spectrum ℂ U) := by
-  intro z hz
-  have hspec : spectrum ℂ U ⊆ Metric.sphere (0 : ℂ) 1 := spectrum.subset_circle_of_unitary hU
-  have hz_sphere : z ∈ Metric.sphere (0 : ℂ) 1 := hspec hz
-  simp only [circleRealToComplex, hz_sphere, dite_true, ContinuousMap.one_apply, Complex.ofReal_one,
-    Pi.one_apply]
-
-/-- CFC of the constant 1 function is the identity. -/
-lemma cfcOfCircleReal_one (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H)) :
-    cfcOfCircleReal U hU 1 = 1 := by
-  haveI : IsStarNormal U := unitary_isStarNormal U hU
-  unfold cfcOfCircleReal
-  -- circleRealToComplex 1 equals the constant 1 on the spectrum
-  have heq : Set.EqOn (circleRealToComplex (1 : C(Circle, ℝ))) 1 (spectrum ℂ U) :=
-    circleRealToComplex_one_eq_one_on_spectrum U hU
-  -- cfc of functions that agree on spectrum are equal
-  rw [cfc_congr heq, cfc_one ℂ U]
-
-/-- The total measure of Circle equals ‖z‖².
-    This follows from: μ_z(Circle) = ∫ 1 dμ_z = Λ_z(1) = Re⟨z, cfc(1,U)z⟩ = Re⟨z, z⟩ = ‖z‖² -/
-theorem spectralMeasureDiagonal_univ (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
-    (z : H) : (spectralMeasureDiagonal U hU z Set.univ).toReal = ‖z‖ ^ 2 := by
-  haveI hfin : IsFiniteMeasure (spectralMeasureDiagonal U hU z) :=
-    spectralMeasureDiagonal_isFiniteMeasure U hU z
-  -- For the constant 1 function as C_c(Circle, ℝ)
-  let one_cc : C_c(Circle, ℝ) := ⟨1, HasCompactSupport.of_compactSpace 1⟩
-  -- Measure.real is (μ s).toReal
-  have hreal : (spectralMeasureDiagonal U hU z Set.univ).toReal =
-      (spectralMeasureDiagonal U hU z).real Set.univ := rfl
-  rw [hreal]
-  -- μ.real univ = ∫ 1 dμ for finite measures (from integral_const)
-  have hconst := MeasureTheory.integral_const (μ := spectralMeasureDiagonal U hU z) (1 : ℝ)
-  simp only [smul_eq_mul, mul_one] at hconst
-  rw [← hconst]
-  -- Convert to integral of one_cc and use RMK
-  have heq : ∫ _ : Circle, (1 : ℝ) ∂(spectralMeasureDiagonal U hU z) =
-      ∫ x : Circle, one_cc x ∂(spectralMeasureDiagonal U hU z) := by
-    congr 1
-  rw [heq, spectralMeasureDiagonal_integral U hU z one_cc]
-  -- Λ_z(1) = spectralFunctionalAux U hU z (1 : C(Circle, ℝ))
-  show spectralFunctionalAux U hU z one_cc.toContinuousMap = ‖z‖ ^ 2
-  -- one_cc.toContinuousMap = 1
-  have hone : one_cc.toContinuousMap = 1 := rfl
-  rw [hone]
-  -- spectralFunctionalAux U hU z 1 = Re⟨z, cfcOfCircleReal U hU 1 z⟩
-  unfold spectralFunctionalAux
-  rw [cfcOfCircleReal_one U hU]
-  -- Re⟨z, 1 z⟩ = Re⟨z, z⟩ = ‖z‖²
-  simp only [ContinuousLinearMap.one_apply]
-  rw [inner_self_eq_norm_sq_to_K]
-  -- Goal: (↑‖z‖ ^ 2).re = ‖z‖ ^ 2
-  norm_cast
 
 /-! ### Polarization to Complex Measure -/
 
@@ -477,7 +75,7 @@ theorem spectralFunctionalAux_parallelogram (U : H →L[ℂ] H) (hU : U ∈ unit
   have h2re : (2 : ℂ).re = 2 := rfl
   have h2im : (2 : ℂ).im = 0 := rfl
   simp only [h2re, h2im] at hre
-  convert hre using 1 <;> ring
+  (convert hre using 1; ring)
 
 /-- The spectral functional polarization identity.
     (1/4)[Λ_{x+y}(f) - Λ_{x-y}(f) - i·Λ_{x+iy}(f) + i·Λ_{x-iy}(f)] = ⟨x, cfc(f, U) y⟩
@@ -695,6 +293,230 @@ theorem spectralMeasureDiagonal_parallelogram (U : H →L[ℂ] H) (hU : U ∈ un
         2 * (spectralMeasureDiagonal U hU y E).toReal := by
           simp only [ENNReal.toReal_mul, ENNReal.toReal_ofNat]
 
+set_option maxHeartbeats 400000 in
+/-- Quadratic expansion: μ_{w+tv}(E) = μ_w(E) + 2t·B(w,v) + t²·μ_v(E)
+    where B(w,v) = (μ_{w+v}(E) - μ_{w-v}(E))/4 is the polarized form.
+    Key: When μ_v = 0, μ_{w+tv} is linear in t, forcing B(w,v) = 0. -/
+theorem spectralMeasureDiagonal_quadratic_expansion (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (w v : H) (E : Set Circle) (hE : MeasurableSet E) (t : ℝ) :
+    (spectralMeasureDiagonal U hU (w + t • v) E).toReal =
+    (spectralMeasureDiagonal U hU w E).toReal +
+    2 * t * ((spectralMeasureDiagonal U hU (w + v) E).toReal -
+             (spectralMeasureDiagonal U hU (w - v) E).toReal) / 4 +
+    t^2 * (spectralMeasureDiagonal U hU v E).toReal := by
+  set Q := fun z => (spectralMeasureDiagonal U hU z E).toReal with hQ_def
+  set μw := Q w with hμw_def
+  set μv := Q v with hμv_def
+  set μwpv := Q (w + v) with hμwpv_def
+  set μwmv := Q (w - v) with hμwmv_def
+  set B := (μwpv - μwmv) / 4 with hB_def
+  have hpara := spectralMeasureDiagonal_parallelogram U hU w v E hE
+  have hexp_t1 : μwpv = μw + 2 * B + μv := by simp only [hB_def]; linarith
+  have hscaling : Q (t • v) = t^2 * μv := by
+    have h := spectralMeasureDiagonal_smul_sq U hU (↑t : ℂ) v E hE
+    simp only [Complex.norm_real] at h
+    rw [Real.norm_eq_abs, sq_abs] at h
+    have hsmul_eq : t • v = (↑t : ℂ) • v := RCLike.real_smul_eq_coe_smul (K := ℂ) t v
+    rw [hsmul_eq]; exact h
+  have hpara_t : Q (w + t • v) + Q (w - t • v) = 2 * μw + 2 * Q (t • v) :=
+    spectralMeasureDiagonal_parallelogram U hU w (t • v) E hE
+  rw [hscaling] at hpara_t
+  have hexp_tm1 : μwmv = μw - 2 * B + μv := by linarith [hexp_t1, hpara]
+  show Q (w + t • v) = Q w + 2 * t * (Q (w + v) - Q (w - v)) / 4 + t^2 * Q v
+  have hsimpl : 2 * t * (Q (w + v) - Q (w - v)) / 4 = t * (Q (w + v) - Q (w - v)) / 2 := by ring
+  rw [hsimpl]
+  have hpara' : Q (w + t • v) + Q (w - t • v) = 2 * Q w + 2 * t^2 * Q v := by
+    simp only [hμw_def, hμv_def] at hpara_t ⊢
+    linarith [hpara_t]
+  -- The proof uses the even-odd decomposition of Q(w + tv) as a function of t
+  -- Even part: (Q(w+tv) + Q(w-tv))/2 = Q(w) + t²Q(v) (from hpara')
+  -- Odd part: (Q(w+tv) - Q(w-tv))/2 equals t*(Q(w+v) - Q(w-v))/2
+  -- The odd part is linear because the spectral measure comes from a sesquilinear form
+  -- For a Hermitian sesquilinear form B with Q(x) = B(x,x):
+  -- Q(w + tv) - Q(w - tv) = 4t*Re(B(w,v)) and Q(w+v) - Q(w-v) = 4*Re(B(w,v))
+  -- Therefore D(t) = t*D(1)
+  have heven : (Q (w + t • v) + Q (w - t • v)) / 2 = Q w + t^2 * Q v := by linarith [hpara']
+  have hodd_lin : (Q (w + t • v) - Q (w - t • v)) / 2 = t * (Q (w + v) - Q (w - v)) / 2 := by
+    -- Define the odd part D(t) = Q(w + tv) - Q(w - tv)
+    -- From parallelogram: D(s+t) + D(s-t) = 2*D(s) (Jensen's equation)
+    -- With D(0) = 0, D(1) = Q(w+v) - Q(w-v), this forces D(t) = t*D(1) for continuous D
+    -- The spectral measure is continuous in x, so D is continuous in t
+    -- Proof: Show D satisfies Jensen, then conclude D is linear
+    -- Jensen for D: use parallelogram with (w+sv, tv) and (w-sv, tv)
+    have hQ_neg : ∀ x : H, Q (-x) = Q x := by
+      intro x
+      have h := spectralMeasureDiagonal_smul_sq U hU (-1 : ℂ) x E hE
+      -- h : μ_{-1 • x}(E) = ‖-1‖² * μ_x(E)
+      have hnorm : ‖(-1 : ℂ)‖ = 1 := by rw [norm_neg, norm_one]
+      have hsmul : (-1 : ℂ) • x = -x := neg_one_smul ℂ x
+      -- Rewrite h to get μ_{-x}(E) = 1 * μ_x(E) = μ_x(E)
+      calc Q (-x) = Q ((-1 : ℂ) • x) := by rw [hsmul]
+        _ = ‖(-1 : ℂ)‖^2 * Q x := h
+        _ = 1^2 * Q x := by rw [hnorm]
+        _ = Q x := by ring
+    -- D(s+t) + D(s-t) = 2*D(s) follows from two applications of parallelogram
+    have hJensen : ∀ s : ℝ, (Q (w + (s + t) • v) - Q (w - (s + t) • v)) +
+        (Q (w + (s - t) • v) - Q (w - (s - t) • v)) =
+        2 * (Q (w + s • v) - Q (w - s • v)) := by
+      intro s
+      -- Parallelogram: Q(a + b) + Q(a - b) = 2*Q(a) + 2*Q(b)
+      -- Use a = w + sv, b = tv:
+      have h1 : Q (w + s • v + t • v) + Q (w + s • v - t • v) = 2 * Q (w + s • v) + 2 * Q (t • v) :=
+        spectralMeasureDiagonal_parallelogram U hU (w + s • v) (t • v) E hE
+      -- Use a = w - sv, b = tv:
+      have h2 : Q (w - s • v + t • v) + Q (w - s • v - t • v) = 2 * Q (w - s • v) + 2 * Q (t • v) :=
+        spectralMeasureDiagonal_parallelogram U hU (w - s • v) (t • v) E hE
+      -- Simplify: w + sv ± tv = w + (s±t)v
+      have heq1 : w + s • v + t • v = w + (s + t) • v := by
+        rw [add_assoc, ← add_smul]
+      have heq2 : w + s • v - t • v = w + (s - t) • v := by
+        rw [add_sub_assoc, ← sub_smul]
+      have heq3 : w - s • v + t • v = w + (-s + t) • v := by
+        have h : -(s • v) = (-s) • v := (neg_smul s v).symm
+        rw [sub_eq_add_neg, h, add_assoc, ← add_smul]
+      have heq4 : w - s • v - t • v = w + (-s - t) • v := by
+        have hs : -(s • v) = (-s) • v := (neg_smul s v).symm
+        have ht : -(t • v) = (-t) • v := (neg_smul t v).symm
+        calc w - s • v - t • v = w + -(s • v) + -(t • v) := by rw [sub_eq_add_neg, sub_eq_add_neg]
+          _ = w + (-s) • v + (-t) • v := by rw [hs, ht]
+          _ = w + ((-s) + (-t)) • v := by rw [add_assoc, ← add_smul]
+          _ = w + (-s - t) • v := by ring_nf
+      -- Note: w - (s+t)v = w + (-(s+t))v
+      have hneg1 : w - (s + t) • v = w + (-(s + t)) • v := by rw [neg_smul, sub_eq_add_neg]
+      have hneg2 : w - (s - t) • v = w + (-(s - t)) • v := by rw [neg_smul, sub_eq_add_neg]
+      -- Also: (-s+t) = -(s-t) and (-s-t) = -(s+t)
+      have hrel1 : (-s + t) = -(s - t) := by ring
+      have hrel2 : (-s - t) = -(s + t) := by ring
+      -- And Q(w + av) = Q(w - (-a)v) using Q(-x) = Q(x)
+      -- Actually: w + av and w - (-a)v have the same Q value
+      -- w + (-a)v = w - av, so Q(w + (-a)v) = Q(w - av)
+      -- Rewrite h2 using the simplifications
+      rw [heq3, heq4, hrel1, hrel2] at h2
+      rw [heq1, heq2] at h1
+      -- h1: Q(w + (s+t)v) + Q(w + (s-t)v) = 2*Q(w + sv) + 2*Q(tv)
+      -- h2: Q(w + (-(s-t))v) + Q(w + (-(s+t))v) = 2*Q(w - sv) + 2*Q(tv)
+      -- We need: Q(w + (s+t)v) - Q(w - (s+t)v) + Q(w + (s-t)v) - Q(w - (s-t)v)
+      --        = 2*(Q(w + sv) - Q(w - sv))
+      -- Note: Q(w + (-a)v) = Q(w - av) by substitution
+      have hsubst1 : Q (w + (-(s + t)) • v) = Q (w - (s + t) • v) := by
+        congr 1
+        rw [neg_smul, ← sub_eq_add_neg]
+      have hsubst2 : Q (w + (-(s - t)) • v) = Q (w - (s - t) • v) := by
+        congr 1
+        rw [neg_smul, ← sub_eq_add_neg]
+      rw [hsubst1, hsubst2] at h2
+      -- Now h2: Q(w - (s-t)v) + Q(w - (s+t)v) = 2*Q(w - sv) + 2*Q(tv)
+      -- Subtract h2 from h1:
+      -- Q(w + (s+t)v) + Q(w + (s-t)v) - Q(w - (s-t)v) - Q(w - (s+t)v) = 2*Q(w + sv) - 2*Q(w - sv)
+      linarith [h1, h2]
+    -- D(0) = 0
+    have hD_zero : Q (w + 0 • v) - Q (w - 0 • v) = 0 := by
+      simp only [zero_smul, add_zero, sub_zero, sub_self]
+    -- D(1) = Q(w+v) - Q(w-v)
+    have hD_one : Q (w + 1 • v) - Q (w - 1 • v) = Q (w + v) - Q (w - v) := by
+      simp only [one_smul]
+    -- Define D as a function ℝ → ℝ
+    set D := fun r : ℝ => Q (w + r • v) - Q (w - r • v) with hD_def
+    -- Generalized Jensen: D(s + δ) + D(s - δ) = 2*D(s) for ALL s and δ
+    -- This follows from the same parallelogram argument with any step size
+    have hJensenGen : ∀ s δ : ℝ, D (s + δ) + D (s - δ) = 2 * D s := by
+      intro s δ
+      -- Same proof as hJensen but with δ instead of t
+      have h1 : Q (w + s • v + δ • v) + Q (w + s • v - δ • v) = 2 * Q (w + s • v) + 2 * Q (δ • v) :=
+        spectralMeasureDiagonal_parallelogram U hU (w + s • v) (δ • v) E hE
+      have h2 : Q (w - s • v + δ • v) + Q (w - s • v - δ • v) = 2 * Q (w - s • v) + 2 * Q (δ • v) :=
+        spectralMeasureDiagonal_parallelogram U hU (w - s • v) (δ • v) E hE
+      have heq1 : w + s • v + δ • v = w + (s + δ) • v := by rw [add_assoc, ← add_smul]
+      have heq2 : w + s • v - δ • v = w + (s - δ) • v := by rw [add_sub_assoc, ← sub_smul]
+      have heq3 : w - s • v + δ • v = w + (-s + δ) • v := by
+        have h : -(s • v) = (-s) • v := (neg_smul s v).symm
+        rw [sub_eq_add_neg, h, add_assoc, ← add_smul]
+      have heq4 : w - s • v - δ • v = w + (-s - δ) • v := by
+        have hs : -(s • v) = (-s) • v := (neg_smul s v).symm
+        have hd : -(δ • v) = (-δ) • v := (neg_smul δ v).symm
+        calc w - s • v - δ • v = w + -(s • v) + -(δ • v) := by rw [sub_eq_add_neg, sub_eq_add_neg]
+          _ = w + (-s) • v + (-δ) • v := by rw [hs, hd]
+          _ = w + ((-s) + (-δ)) • v := by rw [add_assoc, ← add_smul]
+          _ = w + (-s - δ) • v := by ring_nf
+      have hrel1 : (-s + δ) = -(s - δ) := by ring
+      have hrel2 : (-s - δ) = -(s + δ) := by ring
+      rw [heq3, heq4, hrel1, hrel2] at h2
+      rw [heq1, heq2] at h1
+      have hsubst1 : Q (w + (-(s + δ)) • v) = Q (w - (s + δ) • v) := by
+        congr 1; rw [neg_smul, ← sub_eq_add_neg]
+      have hsubst2 : Q (w + (-(s - δ)) • v) = Q (w - (s - δ) • v) := by
+        congr 1; rw [neg_smul, ← sub_eq_add_neg]
+      rw [hsubst1, hsubst2] at h2
+      linarith [h1, h2]
+    -- D(0) = 0 in terms of D
+    have hD_zero' : D 0 = 0 := by simp only [hD_def, zero_smul, add_zero, sub_zero, sub_self]
+    -- Use bounded_jensen_is_linear: Jensen + bounded on [0,1] + D(0)=0 implies D(t) = t*D(1)
+    have hD_linear : D t = t * D 1 := by
+      -- Use bounded_jensen_is_linear from JensenLinearity
+      -- D satisfies Jensen, D(0) = 0, need to show D is bounded on [0,1]
+      have hJ : SatisfiesJensen D := hJensenGen
+      -- Bound: |D(r)| ≤ 2(‖w‖ + ‖v‖)² for r ∈ [0,1]
+      have hBound : ∃ M : ℝ, ∀ r ∈ Set.Icc (0 : ℝ) 1, |D r| ≤ M := by
+        use 2 * (‖w‖ + ‖v‖)^2
+        intro r hr
+        simp only [hD_def]
+        -- |Q(w + rv) - Q(w - rv)| ≤ |Q(w + rv)| + |Q(w - rv)|
+        have h1 : |Q (w + r • v) - Q (w - r • v)| ≤ |Q (w + r • v)| + |Q (w - r • v)| := abs_sub _ _
+        -- Q(x) ≥ 0, so |Q(x)| = Q(x)
+        have hQ_nn1 : 0 ≤ Q (w + r • v) := ENNReal.toReal_nonneg
+        have hQ_nn2 : 0 ≤ Q (w - r • v) := ENNReal.toReal_nonneg
+        rw [abs_of_nonneg hQ_nn1, abs_of_nonneg hQ_nn2] at h1
+        -- Q(x) ≤ ‖x‖² from spectral measure bound
+        have hQ_bound1 : Q (w + r • v) ≤ ‖w + r • v‖^2 := by
+          haveI : IsFiniteMeasure (spectralMeasureDiagonal U hU (w + r • v)) :=
+            spectralMeasureDiagonal_isFiniteMeasure U hU (w + r • v)
+          have hmono := MeasureTheory.measure_mono (μ := spectralMeasureDiagonal U hU (w + r • v))
+            (Set.subset_univ E)
+          have huniv := spectralMeasureDiagonal_univ U hU (w + r • v)
+          exact le_trans (ENNReal.toReal_mono (MeasureTheory.measure_ne_top _ _) hmono)
+                         (le_of_eq huniv)
+        have hQ_bound2 : Q (w - r • v) ≤ ‖w - r • v‖^2 := by
+          haveI : IsFiniteMeasure (spectralMeasureDiagonal U hU (w - r • v)) :=
+            spectralMeasureDiagonal_isFiniteMeasure U hU (w - r • v)
+          have hmono := MeasureTheory.measure_mono (μ := spectralMeasureDiagonal U hU (w - r • v))
+            (Set.subset_univ E)
+          have huniv := spectralMeasureDiagonal_univ U hU (w - r • v)
+          exact le_trans (ENNReal.toReal_mono (MeasureTheory.measure_ne_top _ _) hmono)
+                         (le_of_eq huniv)
+        -- ‖w + rv‖ ≤ ‖w‖ + |r|‖v‖ ≤ ‖w‖ + ‖v‖ for r ∈ [0,1]
+        have hr_abs : |r| ≤ 1 := by rw [abs_of_nonneg hr.1]; exact hr.2
+        have hnorm1 : ‖w + r • v‖ ≤ ‖w‖ + ‖v‖ := by
+          calc ‖w + r • v‖ ≤ ‖w‖ + ‖r • v‖ := norm_add_le w (r • v)
+            _ = ‖w‖ + |r| * ‖v‖ := by rw [norm_smul, Real.norm_eq_abs]
+            _ ≤ ‖w‖ + 1 * ‖v‖ := by nlinarith [hr_abs, norm_nonneg v]
+            _ = ‖w‖ + ‖v‖ := by ring
+        have hnorm2 : ‖w - r • v‖ ≤ ‖w‖ + ‖v‖ := by
+          calc ‖w - r • v‖ ≤ ‖w‖ + ‖r • v‖ := norm_sub_le w (r • v)
+            _ = ‖w‖ + |r| * ‖v‖ := by rw [norm_smul, Real.norm_eq_abs]
+            _ ≤ ‖w‖ + 1 * ‖v‖ := by nlinarith [hr_abs, norm_nonneg v]
+            _ = ‖w‖ + ‖v‖ := by ring
+        -- Final bound
+        have hsq1 : ‖w + r • v‖^2 ≤ (‖w‖ + ‖v‖)^2 :=
+          sq_le_sq' (by linarith [norm_nonneg (w + r • v)]) hnorm1
+        have hsq2 : ‖w - r • v‖^2 ≤ (‖w‖ + ‖v‖)^2 :=
+          sq_le_sq' (by linarith [norm_nonneg (w - r • v)]) hnorm2
+        calc |Q (w + r • v) - Q (w - r • v)|
+            ≤ Q (w + r • v) + Q (w - r • v) := h1
+          _ ≤ ‖w + r • v‖^2 + ‖w - r • v‖^2 := by linarith [hQ_bound1, hQ_bound2]
+          _ ≤ (‖w‖ + ‖v‖)^2 + (‖w‖ + ‖v‖)^2 := by linarith [hsq1, hsq2]
+          _ = 2 * (‖w‖ + ‖v‖)^2 := by ring
+      exact bounded_jensen_is_linear hJ hD_zero' hBound t
+    -- Rewrite in terms of Q
+    -- hD_linear: D t = t * D 1
+    -- D t = Q(w + t•v) - Q(w - t•v)
+    -- D 1 = Q(w + v) - Q(w - v)  (from hD_one)
+    simp only [hD_def, one_smul] at hD_linear hD_one
+    linarith [hD_linear, hD_one]
+  calc Q (w + t • v)
+      = (Q (w + t • v) + Q (w - t • v)) / 2 + (Q (w + t • v) - Q (w - t • v)) / 2 := by ring
+    _ = (Q w + t^2 * Q v) + t * (Q (w + v) - Q (w - v)) / 2 := by rw [heven, hodd_lin]
+    _ = Q w + t * (Q (w + v) - Q (w - v)) / 2 + t^2 * Q v := by ring
+
 /-- Polarization identity for measures.
     μ_{x,y}(E) = (1/4)[μ_{x+y}(E) - μ_{x-y}(E) + i·μ_{x+iy}(E) - i·μ_{x-iy}(E)]
 
@@ -750,73 +572,882 @@ sesquilinear form. We can use sesquilinearToOperator to get P(E).
 This requires showing the bound |μ_{x,y}(E)| ≤ C·‖x‖·‖y‖
 which follows from polarization and μ_x(Circle) = ‖x‖² -/
 
+/-- Key algebraic identity for quadratic forms with parallelogram law.
+    If Q satisfies Q(u+v) + Q(u-v) = 2Q(u) + 2Q(v), then:
+    Q(a+b+c) - Q(a-b-c) = Q(a+b) + Q(a+c) - Q(a-b) - Q(a-c)
+
+    Proof: Apply parallelogram twice.
+    P(a+b, c): Q(a+b+c) + Q(a+b-c) = 2Q(a+b) + 2Q(c)
+    P(a-b, c): Q(a-b+c) + Q(a-b-c) = 2Q(a-b) + 2Q(c)
+    Subtract: Q(a+b+c) + Q(a+b-c) - Q(a-b+c) - Q(a-b-c) = 2Q(a+b) - 2Q(a-b)  ... (*)
+
+    P(a+c, b): Q(a+c+b) + Q(a+c-b) = 2Q(a+c) + 2Q(b)
+    P(a-c, b): Q(a-c+b) + Q(a-c-b) = 2Q(a-c) + 2Q(b)
+    Subtract: Q(a+b+c) + Q(a-b+c) - Q(a+b-c) - Q(a-b-c) = 2Q(a+c) - 2Q(a-c)  ... (**)
+
+    Add (*) and (**):
+    2*Q(a+b+c) - 2*Q(a-b-c) = 2Q(a+b) - 2Q(a-b) + 2Q(a+c) - 2Q(a-c)
+    Hence the result. -/
+theorem quadraticForm_additivity_identity (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (a b c : H) :
+    (spectralMeasureDiagonal U hU (a + b + c) E).toReal -
+    (spectralMeasureDiagonal U hU (a - b - c) E).toReal =
+    (spectralMeasureDiagonal U hU (a + b) E).toReal +
+    (spectralMeasureDiagonal U hU (a + c) E).toReal -
+    (spectralMeasureDiagonal U hU (a - b) E).toReal -
+    (spectralMeasureDiagonal U hU (a - c) E).toReal := by
+  -- Let Q(z) = μ_z(E).toReal. We use the parallelogram identity for Q.
+  set Q := fun z => (spectralMeasureDiagonal U hU z E).toReal with hQ_def
+  -- Parallelogram law: Q(u+v) + Q(u-v) = 2*Q(u) + 2*Q(v)
+  have hpara : ∀ u v : H, Q (u + v) + Q (u - v) = 2 * Q u + 2 * Q v :=
+    fun u v => spectralMeasureDiagonal_parallelogram U hU u v E hE
+  -- Apply P(a+b, c): Q((a+b)+c) + Q((a+b)-c) = 2Q(a+b) + 2Q(c)
+  have h1 := hpara (a + b) c
+  -- Apply P(a-b, c): Q((a-b)+c) + Q((a-b)-c) = 2Q(a-b) + 2Q(c)
+  have h2 := hpara (a - b) c
+  -- Subtract h2 from h1: Q(a+b+c) + Q(a+b-c) - Q(a-b+c) - Q(a-b-c) = 2Q(a+b) - 2Q(a-b)
+  have eq_star : Q (a + b + c) + Q (a + b - c) - Q (a - b + c) - Q (a - b - c) =
+      2 * Q (a + b) - 2 * Q (a - b) := by linarith
+  -- Apply P(a+c, b)
+  have h3 := hpara (a + c) b
+  have h3a : (a + c) + b = a + b + c := by abel
+  have h3b : (a + c) - b = a - b + c := by abel
+  simp only [h3a, h3b] at h3
+  -- Apply P(a-c, b)
+  have h4 := hpara (a - c) b
+  have h4a : (a - c) + b = a + b - c := by abel
+  have h4b : (a - c) - b = a - b - c := by abel
+  simp only [h4a, h4b] at h4
+  -- Subtract h4 from h3: Q(a+b+c) + Q(a-b+c) - Q(a+b-c) - Q(a-b-c) = 2Q(a+c) - 2Q(a-c)
+  have eq_starstar : Q (a + b + c) + Q (a - b + c) - Q (a + b - c) - Q (a - b - c) =
+      2 * Q (a + c) - 2 * Q (a - c) := by linarith
+  -- Add eq_star and eq_starstar
+  -- 2*Q(a+b+c) - 2*Q(a-b-c) = 2Q(a+b) - 2Q(a-b) + 2Q(a+c) - 2Q(a-c)
+  linarith
+
+/-- Additivity of the polarized spectral measure in the second argument. -/
+theorem spectralMeasurePolarized_add_right (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (x y₁ y₂ : H) :
+    spectralMeasurePolarized U hU x (y₁ + y₂) E hE =
+    spectralMeasurePolarized U hU x y₁ E hE + spectralMeasurePolarized U hU x y₂ E hE := by
+  set Q := fun z => (spectralMeasureDiagonal U hU z E).toReal with hQ_def
+  unfold spectralMeasurePolarized
+  simp only
+  -- Use the algebraic identity: Q(a+b+c) - Q(a-b-c) = Q(a+b) + Q(a+c) - Q(a-b) - Q(a-c)
+  have hreal := quadraticForm_additivity_identity U hU E hE x y₁ y₂
+  have himag := quadraticForm_additivity_identity U hU E hE x (Complex.I • y₁) (Complex.I • y₂)
+  have eq1 : x + (y₁ + y₂) = x + y₁ + y₂ := by abel
+  have eq2 : x - (y₁ + y₂) = x - y₁ - y₂ := by abel
+  have eq3 : x + Complex.I • (y₁ + y₂) = x + Complex.I • y₁ + Complex.I • y₂ := by
+    simp only [smul_add]; abel
+  have eq4 : x - Complex.I • (y₁ + y₂) = x - Complex.I • y₁ - Complex.I • y₂ := by
+    simp only [smul_add]; abel
+  simp only [eq1, eq2, eq3, eq4]
+  have hreal' : Q (x + y₁ + y₂) - Q (x - y₁ - y₂) =
+      Q (x + y₁) + Q (x + y₂) - Q (x - y₁) - Q (x - y₂) := hreal
+  have himag' : Q (x + Complex.I • y₁ + Complex.I • y₂) - Q (x - Complex.I • y₁ - Complex.I • y₂) =
+      Q (x + Complex.I • y₁) + Q (x + Complex.I • y₂) -
+      Q (x - Complex.I • y₁) - Q (x - Complex.I • y₂) := himag
+  set a1 := Q (x + y₁ + y₂) with ha1
+  set a2 := Q (x - y₁ - y₂) with ha2
+  set a3 := Q (x + Complex.I • y₁ + Complex.I • y₂) with ha3
+  set a4 := Q (x - Complex.I • y₁ - Complex.I • y₂) with ha4
+  set b1 := Q (x + y₁) with hb1
+  set b2 := Q (x - y₁) with hb2
+  set b3 := Q (x + Complex.I • y₁) with hb3
+  set b4 := Q (x - Complex.I • y₁) with hb4
+  set c1 := Q (x + y₂) with hc1
+  set c2 := Q (x - y₂) with hc2
+  set c3 := Q (x + Complex.I • y₂) with hc3
+  set c4 := Q (x - Complex.I • y₂) with hc4
+  have hr : a1 - a2 = b1 + c1 - b2 - c2 := hreal'
+  have hi : a3 - a4 = b3 + c3 - b4 - c4 := himag'
+  have hgoal : (a1 : ℂ) - a2 - Complex.I * a3 + Complex.I * a4 =
+      (b1 - b2 - Complex.I * b3 + Complex.I * b4) +
+      (c1 - c2 - Complex.I * c3 + Complex.I * c4) := by
+    have hr_c : (a1 : ℂ) - a2 = b1 + c1 - b2 - c2 := by
+      simp only [← Complex.ofReal_sub, ← Complex.ofReal_add]; norm_cast
+    have hi_c : (a3 : ℂ) - a4 = b3 + c3 - b4 - c4 := by
+      simp only [← Complex.ofReal_sub, ← Complex.ofReal_add]; norm_cast
+    calc (a1 : ℂ) - a2 - Complex.I * a3 + Complex.I * a4
+        = (a1 - a2) - Complex.I * (a3 - a4) := by ring
+      _ = (b1 + c1 - b2 - c2) - Complex.I * (b3 + c3 - b4 - c4) := by rw [hr_c, hi_c]
+      _ = (b1 - b2 - Complex.I * b3 + Complex.I * b4) +
+          (c1 - c2 - Complex.I * c3 + Complex.I * c4) := by ring
+  calc (1 / 4 : ℂ) * (a1 - a2 - Complex.I * a3 + Complex.I * a4)
+      = (1 / 4 : ℂ) * ((b1 - b2 - Complex.I * b3 + Complex.I * b4) +
+          (c1 - c2 - Complex.I * c3 + Complex.I * c4)) := by rw [hgoal]
+    _ = (1 / 4 : ℂ) * (b1 - b2 - Complex.I * b3 + Complex.I * b4) +
+        (1 / 4 : ℂ) * (c1 - c2 - Complex.I * c3 + Complex.I * c4) := by ring
+
+/-- B(x, -z) = -B(x, z) for the polarized spectral measure. -/
+theorem spectralMeasurePolarized_neg (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (x z : H) :
+    spectralMeasurePolarized U hU x (-z) E hE = -spectralMeasurePolarized U hU x z E hE := by
+  unfold spectralMeasurePolarized
+  simp only
+  -- Simplify: x + (-z) = x - z, x - (-z) = x + z, similarly for I•(-z)
+  have eq1 : x + -z = x - z := by abel
+  have eq2 : x - -z = x + z := by abel
+  have eq3 : x + Complex.I • -z = x - Complex.I • z := by
+    rw [smul_neg]; abel
+  have eq4 : x - Complex.I • -z = x + Complex.I • z := by
+    rw [smul_neg]; abel
+  simp only [eq1, eq2, eq3, eq4]
+  -- Now the formula rearranges to give the negative
+  ring
+
+/-- Natural number scalar multiplication for the polarized spectral measure. -/
+theorem spectralMeasurePolarized_nsmul (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (x : H) (n : ℕ) (y : H) :
+    spectralMeasurePolarized U hU x (n • y) E hE =
+    (n : ℂ) * spectralMeasurePolarized U hU x y E hE := by
+  induction n with
+  | zero =>
+    simp only [zero_smul, Nat.cast_zero, zero_mul]
+    -- B(x, 0) = 0 from polarization (all points are x)
+    unfold spectralMeasurePolarized
+    -- x + 0 = x, x - 0 = x, x + I•0 = x, x - I•0 = x
+    simp only [add_zero, sub_zero, smul_zero]
+    -- All four terms are μ_x(E), so the alternating sum is 0
+    ring
+  | succ n ih =>
+    rw [succ_nsmul, spectralMeasurePolarized_add_right U hU E hE x (n • y) y]
+    rw [ih, Nat.cast_succ]
+    ring
+
+/-- Integer scalar multiplication for the polarized spectral measure. -/
+theorem spectralMeasurePolarized_zsmul (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (x : H) (n : ℤ) (y : H) :
+    spectralMeasurePolarized U hU x (n • y) E hE =
+    (n : ℂ) * spectralMeasurePolarized U hU x y E hE := by
+  cases n with
+  | ofNat m =>
+    simp only [Int.ofNat_eq_natCast, Int.cast_natCast, natCast_zsmul]
+    exact spectralMeasurePolarized_nsmul U hU E hE x m y
+  | negSucc m =>
+    simp only [Int.cast_negSucc, negSucc_zsmul]
+    rw [spectralMeasurePolarized_neg U hU E hE x _]
+    rw [spectralMeasurePolarized_nsmul U hU E hE x (m + 1) y]
+    ring
+
+/-- Real scalar multiplication for the polarized spectral measure.
+    B(x, r•y) = r * B(x, y) for real r ∈ ℝ.
+
+    The proof uses:
+    1. Integer/rational homogeneity from additivity (proved above)
+    2. Extension to reals via continuity (density of ℚ + boundedness)
+
+    The boundedness |B(x,y)| ≤ ‖x‖² + ‖y‖² follows from the triangle inequality
+    on the polarization formula plus the bound μ_z(E) ≤ ‖z‖². -/
+theorem spectralMeasurePolarized_smul_real (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (E : Set Circle) (hE : MeasurableSet E) (x : H) (r : ℝ) (y : H) :
+    spectralMeasurePolarized U hU x (r • y) E hE =
+    (r : ℂ) * spectralMeasurePolarized U hU x y E hE := by
+  -- Step 1: Prove for rationals using integer homogeneity
+  -- For q = num/den (den ≠ 0): den • (q • y) = num • y
+  -- So den * B(x, q•y) = B(x, num•y) = num * B(x, y), hence B(x, q•y) = q * B(x, y)
+  have hrat : ∀ q : ℚ, spectralMeasurePolarized U hU x ((q : ℝ) • y) E hE =
+      (q : ℂ) * spectralMeasurePolarized U hU x y E hE := by
+    intro q
+    -- Use q.den > 0 and q.den * q = q.num
+    have hden_pos : 0 < q.den := q.den_pos
+    have hden_ne_Z : (q.den : ℤ) ≠ 0 := Int.natCast_ne_zero.mpr (Nat.pos_iff_ne_zero.mp hden_pos)
+    -- Key: q.den * q = q.num (in ℚ)
+    have hmul_Q : (q.den : ℚ) * q = q.num := by
+      have hden_ne : (q.den : ℚ) ≠ 0 := Nat.cast_ne_zero.mpr (Nat.pos_iff_ne_zero.mp hden_pos)
+      have h1 : (q.den : ℚ) * q = q.den * (q.num / q.den) := by
+        congr 1
+        exact (Rat.num_div_den q).symm
+      rw [h1, mul_div_assoc']
+      exact mul_div_cancel_left₀ _ hden_ne
+    -- den • (q • y) = num • y in H
+    -- Using that in a complex Hilbert space, z • v for z ∈ ℤ is (z : ℂ) • v
+    -- and r • v for r ∈ ℝ is (r : ℂ) • v
+    have hsmul_eq : (q.den : ℤ) • ((q : ℝ) • y) = (q.num : ℤ) • y := by
+      -- Convert integer smul to complex smul, and real smul to complex smul
+      rw [← Int.cast_smul_eq_zsmul ℂ (q.den : ℤ) ((q : ℝ) • y)]
+      rw [← Int.cast_smul_eq_zsmul ℂ (q.num : ℤ) y]
+      simp only [Int.cast_natCast]
+      -- Now: (q.den : ℂ) • ((q : ℝ) • y) = (q.num : ℂ) • y
+      -- Real smul on H is complex smul via inclusion ℝ → ℂ
+      conv_lhs => rw [RCLike.real_smul_eq_coe_smul (K := ℂ) (q : ℝ) y]
+      -- Now: (q.den : ℂ) • ((q : ℂ) • y) = (q.num : ℂ) • y
+      rw [smul_smul]
+      -- Now: ((q.den : ℂ) * (q : ℂ)) • y = (q.num : ℂ) • y
+      congr 1
+      -- Need: (q.den : ℂ) * (q : ℂ) = (q.num : ℂ)
+      -- Cast hmul_Q : (q.den : ℚ) * q = q.num to ℂ
+      have h := congr_arg (fun r : ℚ => (r : ℂ)) hmul_Q
+      simp only [Rat.cast_mul, Rat.cast_natCast, Rat.cast_intCast] at h
+      exact h
+    -- Apply integer homogeneity
+    have h1 : spectralMeasurePolarized U hU x ((q.den : ℤ) • ((q : ℝ) • y)) E hE =
+        (q.den : ℂ) * spectralMeasurePolarized U hU x ((q : ℝ) • y) E hE :=
+      spectralMeasurePolarized_zsmul U hU E hE x q.den ((q : ℝ) • y)
+    have h2 : spectralMeasurePolarized U hU x ((q.num : ℤ) • y) E hE =
+        (q.num : ℂ) * spectralMeasurePolarized U hU x y E hE :=
+      spectralMeasurePolarized_zsmul U hU E hE x q.num y
+    -- Combine: den * B(x, q•y) = num * B(x, y)
+    rw [hsmul_eq] at h1
+    rw [h1] at h2
+    -- Solve for B(x, q•y): den * B(x, q•y) = num * B(x, y)
+    have hden_ne_C : (q.den : ℂ) ≠ 0 := by
+      simp only [ne_eq, Nat.cast_eq_zero]
+      exact Nat.pos_iff_ne_zero.mp hden_pos
+    -- h2 : den * B(x, q•y) = num * B(x, y)
+    -- Goal: B(x, q•y) = q * B(x, y) = (num/den) * B(x, y)
+    have hgoal : spectralMeasurePolarized U hU x ((q : ℝ) • y) E hE =
+        (q.num : ℂ) / (q.den : ℂ) * spectralMeasurePolarized U hU x y E hE := by
+      field_simp [hden_ne_C] at h2 ⊢
+      ring_nf at h2 ⊢
+      exact h2
+    rw [hgoal, Rat.cast_def]
+  -- Step 2: Use density of ℚ in ℝ to extend to all reals
+  -- Key: w ↦ μ_w(E) is continuous (using the bound μ_w(E) ≤ ‖w‖²)
+  -- Hence z ↦ B(x, z) is continuous (polarization of continuous functions)
+  -- Define the two functions we want to show are equal
+  set f := fun s : ℝ => spectralMeasurePolarized U hU x (s • y) E hE with hf_def
+  set g := fun s : ℝ => (s : ℂ) * spectralMeasurePolarized U hU x y E hE with hg_def
+  -- They agree on rationals
+  have heq_rat : ∀ q : ℚ, f (q : ℝ) = g (q : ℝ) := fun q => hrat q
+  -- g is continuous
+  have hg_cont : Continuous g := Continuous.mul continuous_ofReal continuous_const
+  -- For f, we use that the polarization is continuous in the second argument
+  -- The map w ↦ μ_w(E) is continuous because μ_w(E) ≤ ‖w‖² (uniform bound near 0)
+  have hμ_cont : Continuous (fun w : H => (spectralMeasureDiagonal U hU w E).toReal) := by
+    -- Use the fact that μ satisfies the parallelogram identity and is bounded by ‖w‖²
+    -- This makes μ_w(E)^(1/2) a seminorm, hence continuous
+    -- We prove continuity at each point v
+    rw [continuous_def]
+    intro s hs
+    -- s is open in ℝ, we need to show preimage is open in H
+    rw [isOpen_iff_mem_nhds]
+    intro v hv
+    -- hv : (spectralMeasureDiagonal U hU v E).toReal ∈ s
+    -- We need to find a neighborhood of v that maps into s
+    -- Since s is open and contains μ_v(E), there exists ε > 0 with (μ_v(E) - ε, μ_v(E) + ε) ⊆ s
+    rw [Metric.isOpen_iff] at hs
+    obtain ⟨ε, hε_pos, hε_ball⟩ := hs _ hv
+    -- We need: |μ_w(E) - μ_v(E)| < ε for w near v
+    -- Key bound: μ satisfies |μ_w(E) - μ_v(E)| ≤ (√μ_{w-v}(E) + 2√μ_v(E))√μ_{w-v}(E)
+    --                                         ≤ (‖w-v‖ + 2‖v‖)‖w-v‖
+    -- So for ‖w-v‖ small enough, |μ_w(E) - μ_v(E)| < ε
+    -- Choose δ such that (δ + 2‖v‖)δ < ε
+    -- For simplicity, use δ = min(ε/(4‖v‖ + 2), 1) if v ≠ 0, else δ = √ε
+    have hbound : ∀ w : H, (spectralMeasureDiagonal U hU w E).toReal ≤ ‖w‖^2 := by
+      intro w
+      haveI : IsFiniteMeasure (spectralMeasureDiagonal U hU w) :=
+        spectralMeasureDiagonal_isFiniteMeasure U hU w
+      have hmono := MeasureTheory.measure_mono (μ := spectralMeasureDiagonal U hU w) (Set.subset_univ E)
+      have huniv := spectralMeasureDiagonal_univ U hU w
+      exact le_trans (ENNReal.toReal_mono (MeasureTheory.measure_ne_top _ _) hmono)
+                     (le_of_eq huniv)
+    -- The seminorm property: √μ_w(E) satisfies the triangle inequality from the parallelogram identity
+    -- This gives: |√μ_w - √μ_v| ≤ √μ_{w-v} ≤ ‖w-v‖
+    -- Hence: |μ_w - μ_v| ≤ (√μ_w + √μ_v)|√μ_w - √μ_v| ≤ (‖w‖ + ‖v‖)‖w-v‖
+    have hμ_nn : ∀ w, 0 ≤ (spectralMeasureDiagonal U hU w E).toReal := fun w => ENNReal.toReal_nonneg
+    -- Key Lipschitz-type bound (from parallelogram identity + seminorm theory)
+    have hLip : ∀ w, |(spectralMeasureDiagonal U hU w E).toReal -
+        (spectralMeasureDiagonal U hU v E).toReal| ≤ (‖w‖ + ‖v‖) * ‖w - v‖ := by
+      intro w
+      -- Let p(z) = √μ_z(E). The parallelogram identity for μ implies p is a seminorm.
+      -- By the reverse triangle inequality: |p(w) - p(v)| ≤ p(w - v) ≤ ‖w - v‖
+      -- Then: |μ_w - μ_v| = |p(w)² - p(v)²| = |p(w) + p(v)||p(w) - p(v)|
+      --                   ≤ (‖w‖ + ‖v‖)‖w - v‖
+      set μw := (spectralMeasureDiagonal U hU w E).toReal with hμw_def
+      set μv := (spectralMeasureDiagonal U hU v E).toReal with hμv_def
+      set pwv := (spectralMeasureDiagonal U hU (w - v) E).toReal with hpwv_def
+      -- Key seminorm bound: |√μw - √μv| ≤ √pwv (reverse triangle inequality)
+      -- Proof: Cauchy-Schwarz for polarized form gives ⟨w,v⟩ ≤ √μw√μv,
+      -- which implies μ_{w+v} ≤ (√μw + √μv)², hence √μ_{w+v} ≤ √μw + √μv
+      have hseminorm : |Real.sqrt μw - Real.sqrt μv| ≤ Real.sqrt pwv := by
+        have hpara := spectralMeasureDiagonal_parallelogram U hU w v E hE
+        -- hpara: μ_{w+v} + μ_{w-v} = 2μ_w + 2μ_v
+        set μwpv := (spectralMeasureDiagonal U hU (w + v) E).toReal with hμwpv_def
+        set μwmv := (spectralMeasureDiagonal U hU (w - v) E).toReal with hμwmv_def
+        have hpwv_eq : pwv = μwmv := rfl
+        set inner_wv := (μwpv - μwmv) / 4 with hinner_wv_def
+        -- Cauchy-Schwarz: |⟨w,v⟩| ≤ √μw√μv via discriminant argument
+        -- μ_{w+tv} = μw + 2t·inner_wv + t²μv ≥ 0 for all t implies discriminant ≤ 0
+        have hCS : |inner_wv| ≤ Real.sqrt μw * Real.sqrt μv := by
+          have h_nonneg : ∀ z : H, 0 ≤ (spectralMeasureDiagonal U hU z E).toReal :=
+            fun z => ENNReal.toReal_nonneg
+          have hquad_nonneg : ∀ t : ℝ, (spectralMeasureDiagonal U hU (w + t • v) E).toReal ≥ 0 :=
+            fun t => h_nonneg (w + t • v)
+          by_cases hμv_zero : μv = 0
+          · -- If μv = 0, then √μv = 0, so RHS = √μw · 0 = 0
+            -- We need to show |inner_wv| ≤ 0, i.e., inner_wv = 0
+            -- From parallelogram: μwpv + μwmv = 2μw + 2μv = 2μw (since μv = 0)
+            -- If μv = 0, by the parallelogram identity applied to (v, v):
+            -- μ_{2v} + μ_0 = 2μv + 2μv = 0, so μ_{2v} = 0
+            -- And by (w, v): μwpv + μwmv = 2μw + 0 = 2μw
+            -- We claim μwpv = μwmv = μw when μv = 0.
+            -- Proof: Use parallelogram with (w+v, v) and (w-v, v):
+            -- μ_{w+2v} + μ_w = 2μ_{w+v} + 2μv = 2μwpv
+            -- μ_w + μ_{w-2v} = 2μ_{w-v} + 2μv = 2μwmv
+            -- When μv = 0, we have μ_{tv} = 0 for all t (by scaling property of measures)
+            -- Actually, we don't have scaling established yet...
+            -- Use a different approach: bound |μwpv - μwmv| using nonnegativity
+            -- Both μwpv, μwmv ≥ 0 and μwpv + μwmv = 2μw
+            -- So each is between 0 and 2μw, and |μwpv - μwmv| ≤ 2μw
+            -- Thus |inner_wv| ≤ μw/2. But we need |inner_wv| ≤ 0 when μv = 0.
+            -- This requires showing μwpv = μwmv when μv = 0, which needs more structure.
+            -- Use the quadratic expansion: μ_{w+tv} = μ_w + 2t·inner_wv + t²·μ_v
+            -- μv = 0: quadratic becomes linear μw + 2t·inner_wv ≥ 0 for all t, so inner_wv = 0
+            simp only [hμv_zero, Real.sqrt_zero, mul_zero]
+            have hquad : ∀ t : ℝ, (spectralMeasureDiagonal U hU (w + t • v) E).toReal =
+                μw + 2 * t * (μwpv - μwmv) / 4 + t^2 * μv := fun t =>
+              spectralMeasureDiagonal_quadratic_expansion U hU w v E hE t
+            have hquad_linear : ∀ t : ℝ, (spectralMeasureDiagonal U hU (w + t • v) E).toReal =
+                μw + 2 * t * inner_wv := by
+              intro t; rw [hquad t, hμv_zero]; simp only [hinner_wv_def]; ring
+            have hquad_nonneg : ∀ t : ℝ, μw + 2 * t * inner_wv ≥ 0 := by
+              intro t; rw [← hquad_linear t]; exact h_nonneg (w + t • v)
+            have h_pos : μw + 2 * inner_wv ≥ 0 := by simpa using hquad_nonneg 1
+            have h_neg : μw - 2 * inner_wv ≥ 0 := by
+              have := hquad_nonneg (-1); simp only [mul_neg] at this ⊢; linarith
+            -- If inner_wv ≠ 0, take t = -(μw+1)/(2·inner_wv) to get contradiction
+            by_contra h_ne
+            have h_ne' : inner_wv ≠ 0 := by intro heq; rw [heq, abs_zero] at h_ne; exact h_ne (le_refl 0)
+            have hμw_nonneg : μw ≥ 0 := h_nonneg w
+            rcases lt_trichotomy inner_wv 0 with hneg | hzero | hpos_case
+            · -- inner_wv < 0: take t = -(μw+1)/(2·inner_wv), gives μw + 2t·inner_wv = -1 < 0
+              have t_val : μw + 2 * (-(μw + 1) / (2 * inner_wv)) * inner_wv < 0 := by
+                have h2inner_ne : 2 * inner_wv ≠ 0 := by linarith
+                have hcalc : 2 * (-(μw + 1) / (2 * inner_wv)) * inner_wv = -(μw + 1) := by
+                  field_simp [h2inner_ne]
+                rw [hcalc]; linarith
+              linarith [hquad_nonneg (-(μw + 1) / (2 * inner_wv))]
+            · exact h_ne' hzero
+            · -- inner_wv > 0: same t gives μw + 2t·inner_wv = -1 < 0
+              have t_val : μw + 2 * (-(μw + 1) / (2 * inner_wv)) * inner_wv < 0 := by
+                have h2inner_ne : 2 * inner_wv ≠ 0 := by linarith
+                have hcalc : 2 * (-(μw + 1) / (2 * inner_wv)) * inner_wv = -(μw + 1) := by
+                  field_simp [h2inner_ne]
+                rw [hcalc]; linarith
+              linarith [hquad_nonneg (-(μw + 1) / (2 * inner_wv))]
+          · -- μv > 0: discriminant argument for nonneg quadratic
+            have hμv_pos : 0 < μv := lt_of_le_of_ne (h_nonneg v) (Ne.symm hμv_zero)
+            have hquad : ∀ t : ℝ, (spectralMeasureDiagonal U hU (w + t • v) E).toReal =
+                μw + 2 * t * (μwpv - μwmv) / 4 + t^2 * μv := fun t =>
+              spectralMeasureDiagonal_quadratic_expansion U hU w v E hE t
+            have hquad' : ∀ t : ℝ, (spectralMeasureDiagonal U hU (w + t • v) E).toReal =
+                μw + 2 * t * inner_wv + t^2 * μv := by
+              intro t; rw [hquad t]; simp only [hinner_wv_def]; ring
+            have hquad_nonneg : ∀ t : ℝ, μw + 2 * t * inner_wv + t^2 * μv ≥ 0 := by
+              intro t; rw [← hquad' t]; exact h_nonneg (w + t • v)
+            -- At t₀ = -inner_wv/μv: f(t₀) = μw - inner_wv²/μv ≥ 0
+            have hμv_ne : μv ≠ 0 := ne_of_gt hμv_pos
+            have hmin_val : μw + 2 * (-inner_wv / μv) * inner_wv + (-inner_wv / μv)^2 * μv ≥ 0 :=
+              hquad_nonneg (-inner_wv / μv)
+            have hsimp : μw + 2 * (-inner_wv / μv) * inner_wv + (-inner_wv / μv)^2 * μv =
+                μw - inner_wv^2 / μv := by field_simp [hμv_ne]; ring
+            rw [hsimp] at hmin_val
+            have hbound : inner_wv^2 ≤ μw * μv := by
+              have h : inner_wv^2 / μv ≤ μw := by linarith
+              calc inner_wv^2 = (inner_wv^2 / μv) * μv := by field_simp [hμv_ne]
+                _ ≤ μw * μv := mul_le_mul_of_nonneg_right h (le_of_lt hμv_pos)
+            have hμw_nn : 0 ≤ μw := h_nonneg w
+            calc |inner_wv| = Real.sqrt (inner_wv^2) := (Real.sqrt_sq_eq_abs inner_wv).symm
+              _ ≤ Real.sqrt (μw * μv) := Real.sqrt_le_sqrt hbound
+              _ = Real.sqrt μw * Real.sqrt μv := Real.sqrt_mul hμw_nn μv
+        -- From Cauchy-Schwarz and parallelogram, derive triangle inequality
+        have htriangle : Real.sqrt μwpv ≤ Real.sqrt μw + Real.sqrt μv := by
+          -- μ_{w+v} = μw + μv + 2·(4·inner_wv) = μw + μv + 2·(μwpv - μwmv)/2
+          -- Wait, let me recalculate. From parallelogram: μwpv + μwmv = 2μw + 2μv
+          -- So μwpv = 2μw + 2μv - μwmv
+          -- We want: μwpv ≤ (√μw + √μv)² = μw + 2√μw√μv + μv
+          -- i.e., 2μw + 2μv - μwmv ≤ μw + 2√μw√μv + μv
+          -- i.e., μw + μv ≤ μwmv + 2√μw√μv
+          -- i.e., μw + μv - 2√μw√μv ≤ μwmv
+          -- i.e., (√μw - √μv)² ≤ μwmv = pwv
+          -- This is exactly what we're trying to prove! So the triangle and reverse triangle
+          -- are equivalent given the parallelogram identity.
+          -- Use Cauchy-Schwarz: (μwpv - μwmv)/4 ≤ √μw√μv
+          -- So μwpv - μwmv ≤ 4√μw√μv
+          -- And μwpv = 2μw + 2μv - μwmv (parallelogram)
+          -- So μwpv ≤ μw + μv + (μwpv - μwmv)/2 = μw + μv + 2inner_wv
+          --        ≤ μw + μv + 2|inner_wv| ≤ μw + μv + 2√μw√μv = (√μw + √μv)²
+          have h1 : μwpv ≤ μw + μv + 2 * |inner_wv| := by
+            have hpara' : μwpv = 2 * μw + 2 * μv - μwmv := by linarith [hpara]
+            have hinner : μwpv - μwmv = 4 * inner_wv := by
+              simp only [hinner_wv_def]
+              ring
+            have h2 : μwpv = μw + μv + (μwpv - μwmv) / 2 := by linarith [hpara]
+            rw [h2, hinner]
+            have h3 : 4 * inner_wv / 2 = 2 * inner_wv := by ring
+            rw [h3]
+            by_cases hpos : inner_wv ≥ 0
+            · simp only [abs_of_nonneg hpos]; linarith
+            · push_neg at hpos
+              have hneg : inner_wv < 0 := hpos
+              simp only [abs_of_neg hneg]; linarith
+          have h2 : μw + μv + 2 * |inner_wv| ≤ μw + μv + 2 * Real.sqrt μw * Real.sqrt μv := by
+            linarith [hCS]
+          have h3 : μw + μv + 2 * Real.sqrt μw * Real.sqrt μv = (Real.sqrt μw + Real.sqrt μv)^2 := by
+            have hμw_nn' := hμ_nn w
+            have hμv_nn' := hμ_nn v
+            rw [add_sq, Real.sq_sqrt hμw_nn', Real.sq_sqrt hμv_nn']
+            ring
+          have h4 : μwpv ≤ (Real.sqrt μw + Real.sqrt μv)^2 := by linarith [h1, h2, h3]
+          have h5 : Real.sqrt μwpv ≤ Real.sqrt ((Real.sqrt μw + Real.sqrt μv)^2) :=
+            Real.sqrt_le_sqrt h4
+          rw [Real.sqrt_sq (add_nonneg (Real.sqrt_nonneg _) (Real.sqrt_nonneg _))] at h5
+          exact h5
+        -- Now derive reverse triangle from parallelogram and triangle
+        -- From parallelogram: μwpv + μwmv = 2μw + 2μv, i.e., μwmv = 2μw + 2μv - μwpv
+        -- We want: (√μw - √μv)² ≤ μwmv = pwv
+        -- Expanding: μw + μv - 2√μw√μv ≤ μwmv
+        -- i.e., μw + μv - 2√μw√μv ≤ 2μw + 2μv - μwpv
+        -- i.e., μwpv ≤ μw + μv + 2√μw√μv = (√μw + √μv)²
+        -- i.e., √μwpv ≤ √μw + √μv (which is htriangle!)
+        have h_nonneg : ∀ z : H, 0 ≤ (spectralMeasureDiagonal U hU z E).toReal :=
+          fun z => ENNReal.toReal_nonneg
+        have hμw_nn := h_nonneg w
+        have hμv_nn := h_nonneg v
+        have hrev : (Real.sqrt μw - Real.sqrt μv)^2 ≤ pwv := by
+          rw [hpwv_eq]
+          have hpara' : μwmv = 2 * μw + 2 * μv - μwpv := by linarith [hpara]
+          have htri_sq : μwpv ≤ (Real.sqrt μw + Real.sqrt μv)^2 := by
+            have h := htriangle
+            have h' : Real.sqrt μwpv ^ 2 ≤ (Real.sqrt μw + Real.sqrt μv)^2 :=
+              sq_le_sq' (by linarith [Real.sqrt_nonneg μwpv]) h
+            rw [Real.sq_sqrt (h_nonneg (w + v))] at h'
+            exact h'
+          calc (Real.sqrt μw - Real.sqrt μv)^2
+              = μw + μv - 2 * Real.sqrt μw * Real.sqrt μv := by
+                rw [sub_sq, Real.sq_sqrt hμw_nn, Real.sq_sqrt hμv_nn]; ring
+            _ = 2 * μw + 2 * μv - (μw + μv + 2 * Real.sqrt μw * Real.sqrt μv) := by ring
+            _ = 2 * μw + 2 * μv - (Real.sqrt μw + Real.sqrt μv)^2 := by
+                rw [add_sq, Real.sq_sqrt hμw_nn, Real.sq_sqrt hμv_nn]; ring
+            _ ≤ 2 * μw + 2 * μv - μwpv := by linarith [htri_sq]
+            _ = μwmv := by linarith [hpara']
+        -- From (√μw - √μv)² ≤ pwv, deduce |√μw - √μv| ≤ √pwv
+        have hpwv_nn : 0 ≤ pwv := hμ_nn (w - v)
+        have h := Real.sqrt_le_sqrt hrev
+        rw [Real.sqrt_sq_eq_abs] at h
+        exact h
+      -- Bound: |μw - μv| = |√μw + √μv| |√μw - √μv| ≤ (‖w‖ + ‖v‖) √pwv ≤ (‖w‖ + ‖v‖)‖w-v‖
+      calc |μw - μv| = |Real.sqrt μw + Real.sqrt μv| * |Real.sqrt μw - Real.sqrt μv| := by
+              rw [← abs_mul, ← sq_sub_sq]
+              simp only [hμw_def, hμv_def, Real.sq_sqrt (hμ_nn w), Real.sq_sqrt (hμ_nn v)]
+        _ ≤ |Real.sqrt μw + Real.sqrt μv| * Real.sqrt pwv := by
+              apply mul_le_mul_of_nonneg_left hseminorm (abs_nonneg _)
+        _ ≤ (Real.sqrt μw + Real.sqrt μv) * Real.sqrt pwv := by
+              apply mul_le_mul_of_nonneg_right _ (Real.sqrt_nonneg _)
+              rw [abs_of_nonneg]
+              exact add_nonneg (Real.sqrt_nonneg _) (Real.sqrt_nonneg _)
+        _ ≤ (‖w‖ + ‖v‖) * ‖w - v‖ := by
+              apply mul_le_mul
+              · apply add_le_add
+                · calc Real.sqrt μw ≤ Real.sqrt (‖w‖^2) := Real.sqrt_le_sqrt (hbound w)
+                    _ = ‖w‖ := Real.sqrt_sq (norm_nonneg w)
+                · calc Real.sqrt μv ≤ Real.sqrt (‖v‖^2) := Real.sqrt_le_sqrt (hbound v)
+                    _ = ‖v‖ := Real.sqrt_sq (norm_nonneg v)
+              · calc Real.sqrt pwv ≤ Real.sqrt (‖w - v‖^2) := Real.sqrt_le_sqrt (hbound (w - v))
+                  _ = ‖w - v‖ := Real.sqrt_sq (norm_nonneg (w - v))
+              · exact Real.sqrt_nonneg pwv
+              · exact add_nonneg (norm_nonneg w) (norm_nonneg v)
+    -- Use Metric.mem_nhds_iff
+    rw [Metric.mem_nhds_iff]
+    -- Choose δ based on ε and ‖v‖
+    by_cases hv : v = 0
+    · -- Case v = 0: need |μ_w(E) - μ_0(E)| < ε for small w
+      -- μ_0(E) ≤ μ_0(Circle) = ‖0‖² = 0, so μ_0(E) = 0
+      subst hv
+      have hμ0 : (spectralMeasureDiagonal U hU 0 E).toReal = 0 := by
+        have h := hbound 0
+        simp only [norm_zero, sq, mul_zero] at h
+        exact le_antisymm h (hμ_nn 0)
+      use Real.sqrt (ε / 2)
+      constructor
+      · exact Real.sqrt_pos.mpr (div_pos hε_pos two_pos)
+      · intro w hw
+        apply hε_ball
+        rw [Metric.mem_ball, Real.dist_eq]
+        simp only [hμ0, sub_zero]
+        have hμw_bound := hbound w
+        rw [Metric.mem_ball] at hw
+        simp only [dist_zero_right] at hw
+        calc |(spectralMeasureDiagonal U hU w E).toReal|
+            = (spectralMeasureDiagonal U hU w E).toReal := abs_of_nonneg (hμ_nn w)
+          _ ≤ ‖w‖^2 := hμw_bound
+          _ < (Real.sqrt (ε / 2))^2 := sq_lt_sq' (by linarith [norm_nonneg w]) hw
+          _ = ε / 2 := Real.sq_sqrt (le_of_lt (div_pos hε_pos two_pos))
+          _ < ε := by linarith
+    · -- Case v ≠ 0: use Lipschitz bound
+      -- Need (‖w‖ + ‖v‖)‖w - v‖ < ε
+      -- If ‖w - v‖ < δ and δ ≤ 1, then ‖w‖ ≤ ‖v‖ + 1, so (‖w‖ + ‖v‖) ≤ 2‖v‖ + 1
+      -- We want (2‖v‖ + 1)δ < ε, so take δ = ε / (2(2‖v‖ + 1))
+      set δ := min 1 (ε / (2 * (2 * ‖v‖ + 1))) with hδ_def
+      use δ
+      constructor
+      · apply lt_min_iff.mpr
+        constructor
+        · exact one_pos
+        · apply div_pos hε_pos
+          linarith [norm_nonneg v]
+      · intro w hw
+        apply hε_ball
+        rw [Metric.mem_ball, Real.dist_eq]
+        rw [Metric.mem_ball, dist_eq_norm] at hw
+        have hw_dist : ‖w - v‖ < δ := hw
+        have hδ_le_1 : δ ≤ 1 := min_le_left _ _
+        have hw_norm : ‖w‖ ≤ ‖v‖ + 1 := by
+          have h1 : ‖w‖ ≤ ‖w - v‖ + ‖v‖ := by
+            calc ‖w‖ = ‖(w - v) + v‖ := by congr 1; abel
+              _ ≤ ‖w - v‖ + ‖v‖ := norm_add_le _ _
+          linarith
+        calc |(spectralMeasureDiagonal U hU w E).toReal -
+                (spectralMeasureDiagonal U hU v E).toReal|
+            ≤ (‖w‖ + ‖v‖) * ‖w - v‖ := hLip w
+          _ ≤ (‖v‖ + 1 + ‖v‖) * δ := by
+              apply mul_le_mul
+              · linarith
+              · exact le_of_lt hw_dist
+              · exact norm_nonneg _
+              · linarith [norm_nonneg w, norm_nonneg v]
+          _ = (2 * ‖v‖ + 1) * δ := by ring
+          _ ≤ (2 * ‖v‖ + 1) * (ε / (2 * (2 * ‖v‖ + 1))) := by
+              apply mul_le_mul_of_nonneg_left (min_le_right _ _)
+              linarith [norm_nonneg v]
+          _ = ε / 2 := by
+              have h2v1_pos : 2 * ‖v‖ + 1 > 0 := by linarith [norm_nonneg v]
+              field_simp
+          _ < ε := by linarith
+  -- f is continuous: composition of continuous maps
+  have hf_cont : Continuous f := by
+    simp only [hf_def]
+    -- f(s) = (1/4) * (a(s) - b(s) - I*c(s) + I*d(s)) where a,b,c,d are continuous
+    -- Expression structure: ((a - b) - I*c) + I*d
+    unfold spectralMeasurePolarized
+    apply Continuous.mul continuous_const
+    -- Goal: ((a - b) - I*c) + I*d is continuous
+    apply Continuous.add
+    · -- ((a - b) - I*c) is continuous
+      apply Continuous.sub
+      · -- (a - b) is continuous
+        apply Continuous.sub
+        · -- a(s) = μ_{x + s•y}(E) is continuous (cast to ℂ)
+          apply Continuous.comp continuous_ofReal
+          apply Continuous.comp hμ_cont
+          exact continuous_const.add (continuous_smul.comp (Continuous.prodMk continuous_id continuous_const))
+        · -- b(s) = μ_{x - s•y}(E) is continuous (cast to ℂ)
+          apply Continuous.comp continuous_ofReal
+          apply Continuous.comp hμ_cont
+          exact continuous_const.sub (continuous_smul.comp (Continuous.prodMk continuous_id continuous_const))
+      · -- I*c(s) = I * μ_{x + I•(s•y)}(E) is continuous
+        apply Continuous.mul continuous_const
+        apply Continuous.comp continuous_ofReal
+        apply Continuous.comp hμ_cont
+        apply continuous_const.add
+        apply Continuous.smul continuous_const
+        exact continuous_smul.comp (Continuous.prodMk continuous_id continuous_const)
+    · -- I*d(s) = I * μ_{x - I•(s•y)}(E) is continuous
+      apply Continuous.mul continuous_const
+      apply Continuous.comp continuous_ofReal
+      apply Continuous.comp hμ_cont
+      apply continuous_const.sub
+      apply Continuous.smul continuous_const
+      exact continuous_smul.comp (Continuous.prodMk continuous_id continuous_const)
+  -- Use density: f and g agree on ℚ and are continuous, hence equal on ℝ
+  have hdense : DenseRange ((↑) : ℚ → ℝ) := Rat.denseRange_cast
+  have heq : f = g := by
+    apply hdense.equalizer hf_cont hg_cont
+    funext q
+    exact heq_rat q
+  exact congrFun heq r
+
 /-- The polarized spectral measure defines a sesquilinear form.
     This is linear in the second argument (y). -/
 theorem spectralMeasurePolarized_linear_right (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
     (E : Set Circle) (hE : MeasurableSet E) (x : H) :
     IsLinearMap ℂ (fun y => spectralMeasurePolarized U hU x y E hE) := by
-  -- The polarization formula gives a bilinear form that is linear in y
-  -- Key: the complex polarization B(x,y) = (1/4)[Q(x+y) - Q(x-y) - iQ(x+iy) + iQ(x-iy)]
-  -- is linear in y when Q is a quadratic form (satisfies Q(cz) = |c|²Q(z))
-  -- For our case, Q(z) = μ_z(E) where μ_z is the spectral measure from RMK
-  -- The spectral functional Λ_z(f) = Re⟨z, cfc(f)z⟩ satisfies Λ_{cz}(f) = |c|²Λ_z(f)
-  -- Hence μ_{cz}(E) = |c|² μ_z(E) by uniqueness of RMK measure
-  -- This makes Q a quadratic form, so polarization gives sesquilinear form, hence linear in y
-  -- Direct proof: we verify additivity and scalar multiplication
+  -- Use the separated additivity lemma and prove scalar multiplication
+  set Q := fun z => (spectralMeasureDiagonal U hU z E).toReal with hQ_def
   constructor
-  · -- Additivity: B(x, y₁ + y₂) = B(x, y₁) + B(x, y₂)
-    intro y₁ y₂
-    unfold spectralMeasurePolarized
-    -- Expand: need to show polarization of Q at (x, y₁+y₂) = sum of polarizations
-    -- This is algebraic identity for complex polarization of quadratic forms
-    simp only
-    -- Use that x + (y₁ + y₂) = (x + y₁) + y₂, etc.
-    sorry
+  · -- Additivity: use the separated lemma
+    exact fun y₁ y₂ => spectralMeasurePolarized_add_right U hU E hE x y₁ y₂
   · -- Scalar multiplication: B(x, c • y) = c * B(x, y)
     intro c y
-    unfold spectralMeasurePolarized
-    simp only
-    sorry
+    -- Strategy: prove c * B = B(-, c•-) by showing:
+    -- 1. i-linearity: B(x, i•y) = i * B(x, y) (direct computation from polarization formula)
+    -- 2. ℚ-linearity: from additivity
+    -- 3. ℝ-linearity: from ℚ-linearity + continuity (boundedness)
+    -- 4. ℂ-linearity: from ℝ-linearity + i-linearity
+    --
+    -- First, prove i-linearity: B(x, i•y) = i * B(x, y)
+    -- B(x, i•y) = (1/4)[Q(x+i•y) - Q(x-i•y) - i*Q(x+i²•y) + i*Q(x-i²•y)]
+    --           = (1/4)[Q(x+i•y) - Q(x-i•y) - i*Q(x-y) + i*Q(x+y)]
+    -- i*B(x, y) = i * (1/4)[Q(x+y) - Q(x-y) - i*Q(x+i•y) + i*Q(x-i•y)]
+    --           = (1/4)[i*Q(x+y) - i*Q(x-y) + Q(x+i•y) - Q(x-i•y)]
+    -- These are equal!
+    have hi_linear : spectralMeasurePolarized U hU x (Complex.I • y) E hE =
+        Complex.I * spectralMeasurePolarized U hU x y E hE := by
+      unfold spectralMeasurePolarized
+      simp only
+      -- i • (i • y) = (i * i) • y = (-1) • y = -y
+      have hi2 : Complex.I • Complex.I • y = -y := by
+        calc Complex.I • Complex.I • y = (Complex.I * Complex.I) • y := by rw [smul_smul]
+          _ = (-1 : ℂ) • y := by rw [Complex.I_mul_I]
+          _ = -y := by simp
+      -- Simplify the terms
+      have h1 : x + Complex.I • (Complex.I • y) = x - y := by rw [hi2]; abel
+      have h2 : x - Complex.I • (Complex.I • y) = x + y := by rw [hi2]; abel
+      simp only [h1, h2]
+      -- Now show the algebra works out
+      set q1 := (spectralMeasureDiagonal U hU (x + Complex.I • y) E).toReal with hq1
+      set q2 := (spectralMeasureDiagonal U hU (x - Complex.I • y) E).toReal with hq2
+      set q3 := (spectralMeasureDiagonal U hU (x + y) E).toReal with hq3
+      set q4 := (spectralMeasureDiagonal U hU (x - y) E).toReal with hq4
+      -- LHS: (1/4) * (q1 - q2 - i*q4 + i*q3) (note: x + i•(i•y) = x - y, x - i•(i•y) = x + y)
+      -- RHS: i * (1/4) * (q3 - q4 - i*q1 + i*q2) = (1/4) * (i*q3 - i*q4 + q1 - q2)
+      -- These are equal by commutativity of addition
+      -- The key: I * (q3 - q4 - I*q1 + I*q2) = I*q3 - I*q4 - I²*q1 + I²*q2
+      --        = I*q3 - I*q4 + q1 - q2  (using I² = -1)
+      --        = q1 - q2 + I*q3 - I*q4
+      have hI2 : Complex.I * Complex.I = -1 := Complex.I_mul_I
+      -- Compute RHS and show equal to LHS
+      have hrhs : Complex.I * ((1 / 4 : ℂ) * ((q3 : ℂ) - q4 - Complex.I * q1 + Complex.I * q2)) =
+          (1 / 4 : ℂ) * (q1 - q2 + Complex.I * q3 - Complex.I * q4) := by
+        calc Complex.I * ((1 / 4 : ℂ) * (q3 - q4 - Complex.I * q1 + Complex.I * q2))
+            = (1 / 4 : ℂ) * (Complex.I * (q3 - q4 - Complex.I * q1 + Complex.I * q2)) := by ring
+          _ = (1 / 4 : ℂ) * (Complex.I * q3 - Complex.I * q4 -
+                Complex.I * Complex.I * q1 + Complex.I * Complex.I * q2) := by ring
+          _ = (1 / 4 : ℂ) * (Complex.I * q3 - Complex.I * q4 - (-1) * q1 + (-1) * q2) := by
+              rw [hI2]
+          _ = (1 / 4 : ℂ) * (q1 - q2 + Complex.I * q3 - Complex.I * q4) := by ring
+      rw [hrhs]
+      ring
+    -- For general c, decompose c = re + im * i where re, im ∈ ℝ
+    -- c • y = re • y + im • (i • y)
+    -- By additivity and i-linearity:
+    -- B(x, c•y) = B(x, re•y) + B(x, im•(i•y)) = B(x, re•y) + im * B(x, i•y)
+    --           = B(x, re•y) + im * i * B(x, y)
+    -- For real scalar re, we use ℚ-linearity (from additivity) + boundedness (gives continuity)
+    -- The bound |B(x,y)| ≤ ‖x‖² + ‖y‖² follows from the triangle inequality on the polarization
+    set re := c.re with hre_def
+    set im := c.im with him_def
+    -- c.re_add_im gives c = ↑c.re + ↑c.im * I
+    have hc_decomp : c = (re : ℂ) + (im : ℂ) * Complex.I := c.re_add_im.symm
+    have hcy_decomp : c • y = re • y + im • (Complex.I • y) := by
+      rw [hc_decomp]
+      simp only [add_smul, mul_smul]
+      -- Need: (↑re) • y + ((↑im) * I) • y = re • y + im • (I • y)
+      -- Use congr to reduce to showing (↑im * I) • y = im • I • y
+      congr 1
+    -- Use additivity (from the separate lemma, not recursive)
+    have hadd : spectralMeasurePolarized U hU x (re • y + im • (Complex.I • y)) E hE =
+        spectralMeasurePolarized U hU x (re • y) E hE +
+        spectralMeasurePolarized U hU x (im • (Complex.I • y)) E hE :=
+      spectralMeasurePolarized_add_right U hU E hE x (re • y) (im • (Complex.I • y))
+    rw [hcy_decomp, hadd]
+    -- Now need to show:
+    -- B(x, re•y) + B(x, im•(i•y)) = c • B(x, y)
+    -- = (re + i*im) • B(x, y) = re * B(x, y) + im * i * B(x, y)
+    -- = re * B(x, y) + im * B(x, i•y) (by hi_linear)
+    -- Use the real scalar multiplication lemma
+    rw [spectralMeasurePolarized_smul_real U hU E hE x re y]
+    rw [spectralMeasurePolarized_smul_real U hU E hE x im (Complex.I • y)]
+    rw [hi_linear]
+    -- Goal: re * B(x,y) + im * (I * B(x,y)) = c • B(x,y)
+    -- For ℂ, c • z = c * z, so c • B = c * B
+    simp only [smul_eq_mul]
+    rw [hc_decomp]
+    ring
 
-/-- The polarized spectral measure is conjugate-linear in the first argument (x). -/
+/-- The polarized spectral measure is conjugate-linear in the first argument (x).
+    Proof outline:
+    1. Define D(a,b) = μ_{a+b} - μ_{a-b}. Then B(x,y) = (1/4)[D(x,y) - i·D(x,iy)]
+    2. D is additive in first arg: D(a₁+a₂, b) = D(a₁,b) + D(a₂,b) (from parallelogram)
+    3. Hence B is additive: B(x₁+x₂, y) = B(x₁,y) + B(x₂,y)
+    4. For real c: B(c·x, y) = c·B(x,y) (from D(c·a, b) = c·D(a,b))
+    5. For c = i: D(ix,y) = 4·Im(B(x,y)), D(ix,iy) = D(x,y)
+       So B(ix,y) = (1/4)[D(ix,y) - i·D(ix,iy)] = Im(B) - i·Re(B) = -i·B(x,y)
+    6. Combine: B(c·x,y) = c̄·B(x,y) for all c ∈ ℂ -/
 theorem spectralMeasurePolarized_conj_linear_left (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
     (E : Set Circle) (hE : MeasurableSet E) :
     ∀ y c x₁ x₂, spectralMeasurePolarized U hU (c • x₁ + x₂) y E hE =
       starRingEnd ℂ c * spectralMeasurePolarized U hU x₁ y E hE +
       spectralMeasurePolarized U hU x₂ y E hE := by
-  -- The polarization formula gives conjugate-linearity in the first argument
+  intro y c x₁ x₂
+  -- Define μ for convenience
+  let μ := fun z => (spectralMeasureDiagonal U hU z E).toReal
+  -- Define D(a,b) = μ_{a+b} - μ_{a-b}
+  let D := fun a b => μ (a + b) - μ (a - b)
+  -- B(x,y) = (1/4)[D(x,y) - i·D(x,iy)]
+  -- The proof uses:
+  -- 1. D is additive in first argument (from parallelogram)
+  -- 2. D(c·a, b) = c·D(a, b) for real c (from quadratic form structure)
+  -- 3. B(ix, y) = -i·B(x, y) (from the sesquilinear structure)
+  -- This is a fundamental property of polarization from parallelogram law
+  -- The formal proof requires careful algebraic manipulation
   sorry
 
 /-- The polarized spectral measure is bounded: |μ_{x,y}(E)| ≤ C‖x‖‖y‖.
-    The bound follows from μ_z(Circle) ≤ ‖z‖² (from RMK) and polarization. -/
+    The bound follows from sesquilinearity and the polarization bound on unit vectors.
+
+    Mathematical argument:
+    1. Direct polarization gives |B(x,y)| ≤ ‖x‖² + ‖y‖²
+    2. Using sesquilinearity: B(x,y) = ‖x‖·‖y‖·B(x/‖x‖, y/‖y‖) for nonzero x,y
+    3. For unit vectors u,v: |B(u,v)| ≤ ‖u‖² + ‖v‖² = 2
+    4. Therefore: |B(x,y)| ≤ 2·‖x‖·‖y‖ -/
 theorem spectralMeasurePolarized_bounded (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
     (E : Set Circle) (hE : MeasurableSet E) :
     ∃ C : ℝ, ∀ x y : H, ‖spectralMeasurePolarized U hU x y E hE‖ ≤ C * ‖x‖ * ‖y‖ := by
-  -- Each diagonal measure satisfies μ_z(E) ≤ μ_z(Circle) = ‖z‖²
-  -- By polarization bounds: |B(x,y)| ≤ (1/4)(‖x+y‖² + ‖x-y‖² + ‖x+iy‖² + ‖x-iy‖²) = ‖x‖² + ‖y‖²
-  -- This bound is not multiplicative, but since B(x,0) = B(0,y) = 0, it suffices.
-  -- For a proper multiplicative bound, we'd need sesquilinearity + Cauchy-Schwarz.
-  -- For now, use ‖x‖² + ‖y‖² ≤ (‖x‖ + ‖y‖)², so |B(x,y)| ≤ (‖x‖ + ‖y‖)² ≤ 2(‖x‖² + ‖y‖²)
-  -- But actually, for the operator construction, we just need SOME bound.
   use 2
   intro x y
-  -- Bound each diagonal measure by the total measure, which equals ‖z‖²
-  have hbound : ∀ z : H, (spectralMeasureDiagonal U hU z E).toReal ≤ ‖z‖^2 := by
-    intro z
-    -- The RMK measure on a compact space is finite
-    haveI : MeasureTheory.IsFiniteMeasure (spectralMeasureDiagonal U hU z) :=
-      spectralMeasureDiagonal_isFiniteMeasure U hU z
-    have hmono := MeasureTheory.measure_mono (μ := spectralMeasureDiagonal U hU z) (Set.subset_univ E)
-    have huniv := spectralMeasureDiagonal_univ U hU z
-    exact le_trans (ENNReal.toReal_mono (MeasureTheory.measure_ne_top _ _) hmono)
-                   (le_of_eq huniv)
-  -- Use triangle inequality and the bound
-  unfold spectralMeasurePolarized
-  -- |B(x,y)| ≤ (1/4)(μ₁ + μ₂ + μ₃ + μ₄) ≤ (1/4)(‖x+y‖² + ‖x-y‖² + ‖x+iy‖² + ‖x-iy‖²)
-  --         = (1/4)(4‖x‖² + 4‖y‖²) = ‖x‖² + ‖y‖² ≤ (‖x‖ + ‖y‖)² ≤ 2(‖x‖² + ‖y‖²)
-  -- For ‖x‖ ≤ 1, ‖y‖ ≤ 1: ‖x‖² + ‖y‖² ≤ 2 ≤ 2·1·1
-  -- General case needs more care with the bound
-  sorry
+  -- Use linearity in y to handle y = 0 case
+  by_cases hy : y = 0
+  · -- B(x, 0) = 0 by linearity in y
+    have hlin_zero := (spectralMeasurePolarized_linear_right U hU E hE x).map_zero
+    simp only [hy, hlin_zero, norm_zero, mul_zero, le_refl]
+  · by_cases hx : x = 0
+    · -- For x = 0: use conjugate-linearity
+      -- B(c·x₁ + x₂, y) = c̄·B(x₁,y) + B(x₂,y)
+      -- Set c = 1, x₁ = 0, x₂ = 0: B(0, y) = 1·B(0,y) + B(0,y)
+      have hconj := spectralMeasurePolarized_conj_linear_left U hU E hE y 1 0 0
+      simp only [one_smul, add_zero, map_one, one_mul] at hconj
+      -- hconj : B(0, y) = B(0, y) + B(0, y), which means B(0,y) = 0
+      have hzero : spectralMeasurePolarized U hU 0 y E hE = 0 := by
+        -- From a = a + a, we get a - a = a + a - a = a, so 0 = a
+        have h : (0 : ℂ) = spectralMeasurePolarized U hU 0 y E hE := by
+          calc (0 : ℂ) = spectralMeasurePolarized U hU 0 y E hE - spectralMeasurePolarized U hU 0 y E hE := (sub_self _).symm
+            _ = (spectralMeasurePolarized U hU 0 y E hE + spectralMeasurePolarized U hU 0 y E hE) -
+                spectralMeasurePolarized U hU 0 y E hE := by rw [← hconj]
+            _ = spectralMeasurePolarized U hU 0 y E hE := by ring
+        exact h.symm
+      simp only [hx, hzero, norm_zero, zero_mul, mul_zero, le_refl]
+    · -- Main case: x ≠ 0, y ≠ 0
+      -- Use sesquilinearity to factor out norms:
+      -- B(x, y) = B(‖x‖·(x/‖x‖), y) = ‖x‖·B(x/‖x‖, y) (by conj-linearity, ‖x‖ is real so conj = id)
+      -- B(x/‖x‖, y) = B(x/‖x‖, ‖y‖·(y/‖y‖)) = ‖y‖·B(x/‖x‖, y/‖y‖) (by linearity in y)
+      have hx_pos : 0 < ‖x‖ := norm_pos_iff.mpr hx
+      have hy_pos : 0 < ‖y‖ := norm_pos_iff.mpr hy
+      -- Express x = ‖x‖ • (x/‖x‖) and y = ‖y‖ • (y/‖y‖)
+      have hx_eq : x = ‖x‖ • (‖x‖⁻¹ • x) := by simp [smul_smul, mul_inv_cancel₀ hx_pos.ne']
+      have hy_eq : y = ‖y‖ • (‖y‖⁻¹ • y) := by simp [smul_smul, mul_inv_cancel₀ hy_pos.ne']
+      -- Unit vectors
+      set u := ‖x‖⁻¹ • x with hu_def
+      set v := ‖y‖⁻¹ • y with hv_def
+      have hu_norm : ‖u‖ = 1 := by simp [u, norm_smul, inv_mul_cancel₀ hx_pos.ne']
+      have hv_norm : ‖v‖ = 1 := by simp [v, norm_smul, inv_mul_cancel₀ hy_pos.ne']
+      -- Use linearity: B(x, y) = B(x, ‖y‖•v) = ‖y‖ • B(x, v)
+      have hlin_y : spectralMeasurePolarized U hU x y E hE =
+          ‖y‖ • spectralMeasurePolarized U hU x v E hE := by
+        conv_lhs => rw [hy_eq]
+        exact (spectralMeasurePolarized_linear_right U hU E hE x).map_smul (↑‖y‖) v
+      -- Use conjugate-linearity: B(x, v) = B(‖x‖•u, v) = ‖x‖ • B(u, v) (since ‖x‖ is real)
+      have hconj_x : spectralMeasurePolarized U hU x v E hE =
+          ‖x‖ • spectralMeasurePolarized U hU u v E hE := by
+        conv_lhs => rw [hx_eq]
+        have hconj := spectralMeasurePolarized_conj_linear_left U hU E hE v (↑‖x‖) u 0
+        simp only [add_zero, starRingEnd_apply] at hconj
+        -- star of a real is itself
+        have hstar_real : star (↑‖x‖ : ℂ) = ↑‖x‖ := by
+          rw [RCLike.star_def, Complex.conj_ofReal]
+        -- B(0, v) = 0
+        have hB0 : spectralMeasurePolarized U hU 0 v E hE = 0 := by
+          have hc := spectralMeasurePolarized_conj_linear_left U hU E hE v 1 0 0
+          simp only [one_smul, add_zero, map_one, one_mul] at hc
+          have h : (0 : ℂ) = spectralMeasurePolarized U hU 0 v E hE := by
+            calc (0 : ℂ) = spectralMeasurePolarized U hU 0 v E hE - spectralMeasurePolarized U hU 0 v E hE := (sub_self _).symm
+              _ = (spectralMeasurePolarized U hU 0 v E hE + spectralMeasurePolarized U hU 0 v E hE) -
+                  spectralMeasurePolarized U hU 0 v E hE := by rw [← hc]
+              _ = spectralMeasurePolarized U hU 0 v E hE := by ring
+          exact h.symm
+        rw [hstar_real, hB0, add_zero] at hconj
+        -- Convert real scalar mult to complex: ‖x‖ • u = (↑‖x‖ : ℂ) • u
+        have hsmul_eq : (‖x‖ : ℝ) • u = (↑‖x‖ : ℂ) • u := by
+          rw [RCLike.real_smul_eq_coe_smul (K := ℂ)]; rfl
+        rw [hsmul_eq, hconj]
+        -- ↑‖x‖ * B = ‖x‖ • B
+        rw [← Complex.real_smul]
+      -- Combine: B(x,y) = ‖y‖ • ‖x‖ • B(u,v)
+      rw [hlin_y, hconj_x]
+      simp only [smul_smul]
+      -- Bound: ‖(‖y‖ * ‖x‖) • B(u,v)‖ = |‖y‖ * ‖x‖| * ‖B(u,v)‖ = ‖y‖ * ‖x‖ * ‖B(u,v)‖
+      rw [norm_smul, Real.norm_eq_abs, abs_of_pos (mul_pos hy_pos hx_pos)]
+      -- Need: ‖x‖ * ‖y‖ * ‖B(u,v)‖ ≤ 2 * ‖x‖ * ‖y‖
+      -- Equivalent to: ‖B(u,v)‖ ≤ 2
+      have hunit_bound : ‖spectralMeasurePolarized U hU u v E hE‖ ≤ 2 := by
+        -- For unit vectors, use the direct polarization bound: |B(u,v)| ≤ ‖u‖² + ‖v‖² = 2
+        -- This follows from triangle inequality on the polarization formula
+        unfold spectralMeasurePolarized
+        -- Each μ_z ≤ ‖z‖² and for z = u±v or u±iv, ‖z‖ ≤ ‖u‖ + ‖v‖ = 2
+        have hbound : ∀ z : H, (spectralMeasureDiagonal U hU z E).toReal ≤ ‖z‖^2 := by
+          intro z
+          haveI : MeasureTheory.IsFiniteMeasure (spectralMeasureDiagonal U hU z) :=
+            spectralMeasureDiagonal_isFiniteMeasure U hU z
+          have hmono := MeasureTheory.measure_mono (μ := spectralMeasureDiagonal U hU z) (Set.subset_univ E)
+          have huniv := spectralMeasureDiagonal_univ U hU z
+          exact le_trans (ENNReal.toReal_mono (MeasureTheory.measure_ne_top _ _) hmono) (le_of_eq huniv)
+        -- Use parallelogram identity
+        have hpara : ‖u + v‖^2 + ‖u - v‖^2 = 2 * ‖u‖^2 + 2 * ‖v‖^2 := by
+          have h := @parallelogram_law_with_norm ℂ H _ _ _ u v
+          simp only [sq] at h ⊢; linarith
+        have hpara2 : ‖u + Complex.I • v‖^2 + ‖u - Complex.I • v‖^2 = 2 * ‖u‖^2 + 2 * ‖v‖^2 := by
+          have h := @parallelogram_law_with_norm ℂ H _ _ _ u (Complex.I • v)
+          have hiv_norm : ‖Complex.I • v‖ = ‖v‖ := by rw [norm_smul, Complex.norm_I, one_mul]
+          simp only [sq, hiv_norm] at h ⊢; linarith
+        rw [hu_norm, hv_norm] at hpara hpara2
+        -- hpara, hpara2 now say ... = 2*1 + 2*1 = 4
+        have hpara' : ‖u + v‖^2 + ‖u - v‖^2 = 4 := by simp only [one_pow, mul_one] at hpara; linarith
+        have hpara2' : ‖u + Complex.I • v‖^2 + ‖u - Complex.I • v‖^2 = 4 := by simp only [one_pow, mul_one] at hpara2; linarith
+        -- Sum of measures ≤ 8
+        have hsum : (spectralMeasureDiagonal U hU (u + v) E).toReal +
+                    (spectralMeasureDiagonal U hU (u - v) E).toReal +
+                    (spectralMeasureDiagonal U hU (u + Complex.I • v) E).toReal +
+                    (spectralMeasureDiagonal U hU (u - Complex.I • v) E).toReal ≤ 8 := by
+          calc _ ≤ ‖u + v‖^2 + ‖u - v‖^2 + ‖u + Complex.I • v‖^2 + ‖u - Complex.I • v‖^2 := by
+                   linarith [hbound (u + v), hbound (u - v),
+                            hbound (u + Complex.I • v), hbound (u - Complex.I • v)]
+               _ = (‖u + v‖^2 + ‖u - v‖^2) + (‖u + Complex.I • v‖^2 + ‖u - Complex.I • v‖^2) := by ring
+               _ = 4 + 4 := by rw [hpara', hpara2']
+               _ = 8 := by ring
+        -- Non-negativity of measures
+        have hnn : ∀ z : H, 0 ≤ (spectralMeasureDiagonal U hU z E).toReal := fun z => ENNReal.toReal_nonneg
+        set μ₁ := (spectralMeasureDiagonal U hU (u + v) E).toReal with hμ₁_def
+        set μ₂ := (spectralMeasureDiagonal U hU (u - v) E).toReal with hμ₂_def
+        set μ₃ := (spectralMeasureDiagonal U hU (u + Complex.I • v) E).toReal with hμ₃_def
+        set μ₄ := (spectralMeasureDiagonal U hU (u - Complex.I • v) E).toReal with hμ₄_def
+        have hμ₁_nn : 0 ≤ μ₁ := hnn _
+        have hμ₂_nn : 0 ≤ μ₂ := hnn _
+        have hμ₃_nn : 0 ≤ μ₃ := hnn _
+        have hμ₄_nn : 0 ≤ μ₄ := hnn _
+        -- Bound: ‖(1/4)(μ₁ - μ₂ - iμ₃ + iμ₄)‖ ≤ (1/4)(|μ₁| + |μ₂| + |μ₃| + |μ₄|) = (1/4)(μ₁ + μ₂ + μ₃ + μ₄) ≤ (1/4)*8 = 2
+        calc ‖(1 / 4 : ℂ) * ((μ₁ : ℂ) - μ₂ - Complex.I * μ₃ + Complex.I * μ₄)‖
+            = (1 / 4) * ‖(μ₁ : ℂ) - μ₂ - Complex.I * μ₃ + Complex.I * μ₄‖ := by
+              rw [norm_mul]
+              congr 1
+              -- ‖(1/4 : ℂ)‖ = 1/4 since 1/4 is a positive real
+              have h14 : (1 / 4 : ℂ) = (↑(1/4 : ℝ) : ℂ) := by simp only [one_div, Complex.ofReal_inv, Complex.ofReal_ofNat]
+              rw [h14, Complex.norm_real, Real.norm_eq_abs, abs_of_pos (by norm_num : (0:ℝ) < 1/4)]
+          _ ≤ (1 / 4) * (‖(μ₁ : ℂ)‖ + ‖(μ₂ : ℂ)‖ + ‖Complex.I * (μ₃ : ℂ)‖ + ‖Complex.I * (μ₄ : ℂ)‖) := by
+              apply mul_le_mul_of_nonneg_left _ (by norm_num : (0:ℝ) ≤ 1/4)
+              calc ‖(μ₁ : ℂ) - μ₂ - Complex.I * μ₃ + Complex.I * μ₄‖
+                  ≤ ‖(μ₁ : ℂ) - μ₂ - Complex.I * μ₃‖ + ‖Complex.I * (μ₄ : ℂ)‖ := norm_add_le _ _
+                _ ≤ ‖(μ₁ : ℂ) - μ₂‖ + ‖Complex.I * (μ₃ : ℂ)‖ + ‖Complex.I * (μ₄ : ℂ)‖ := by
+                    linarith [norm_sub_le ((μ₁ : ℂ) - μ₂) (Complex.I * μ₃)]
+                _ ≤ ‖(μ₁ : ℂ)‖ + ‖(μ₂ : ℂ)‖ + ‖Complex.I * (μ₃ : ℂ)‖ + ‖Complex.I * (μ₄ : ℂ)‖ := by
+                    linarith [norm_sub_le (μ₁ : ℂ) μ₂]
+          _ = (1 / 4) * (μ₁ + μ₂ + μ₃ + μ₄) := by
+              have hn1 : ‖(μ₁ : ℂ)‖ = μ₁ := by rw [Complex.norm_real, Real.norm_eq_abs, abs_of_nonneg hμ₁_nn]
+              have hn2 : ‖(μ₂ : ℂ)‖ = μ₂ := by rw [Complex.norm_real, Real.norm_eq_abs, abs_of_nonneg hμ₂_nn]
+              have hn3 : ‖Complex.I * (μ₃ : ℂ)‖ = μ₃ := by
+                rw [norm_mul, Complex.norm_I, one_mul, Complex.norm_real, Real.norm_eq_abs, abs_of_nonneg hμ₃_nn]
+              have hn4 : ‖Complex.I * (μ₄ : ℂ)‖ = μ₄ := by
+                rw [norm_mul, Complex.norm_I, one_mul, Complex.norm_real, Real.norm_eq_abs, abs_of_nonneg hμ₄_nn]
+              rw [hn1, hn2, hn3, hn4]
+          _ ≤ (1 / 4) * 8 := by
+              apply mul_le_mul_of_nonneg_left hsum (by norm_num : (0:ℝ) ≤ 1/4)
+          _ = 2 := by norm_num
+      calc ‖y‖ * ‖x‖ * ‖spectralMeasurePolarized U hU u v E hE‖
+          ≤ ‖y‖ * ‖x‖ * 2 := by
+            apply mul_le_mul_of_nonneg_left hunit_bound
+            exact mul_nonneg hy_pos.le hx_pos.le
+        _ = 2 * ‖x‖ * ‖y‖ := by ring
 
 /-- The spectral projection for a Borel set E ⊆ Circle.
 
