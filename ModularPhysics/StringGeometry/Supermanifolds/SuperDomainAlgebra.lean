@@ -46,20 +46,15 @@ theorem ext' {f g : SuperDomainFunction p q} (h : ∀ I x, f.coefficients I x = 
   funext I
   exact SmoothFunction.ext (h I)
 
-/-- Accessing coefficients of add -/
+/-- Accessing coefficients of add (pointwise version) -/
 @[simp]
-theorem add_coefficients (f g : SuperDomainFunction p q) (I : Finset (Fin q)) (x : Fin p → ℝ) :
+theorem add_coefficients_apply (f g : SuperDomainFunction p q) (I : Finset (Fin q)) (x : Fin p → ℝ) :
     (add f g).coefficients I x = f.coefficients I x + g.coefficients I x := rfl
 
-/-- Accessing coefficients of zero -/
+/-- Accessing coefficients of zero (pointwise version) -/
 @[simp]
-theorem zero_coefficients (I : Finset (Fin q)) (x : Fin p → ℝ) :
+theorem zero_coefficients_apply (I : Finset (Fin q)) (x : Fin p → ℝ) :
     (zero : SuperDomainFunction p q).coefficients I x = 0 := rfl
-
-/-- Accessing coefficients of neg -/
-@[simp]
-theorem neg_coefficients (f : SuperDomainFunction p q) (I : Finset (Fin q)) (x : Fin p → ℝ) :
-    (neg f).coefficients I x = -(f.coefficients I x) := rfl
 
 /-- Accessing coefficients of one -/
 @[simp]
@@ -175,62 +170,6 @@ instance instAddCommGroup : AddCommGroup (SuperDomainFunction p q) where
     show f.coefficients I x - g.coefficients I x = f.coefficients I x + -(g.coefficients I x)
     ring
 
-/-- The key identity for supercommutativity:
-    inversions(I,J) + inversions(J,I) = |I| * |J|
-    Therefore: reorderSign I J * reorderSign J I = (-1)^{|I|*|J|} -/
-theorem reorderSign_swap (I J : Finset (Fin q)) (h : I ∩ J = ∅) :
-    reorderSign I J * reorderSign J I = (-1 : ℤ) ^ (I.card * J.card) := by
-  simp only [reorderSign, h, Finset.inter_comm J I, ↓reduceIte]
-  rw [← pow_add]
-  congr 1
-  -- inversions(I,J) + inversions(J,I) = |I| * |J|
-  -- An inversion in (I,J) is a pair (i,j) with i∈I, j∈J, j<i
-  -- An inversion in (J,I) is a pair (j,i) with j∈J, i∈I, i<j
-  -- Together they count all pairs (i,j) with i∈I, j∈J (since i≠j by disjointness)
-  have h1 : ((I ×ˢ J).filter fun p => p.2 < p.1).card +
-            ((J ×ˢ I).filter fun p => p.2 < p.1).card =
-            (I ×ˢ J).card := by
-    -- The filters partition I ×ˢ J (via the bijection that swaps components)
-    have hbij : ((J ×ˢ I).filter fun p => p.2 < p.1) =
-                ((I ×ˢ J).filter fun p => p.1 < p.2).map
-                  ⟨fun p => (p.2, p.1), fun _ _ h => Prod.ext (Prod.mk.inj h).2 (Prod.mk.inj h).1⟩ := by
-      ext ⟨j, i⟩
-      simp only [Finset.mem_filter, Finset.mem_product, Finset.mem_map,
-                 Function.Embedding.coeFn_mk, Prod.exists]
-      constructor
-      · intro ⟨⟨hj, hi⟩, hlt⟩
-        exact ⟨i, j, ⟨⟨hi, hj⟩, hlt⟩, rfl⟩
-      · intro ⟨i', j', ⟨⟨hi', hj'⟩, hlt⟩, heq⟩
-        simp only [Prod.mk.injEq] at heq
-        obtain ⟨hj'_eq, hi'_eq⟩ := heq
-        subst hj'_eq hi'_eq
-        exact ⟨⟨hj', hi'⟩, hlt⟩
-    rw [hbij, Finset.card_map]
-    -- Now show: filter(<) card + filter(>) card = total card
-    have hpart : (I ×ˢ J).filter (fun p => p.2 < p.1) ∪ (I ×ˢ J).filter (fun p => p.1 < p.2) =
-                 I ×ˢ J := by
-      ext ⟨i, j⟩
-      simp only [Finset.mem_union, Finset.mem_filter, Finset.mem_product]
-      constructor
-      · intro h; rcases h with ⟨⟨hi, hj⟩, _⟩ | ⟨⟨hi, hj⟩, _⟩ <;> exact ⟨hi, hj⟩
-      · intro ⟨hi, hj⟩
-        -- Since I ∩ J = ∅ and i ∈ I, j ∈ J, we have i ≠ j
-        have hne : i ≠ j := by
-          intro heq; subst heq
-          have : i ∈ I ∩ J := Finset.mem_inter.mpr ⟨hi, hj⟩
-          rw [h] at this; simp at this
-        rcases lt_trichotomy j i with hlt | heq | hgt
-        · left; exact ⟨⟨hi, hj⟩, hlt⟩
-        · exact absurd heq hne.symm
-        · right; exact ⟨⟨hi, hj⟩, hgt⟩
-    have hdisj : Disjoint ((I ×ˢ J).filter fun p => p.2 < p.1)
-                         ((I ×ˢ J).filter fun p => p.1 < p.2) := by
-      rw [Finset.disjoint_filter]
-      intro ⟨i, j⟩ _ hlt
-      exact not_lt.mpr (le_of_lt hlt)
-    rw [← Finset.card_union_of_disjoint hdisj, hpart]
-  rw [h1, Finset.card_product]
-
 /-- Supercommutativity for monomials: swapping θ^I and θ^J introduces sign (-1)^{|I||J|}.
     This is the coefficient-level version of supercommutativity. -/
 theorem mul_comm_monomial (f g : SuperDomainFunction p q) (I J K : Finset (Fin q))
@@ -299,28 +238,22 @@ theorem mul_comm_monomial (f g : SuperDomainFunction p q) (I J K : Finset (Fin q
 /-- Left distributivity -/
 theorem left_distrib' (f g h : SuperDomainFunction p q) : mul f (add g h) = add (mul f g) (mul f h) := by
   apply ext'; intro I x
-  rw [mul_coefficients, add_coefficients, mul_coefficients, mul_coefficients]
+  simp only [mul_coefficients, add_coefficients_apply]
   rw [← Finset.sum_add_distrib]
   apply Finset.sum_congr rfl; intro J _
   rw [← Finset.sum_add_distrib]
   apply Finset.sum_congr rfl; intro K _
-  split_ifs with hcond
-  · simp only [add, SmoothFunction.add_apply]
-    ring
-  · ring
+  split_ifs with hcond <;> ring
 
 /-- Right distributivity -/
 theorem right_distrib' (f g h : SuperDomainFunction p q) : mul (add f g) h = add (mul f h) (mul g h) := by
   apply ext'; intro I x
-  rw [mul_coefficients, add_coefficients, mul_coefficients, mul_coefficients]
+  simp only [mul_coefficients, add_coefficients_apply]
   rw [← Finset.sum_add_distrib]
   apply Finset.sum_congr rfl; intro J _
   rw [← Finset.sum_add_distrib]
   apply Finset.sum_congr rfl; intro K _
-  split_ifs with hcond
-  · simp only [add, SmoothFunction.add_apply]
-    ring
-  · ring
+  split_ifs with hcond <;> ring
 
 /-- reorderSign with empty left set is 1 -/
 theorem reorderSign_empty_left (I : Finset (Fin q)) : reorderSign ∅ I = 1 := by
@@ -700,21 +633,21 @@ theorem mul_one' (f : SuperDomainFunction p q) : mul f one = f := by
 /-- Zero times anything is zero -/
 theorem zero_mul' (f : SuperDomainFunction p q) : mul zero f = zero := by
   apply ext'; intro I x
-  rw [mul_coefficients, zero_coefficients]
+  rw [mul_coefficients, zero_coefficients_apply]
   apply Finset.sum_eq_zero; intro J _
   apply Finset.sum_eq_zero; intro K _
   split_ifs with h
-  · simp only [zero_coefficients]; ring
+  · simp only [zero_coefficients_apply]; ring
   · rfl
 
 /-- Anything times zero is zero -/
 theorem mul_zero' (f : SuperDomainFunction p q) : mul f zero = zero := by
   apply ext'; intro I x
-  rw [mul_coefficients, zero_coefficients]
+  rw [mul_coefficients, zero_coefficients_apply]
   apply Finset.sum_eq_zero; intro J _
   apply Finset.sum_eq_zero; intro K _
   split_ifs with h
-  · simp only [zero_coefficients]; ring
+  · simp only [zero_coefficients_apply]; ring
   · rfl
 
 /-- Power function for the ring instance -/
@@ -946,8 +879,7 @@ theorem direct_sum_decomp (f : SuperDomainFunction p q) :
   use ⟨f_even, h_even⟩, ⟨f_odd, h_odd⟩
   apply ext'; intro I x
   show f.coefficients I x = (add f_even f_odd).coefficients I x
-  rw [add_coefficients]
-  simp only [f_even, f_odd]
+  simp only [add_coefficients_apply, f_even, f_odd]
   by_cases h : I.card % 2 = 0
   · simp only [h, ↓reduceIte, (by decide : (0 : ℕ) ≠ 1), SmoothFunction.zero_apply, add_zero]
   · have h1 : I.card % 2 = 1 := by omega
