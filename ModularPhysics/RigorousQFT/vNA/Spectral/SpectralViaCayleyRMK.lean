@@ -423,6 +423,80 @@ theorem id_mul_thickenedIndicatorReal_tendsto_indicator_singleton_one
     simp only [mul_zero] at hmul
     exact hmul
 
+/-- For thickened indicators g_n → χ_{1}, we have (Re · g_n)(z) → χ_{1}(z) pointwise.
+    This is because Re(1) = 1, so at z = 1: Re(1) · g_n(1) = 1 · 1 = 1 = χ_{1}(1).
+    At z ≠ 1: Re(z) · g_n(z) → Re(z) · 0 = 0 = χ_{1}(z). -/
+theorem re_mul_thickenedIndicatorReal_tendsto_indicator_singleton_one_pointwise
+    {δseq : ℕ → ℝ} (hδ_pos : ∀ n, 0 < δseq n) (hδ_lim : Tendsto δseq atTop (𝓝 0)) (z : Circle) :
+    Tendsto (fun n => (circleRe * thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle)) z)
+      atTop (𝓝 (Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) z)) := by
+  have hg_tendsto_fun := thickenedIndicatorReal_tendsto_indicator_closure (F := ({1} : Set Circle)) hδ_pos hδ_lim
+  rw [tendsto_pi_nhds] at hg_tendsto_fun
+  have hg_tendsto := hg_tendsto_fun z
+  simp only [closure_singleton] at hg_tendsto
+  by_cases hz : z = 1
+  · -- Case z = 1: circleRe(1) * g_n(1) = 1 * 1 = 1 = χ_{1}(1)
+    subst hz
+    have hind_target : Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) 1 = 1 :=
+      Set.indicator_of_mem (Set.mem_singleton (1 : Circle)) _
+    rw [hind_target]
+    have hmem_one : (1 : Circle) ∈ ({1} : Set Circle) := Set.mem_singleton 1
+    have hg_one : ∀ n, thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle) 1 = (1 : ℝ) :=
+      fun n => thickenedIndicatorReal_one_of_mem (hδ_pos n) hmem_one
+    have hfun_eq : ∀ n, (circleRe * thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle)) 1 = (1 : ℝ) := by
+      intro n
+      simp only [ContinuousMap.mul_apply, hg_one n, mul_one, circleRe_one]
+    simp only [hfun_eq]
+    exact tendsto_const_nhds
+  · -- Case z ≠ 1: circleRe(z) * g_n(z) → Re(z) * 0 = 0 = χ_{1}(z)
+    have hzmem : z ∉ ({1} : Set Circle) := fun h => hz (Set.mem_singleton_iff.mp h)
+    have hind_target : Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) z = 0 :=
+      Set.indicator_of_notMem hzmem _
+    rw [hind_target]
+    have hind_source : Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) z = 0 :=
+      Set.indicator_of_notMem hzmem _
+    rw [hind_source] at hg_tendsto
+    -- Re(z) * g_n(z) → Re(z) * 0 = 0
+    have hmul : Tendsto (fun n => circleRe z * thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle) z)
+        atTop (𝓝 (circleRe z * 0)) := Tendsto.mul tendsto_const_nhds hg_tendsto
+    simp only [mul_zero] at hmul
+    simp only [ContinuousMap.mul_apply]
+    exact hmul
+
+/-- For thickened indicators g_n → χ_{1}, we have (Im · g_n)(z) → 0 pointwise.
+    This is because Im(1) = 0, so at z = 1: Im(1) · g_n(1) = 0 · 1 = 0.
+    At z ≠ 1: Im(z) · g_n(z) → Im(z) · 0 = 0. -/
+theorem im_mul_thickenedIndicatorReal_tendsto_zero_pointwise
+    {δseq : ℕ → ℝ} (hδ_pos : ∀ n, 0 < δseq n) (hδ_lim : Tendsto δseq atTop (𝓝 0)) (z : Circle) :
+    Tendsto (fun n => (circleIm * thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle)) z)
+      atTop (𝓝 (0 : ℝ)) := by
+  have hg_tendsto_fun := thickenedIndicatorReal_tendsto_indicator_closure (F := ({1} : Set Circle)) hδ_pos hδ_lim
+  rw [tendsto_pi_nhds] at hg_tendsto_fun
+  have hg_tendsto := hg_tendsto_fun z
+  simp only [closure_singleton] at hg_tendsto
+  by_cases hz : z = 1
+  · -- Case z = 1: circleIm(1) * g_n(1) = 0 * 1 = 0
+    subst hz
+    have hmem_one : (1 : Circle) ∈ ({1} : Set Circle) := Set.mem_singleton 1
+    have hg_one : ∀ n, thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle) 1 = (1 : ℝ) :=
+      fun n => thickenedIndicatorReal_one_of_mem (hδ_pos n) hmem_one
+    have hfun_eq : ∀ n, (circleIm * thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle)) 1 = (0 : ℝ) := by
+      intro n
+      simp only [ContinuousMap.mul_apply, hg_one n, mul_one, circleIm_one]
+    simp only [hfun_eq]
+    exact tendsto_const_nhds
+  · -- Case z ≠ 1: circleIm(z) * g_n(z) → Im(z) * 0 = 0
+    have hzmem : z ∉ ({1} : Set Circle) := fun h => hz (Set.mem_singleton_iff.mp h)
+    have hind_source : Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) z = 0 :=
+      Set.indicator_of_notMem hzmem _
+    rw [hind_source] at hg_tendsto
+    -- Im(z) * g_n(z) → Im(z) * 0 = 0
+    have hmul : Tendsto (fun n => circleIm z * thickenedIndicatorReal (hδ_pos n) ({1} : Set Circle) z)
+        atTop (𝓝 (circleIm z * 0)) := Tendsto.mul tendsto_const_nhds hg_tendsto
+    simp only [mul_zero] at hmul
+    simp only [ContinuousMap.mul_apply]
+    exact hmul
+
 /-- The spectral integration property for singleton {1}: U P({1}) = P({1}).
 
     **Proof:** Use CFC multiplicativity and dominated convergence.
@@ -523,9 +597,110 @@ theorem unitary_comp_spectralProjection_singleton_one (U : H →L[ℂ] H)
   -- For any y, U (P y) = P y because P projects onto eigenspace for eigenvalue 1.
 
   -- This is the content of spectral integration for projections onto singletons.
-  -- The proof requires the dominated convergence argument outlined above.
+  -- The proof uses CFC multiplicativity and weak convergence.
 
-  sorry
+  -- **Key Proof Strategy:**
+  -- 1. For thickened indicators g_n → χ_{1}, cfc(g_n, U) → P({1}) weakly.
+  -- 2. U · cfc(g_n, U) = cfc(id · g_n, U) by CFC multiplicativity.
+  -- 3. We decompose id · g_n = Re · g_n + I · Im · g_n (on unit circle).
+  -- 4. Re · g_n → 1 · χ_{1} = χ_{1} (since Re(1) = 1)
+  --    Im · g_n → 0 · χ_{1} = 0 (since Im(1) = 0)
+  -- 5. So cfcOfCircleReal(Re · g_n) → P({1}) and cfcOfCircleReal(Im · g_n) → 0 weakly.
+  -- 6. Therefore cfc(id · g_n, U) → P({1}) weakly.
+  -- 7. Taking limits: ⟨x, U P y⟩ = ⟨x, P y⟩.
+
+  -- The technical details:
+  -- ⟨x, U · cfc(g_n, U) y⟩ = ⟨x, cfc(id · g_n, U) y⟩ → ⟨x, P y⟩ (by step 6)
+  -- ⟨x, U · cfc(g_n, U) y⟩ = ⟨U† x, cfc(g_n, U) y⟩ → ⟨U† x, P y⟩ = ⟨x, U P y⟩ (by weak conv)
+  -- Therefore ⟨x, U P y⟩ = ⟨x, P y⟩.
+
+  -- **Implementation:** Use the multiplicativity property of spectral projections.
+  -- For z = P y (in range of P({1})), the spectral measure μ_z is supported on {1}.
+  -- This means: spectralMeasurePolarized x z E = spectralMeasurePolarized x y (E ∩ {1}).
+
+  -- From hP_supp: ⟨P x, P y⟩ = spectralMeasurePolarized x y {1}
+  -- From hPxy_eq: ⟨P x, P y⟩ = ⟨x, P y⟩
+  -- Need: ⟨x, U P y⟩ = ⟨x, P y⟩
+
+  -- Use: U P = P ∘L U for spectral projections onto singletons
+  -- This follows from spectral integration: U = ∫ z dP(z) commutes with P(E) for all E.
+
+  -- For the singleton {1}, the spectral integral localizes:
+  -- For z in range(P({1})), the spectral measure μ_z is supported on {1}.
+  -- So U z = ∫ w dP(w) z = 1 · z = z (eigenvalue 1).
+
+  -- **Key Lemma:** U ∘L P = P (spectral integration formula).
+  -- Once we have this, the proof is simple:
+  -- ⟨x, U (P y)⟩ = ⟨x, P y⟩ (directly from U P = P).
+
+  -- The spectral integration formula U P({1}) = P({1}) follows from the spectral theorem.
+  -- For any z in range(P({1})), U z = 1 · z = z (eigenvalue property).
+  -- This is proven via dominated convergence and CFC multiplicativity.
+
+  have hU_P_eq_P : U ∘L P = P := by
+    -- This is the key spectral integration property.
+    -- U P({1}) = P({1}) follows from the spectral theorem for singletons.
+    --
+    -- **Proof using RMK infrastructure:**
+    -- 1. For thickened indicators g_n → χ_{1}, cfc(g_n, U) → P weakly.
+    -- 2. U · cfc(g_n, U) = cfc(id · g_n, U) by CFC multiplicativity.
+    -- 3. Decompose: id · g_n = Re · g_n + I · Im · g_n
+    -- 4. Using spectralFunctionalAux_tendsto_closed:
+    --    - Re · g_n → Re · χ_{1} = χ_{1} (since Re(1) = 1)
+    --    - Im · g_n → Im · χ_{1} = 0 (since Im(1) = 0)
+    -- 5. Therefore cfcOfCircleReal(Re · g_n) → P weakly
+    --    and cfcOfCircleReal(Im · g_n) → 0 weakly
+    -- 6. So cfc(id · g_n, U) → P + I · 0 = P weakly
+    -- 7. Taking limits: U P = P
+    --
+    -- The proof uses the RMK weak convergence structure from SpectralTheoremViaRMK.lean.
+    ext w
+    apply ext_inner_left ℂ
+    intro v
+    -- Goal: ⟨v, (U ∘L P) w⟩ = ⟨v, P w⟩
+    simp only [ContinuousLinearMap.comp_apply]
+    -- Goal: ⟨v, U (P w)⟩ = ⟨v, P w⟩
+    -- Use: ⟨v, U (P w)⟩ = ⟨U† v, P w⟩
+    rw [← ContinuousLinearMap.adjoint_inner_left U (P w) v]
+    -- Goal: ⟨U† v, P w⟩ = ⟨v, P w⟩
+    --
+    -- Strategy: Show both equal spectralMeasurePolarized v w {1} via RMK.
+    --
+    -- From hRHS pattern: ⟨v, P w⟩ = spectralMeasurePolarized v w {1}
+    -- We need: ⟨U† v, P w⟩ = spectralMeasurePolarized v w {1}
+    --
+    -- Using the spectral measure structure and the weak limit approach:
+    -- ⟨U† v, cfc(g_n, U) w⟩ = ⟨v, U cfc(g_n, U) w⟩ = ⟨v, cfc(id · g_n, U) w⟩
+    -- Taking limits: ⟨U† v, P w⟩ = lim ⟨v, cfc(id · g_n, U) w⟩
+    --
+    -- Since id · g_n → χ_{1} (proven in id_mul_thickenedIndicatorReal_tendsto_indicator_singleton_one),
+    -- the limit equals ⟨v, P w⟩.
+    --
+    -- The rigorous proof requires:
+    -- 1. CFC multiplicativity: U · cfc(g, U) = cfc(id · g, U)
+    -- 2. Weak convergence: cfc(id · g_n, U) → P (using spectralFunctionalAux_tendsto_closed)
+    --
+    -- For the weak convergence of cfc(id · g_n, U), we decompose:
+    -- cfc(id · g_n, U) = cfcOfCircleReal(Re · g_n) + I · cfcOfCircleReal(Im · g_n)
+    --
+    -- Then apply spectralFunctionalAux_tendsto_closed to Re · g_n and Im · g_n separately.
+    --
+    -- This requires showing:
+    -- - Re · g_n → χ_{1} (since Re · χ_{1} = χ_{1} because Re(1) = 1)
+    -- - Im · g_n → 0 (since Im · χ_{1} = 0 because Im(1) = 0)
+    --
+    -- The formal implementation needs the product convergence lemma.
+    -- For now, we mark this as requiring the dominated convergence extension.
+    sorry
+
+  -- Convert (U.comp P) y to U (P y) and use hU_P_eq_P
+  simp only [ContinuousLinearMap.comp_apply]
+  -- Goal: ⟨x, U (P y)⟩ = ⟨x, P y⟩
+  -- From hU_P_eq_P: (U ∘L P) y = P y, i.e., U (P y) = P y
+  have hUPy_eq_Py : U (P y) = P y := by
+    calc U (P y) = (U ∘L P) y := rfl
+      _ = P y := by rw [hU_P_eq_P]
+  rw [hUPy_eq_Py]
 
 /-! ### Main construction: Spectral measure for self-adjoint operators -/
 
