@@ -15,6 +15,10 @@ The main Supermanifold definition now uses proper SuperAlgebra structure.
 - **SuperChart.sheafIso** now properly typed as `RingEquiv` to SuperDomainFunction
 - **SuperCoordinates** now has proper parity conditions (evenCoords_even, oddCoords_odd)
 - **SuperTransition** removed tautological `overlap_nonempty`, added proper diffeomorphism conditions
+- **`partialOdd_odd_derivation'`** - Graded Leibniz rule for odd derivatives (PROVEN)
+  - Created `Helpers/PartialOddLeibniz.lean` with sign-related lemmas
+  - Created `PartialOddDerivation.lean` with the full proof
+  - Key lemma: `leibniz_sign_cancel` for the overlapping case I ∩ J = {a}
 
 ---
 
@@ -51,9 +55,9 @@ The main Supermanifold definition now uses proper SuperAlgebra structure.
 
 | Location | Declaration | Status | Difficulty |
 |----------|-------------|--------|------------|
-| ~1147 | `batchelor_theorem` | sorry | HIGH - Deep result |
-| ~1262 | `batchelor_splitting` | sorry | HIGH - Deep result |
-| ~1347 | `partialOdd_odd_derivation` | sorry | MEDIUM - Partially done |
+| Batchelor.lean | `batchelor_theorem` | sorry | HIGH - Deep result |
+| Batchelor.lean | `batchelor_splitting` | sorry | HIGH - Deep result |
+| ~~PartialOddDerivation.lean~~ | ~~`partialOdd_odd_derivation'`~~ | ~~PROVEN~~ | ~~COMPLETE~~ |
 
 ### 2. Remaining Placeholders
 
@@ -78,16 +82,17 @@ The main Supermanifold definition now uses proper SuperAlgebra structure.
 ## Recommendations for Next Steps
 
 ### Immediate
-1. **Complete `partialOdd_odd_derivation`** - Proof structure is in place
+1. ~~**Complete `partialOdd_odd_derivation`**~~ - ✅ DONE (PartialOddDerivation.lean)
 2. **Fix BerezinIntegration sorrys** - Integration change of variables
+3. **SuperconformalMaps sorrys** - Complete proofs in SuperconformalMaps.lean
 
 ### Short-term
-3. **Implement LocallySuperRingedSpace.stalks_local** - Define stalks as colimits
-4. **SuperVectorBundle local triviality** - Proper formulation
+4. **Implement LocallySuperRingedSpace.stalks_local** - Define stalks as colimits
+5. **SuperVectorBundle local triviality** - Proper formulation
 
 ### Long-term
-5. **Batchelor theorem** - Deep result requiring global analysis
-6. **Full integration theory** - Berezin integral on general supermanifolds
+6. **Batchelor theorem** - Deep result requiring global analysis
+7. **Full integration theory** - Berezin integral on general supermanifolds
 
 ---
 
@@ -98,9 +103,13 @@ The main Supermanifold definition now uses proper SuperAlgebra structure.
 | Superalgebra.lean | Good | Complete algebraic foundations |
 | SuperRingCat.lean | Good | Category of supercommutative algebras |
 | SuperDomainAlgebra.lean | Good | Ring/Algebra instances proven |
-| Supermanifolds.lean | Much Improved | Core definitions now proper, some sorrys remain |
+| Supermanifolds.lean | Much Improved | Core definitions now proper |
+| PartialOddDerivation.lean | Good | partialOdd_odd_derivation' proven |
+| Batchelor.lean | Partial | Batchelor theorem sorrys |
 | BerezinIntegration.lean | Partial | Integration sorrys, placeholder conditions |
+| SuperconformalMaps.lean | Partial | Some sorrys remain |
 | Helpers/SuperMatrix.lean | Good | Berezinian computation rigorous |
+| Helpers/PartialOddLeibniz.lean | Good | Sign lemmas for Leibniz rule |
 
 ---
 
@@ -110,3 +119,7 @@ The main Supermanifold definition now uses proper SuperAlgebra structure.
 - **Local triviality gives Grassmann structure**: The RingEquiv to SuperDomainFunction provides body/soul
 - **supercommutative'** proven using reorderSign_comm and ring tactics
 - **partialEven** proven using ContDiff.fderiv_right and clm_apply
+- **partialOdd_odd_derivation'** proven by case analysis:
+  - Case I ∩ J = ∅: Standard Leibniz with sign from commuting derivative past f
+  - Case I ∩ J = {a}: Both terms cancel via `(-1)^{|I|-1} + (-1)^|I| = 0`
+  - Case |I ∩ J| ≥ 2: Products vanish (overlapping Grassmann indices)
