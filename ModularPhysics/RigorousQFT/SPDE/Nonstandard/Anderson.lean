@@ -8,6 +8,7 @@ import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.RandomWalkMoments
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.MaximalInequality
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.SContinuity
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.SContinuityAS
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.LocalCLT
 
 /-!
 # Anderson's Theorem Infrastructure
@@ -21,7 +22,8 @@ standard part map equals Wiener measure.
 * `RandomWalkMoments` - Second moment E[S_k²] = k and Chebyshev bounds
 * `MaximalInequality` - P(max |S_i| > M) ≤ (k+1)²/M²
 * `SContinuity` - Increment variance and modulus of continuity bounds
-* `SContinuityAS` - S-continuity almost surely (connecting to Loeb measure)
+* `SContinuityAS` - S-continuity almost surely via Borel-Cantelli
+* `LocalCLT` - Local central limit theorem infrastructure
 
 ## Main Results
 
@@ -33,13 +35,14 @@ standard part map equals Wiener measure.
 * `modulus_bound_prob` - P(max increment > M) ≤ numWindows·h/M²
 
 ### Infrastructure (With Sorries for Detailed Calculations)
-* `exists_params_with_small_bound` - Parameters exist for small probability bound
-* `modulusViolationProb_infinitesimal` - Hyperfinite probability is infinitesimal
+* `violationProbGlobalThreshold_bound` - P(violation) ≤ 1/C² for Borel-Cantelli
 * `levyModulus_implies_S_continuous` - Lévy modulus ⟹ S-continuity
-* `S_continuity_loeb_almost_surely_conditional` - Main theorem (conditional)
+* `S_continuity_loeb_almost_surely` - Main theorem structure
+* `local_clt_error_bound` - Binomial → Gaussian convergence
 
 ## References
 
 * Anderson, R. M. "A nonstandard representation for Brownian motion and Itô integration" (1976)
 * Lévy's modulus of continuity theorem
+* Feller, W. "An Introduction to Probability Theory" (local CLT)
 -/

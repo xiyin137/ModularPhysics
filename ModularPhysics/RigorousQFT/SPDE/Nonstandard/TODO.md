@@ -1,17 +1,23 @@
-# Nonstandard Analysis Foundation - Status
+# Rigorous Stochastic Differential Equations via Nonstandard Analysis
 
-This document tracks the development of rigorous nonstandard analysis infrastructure for hyperfinite stochastic calculus.
+## Goal
+
+Develop a rigorous theory of **stochastic differential equations (SDEs)** using nonstandard (hyperreal) calculus. The approach follows Anderson's 1976 construction:
+
+1. **Hyperfinite random walk** → Brownian motion via standard part
+2. **Hyperfinite stochastic integral** → Itô integral via standard part
+3. **Loeb measure** → Wiener measure via pushforward
+
+This provides a rigorous foundation where pathwise stochastic calculus is meaningful: paths are actual functions, integrals are actual sums, and measure theory emerges from counting.
 
 ## Current State
-
-**All files build successfully with NO sorries.**
 
 Mathlib provides minimal hyperreal infrastructure:
 - `Hyperreal := Germ (hyperfilter ℕ) ℝ` - ultraproduct construction
 - `ofSeq`, `IsSt`, `st`, `Infinitesimal`, `Infinite` - basic operations
 - `isSt_of_tendsto` - the key bridge theorem
 
-We have built substantial infrastructure on top of this.
+We have built substantial infrastructure on top of this for SDEs.
 
 ## Completed Components
 
@@ -36,11 +42,7 @@ Key definitions and results:
 - `IsUniform` - Property for families where level sets are constant
 - `uniform_hasFIP_implies_hasStandardFIP` - For uniform families, internal FIP ⇒ standard FIP
 
-Note: HasFIP and HasStandardFIP are distinct conditions. The saturation theorem uses
-HasStandardFIP directly via a diagonal argument: choosing witnesses xₙ at level n and
-forming ofSeq(xₙ) which lies in all internal sets.
-
-### 2. Random Walk (`HyperfiniteRandomWalk.lean`)
+### 2. Hyperfinite Random Walk (`HyperfiniteRandomWalk.lean`)
 
 **NO sorries, fully proven**
 
@@ -49,11 +51,10 @@ Key theorems:
 - `st_quadratic_variation_eq_time`: For standard time t, st(QV) = t
 - `dt_infinitesimal`: Time step is infinitesimal when N is infinite
 
-Note on finiteness: The theorem `walkAt_stepIndex_finite` was REMOVED because
-it's FALSE without probability. Walk values can be infinite for pathological
-coin flip sequences. The correct statement requires Loeb measure ("almost surely").
+Note: Walk values can be infinite for pathological coin flip sequences.
+Finite-path statements require Loeb measure ("almost surely").
 
-### 3. Stochastic Integration (`HyperfiniteStochasticIntegral.lean`)
+### 3. Hyperfinite Stochastic Integration (`HyperfiniteStochasticIntegral.lean`)
 
 **NO sorries, fully proven**
 
@@ -62,73 +63,14 @@ Key theorems:
 - `integral_infinitesimal_of_standard`: For standard k, the integral is infinitesimal
 - `integral_not_infinite_of_standard`: Consequence of above
 
-### 4. Integration (`HyperfiniteIntegration.lean`)
+### 4. Hyperfinite Integration (`HyperfiniteIntegration.lean`)
 
 **NO sorries, fully proven**
 
 Key theorem:
 - `st_hyperfiniteRiemannSum_eq_integral`: Standard part of hyperfinite Riemann sum equals integral
 
-### 5. Loeb Measure (`LoebMeasure/`)
-
-**NO sorries, all files build successfully**
-
-What's proven:
-- `InternalProbSpace` with probability properties
-- `preLoebMeasure` (standard part of internal probability)
-- Finite additivity, monotonicity, etc.
-- `InternalEvent` and `ConcreteInternalEvent` - internal sets with cardinality bounds
-- `DecreasingConcreteEvents.sigma_additivity` - **σ-additivity theorem fully proven!**
-  - Uses saturation via `countable_saturation_standard`
-  - For decreasing sequences with empty intersection, pre-Loeb measures → 0
-- `LoebMeasurableSet` - sets approximable by internal sets
-- `LoebOuterMeasure` and `LoebInnerMeasure` - outer/inner measure structures
-- `LoebMeasurable` - sets where inner = outer measure
-- `loebMeasurable_compl_internal` - complementation preserves Loeb measurability
-- `loebMeasurable_add_disjoint` - finite additivity for disjoint internal sets
-- `internal_algebra` - summary theorem for algebra properties
-- **Cylinder sets**: Infrastructure for sets defined by constraints at finitely many times
-  - `SingleTimeConstraint` - walk value at step k in interval [a, b]
-  - `CylinderConstraint` - list of single-time constraints
-  - `CylinderSet` - cylinder constraint on a hyperfinite path space
-  - `countWalksInInterval` - counting walks satisfying constraints
-  - `CylinderSet.prob_univ` - trivial cylinder has probability 1
-  - `cylinderCardAtLevel` - exact for 1-2 constraints, upper bound for 3+
-- **Walk finiteness infrastructure**:
-  - `walkBoundedEvent` - cylinder set for |W_k| ≤ M
-  - `WalkExceedsBound` - structure for exceeding bound events
-- **Binomial probability computations**:
-  - `binomialWalkProb` - P(S_k = 2j - k) = C(k,j) / 2^k
-  - `binomialWalkProb_sum` - sum of binomial probabilities = 1
-  - `walkIntervalProb` - P(a ≤ W_k ≤ b) via binomial sum
-  - `walkIntervalProb_le_one` - probability is at most 1
-  - `GaussianIntervalProb` - structure for Gaussian probability targets
-- **Path continuity infrastructure**:
-  - `ModulusOfContinuityEvent` - paths with bounded modulus of continuity
-  - `HyperfiniteWalkPath.is_S_continuous` - S-continuity predicate
-  - `zero_path_S_continuous` - trivial example: zero path is S-continuous
-  - `exists_S_continuous_path` - existence (the zero path)
-  - `hyperfiniteWalkEval` - evaluate walk at standard time
-- **Hyperreal square root**:
-  - `hyperrealSqrt_sq_eventually` - (ofSeq(√f))² = ofSeq(f) for eventually positive f
-  - `hyperrealSqrt_pos_eventually` - sqrt is positive for positive input
-  - `SqrtData.mk'` - **proves dx = √dt exists for any HyperfinitePathSpace**
-
-**Recent Cleanups (2025)**:
-- DELETED trivial theorems that claimed to prove Chebyshev/variance but only proved trivial facts
-- DELETED `BinomialGaussianConvergence` - assumed convergence without proving local CLT
-- DELETED `LoebMeasurable.compl` - used `Classical.choose` inappropriately
-- DELETED `ModulusOfContinuityEvent.toInternalSet` - not a rigorous internal set
-- ADDED `SqrtData.mk'` with full proof of hyperreal sqrt existence
-
-**What still needs work**:
-- Full Loeb measure construction (Carathéodory extension to σ-algebra)
-- Local CLT: binomial → Gaussian (requires Stirling's approximation)
-- Maximal inequality: P(max |S_k| > M) ≤ 2·P(|S_n| > M)
-- S-continuity a.s.: most paths are S-continuous
-- Anderson's theorem (pushforward = Wiener)
-
-### 6. White Noise (`HyperfiniteWhiteNoise.lean`)
+### 5. White Noise (`HyperfiniteWhiteNoise.lean`)
 
 **NO sorries, fully proven**
 
@@ -137,111 +79,151 @@ Key results:
 - Covariance structure (ξₖ² = 1/dt)
 - Quadratic variation of integrals
 
-## Deleted/Obsolete Files
+### 6. Anderson's Theorem Infrastructure (`Anderson/`)
 
-- `QuadraticVariation.lean`: DELETED - proved wrong theorem (QV ≈ 0 for standard k,
-  not QV = t for standard time t). Correct theorem is in `HyperfiniteRandomWalk.lean`.
+#### RandomWalkMoments.lean - **COMPLETE, no sorries**
+- `sum_partialSumFin_sq`: Σ_flips S_k² = k * 2^n
+- `chebyshev_count`: #{|S_k| > M} * M² ≤ k * 2^n
+- `chebyshev_prob`: P(|S_k| > M) ≤ k/M²
 
-- `InternalSets.lean`: DEPRECATED - not imported by any file. Functionality superseded by:
-  - `InternalSet` → `Foundation/InternalMembership.lean`
-  - `hyperfiniteSum` → `Foundation/HyperfiniteSum.lean`
-  - Can be deleted once confirmed no unique content is needed.
+#### MaximalInequality.lean - **COMPLETE, no sorries**
+- `maximal_count`: #{max |S_i| > M} * M² ≤ (k+1)² * 2^n
+- `maximal_prob`: P(max_{i≤k} |S_i| > M) ≤ (k+1)²/M²
+- Uses union bound + Chebyshev (weaker than reflection principle)
 
-## What Cannot Be Proven Without Additional Infrastructure
+#### SContinuity.lean - **COMPLETE, no sorries**
+- `sum_windowIncrement_sq`: Σ_flips (S_{k+h} - S_k)² = h * 2^n
+- `increment_chebyshev_count`: #{|increment| > M} * M² ≤ h * 2^n
+- `modulus_bound_prob`: P(max increment > M) ≤ numWindows * h / M²
 
-### Now Available: Saturation (ℵ₁-saturation)
+#### SContinuityAS.lean - **COMPLETE, no sorries**
+- `exp_one_lt_four`: e < 4 (using Mathlib's `Real.exp_one_lt_three`)
+- `violationProbGlobalThreshold_bound`: P(violation) ≤ 1/C² (via single-step window analysis)
+- `sum_inv_sq_bounded`: Σ 1/k² ≤ 2 (via telescoping lemma)
+- `sum_telescope_Ico`: Telescoping sum identity
+- `sqrt2_fourthRoot_bound_strict`: Fourth-root calculation for Lévy modulus (tight bound)
+- `levyModulus_implies_S_continuous`: Paths with Lévy modulus are S-continuous
+- `levyModulus_violation_sum_bound`: Sum of violation probs ≤ 2
 
-The saturation infrastructure is now in `Foundation/Saturation.lean`. This enables:
+#### LocalCLT.lean - **Partial, Stirling proven, CLT sorries**
+- `stirling_lower_bound`: **PROVEN** via Mathlib's `Stirling.le_factorial_stirling`
+- `stirling_ratio_tendsto_one`: **PROVEN** via Mathlib's `tendsto_stirlingSeq_sqrt_pi`
+- `stirling_upper_bound_eventual`: **PROVEN** as consequence of ratio → 1
+- `local_clt_error_bound`: sorry (needs detailed Stirling application)
+- `local_clt_central_region`: sorry (needs error bound)
+- `hoeffding_random_walk`: sorry (needs Chernoff bound)
+- `gaussian_tail_bound`: sorry (Mill's ratio)
+- `cylinder_prob_convergence`: sorry (main bridge theorem)
 
-1. **Loeb measure σ-additivity** - ✅ PROVEN in `DecreasingConcreteEvents.sigma_additivity`
-2. **Almost sure statements** - Require Loeb measure (which requires saturation) ✓
-3. **Anderson's theorem** - Now provable in principle with saturation
+#### PathContinuity.lean - **COMPLETE, no sorries**
+- `ofSeq_le_ofSeq`: Comparison of hyperreals via eventually (local lemma)
+- `oscillation_bound_by_chaining`: |W(k) - W(0)| ≤ (k/w + 1) · B via strong induction
+- `hyperfiniteWalkValue_finite_of_S_continuous`: S-continuous paths have finite values at standard times
+- `standardPartPath`: Standard part function f(t) = st(W(⌊t·N⌋))
+- `standardPartPath_isSt`: st agrees with hyperreal up to infinitesimal
+- `standardPartPath_continuous`: **KEY THEOREM** - f is continuous on [0,1]
 
-### Still Requires Transfer Principle
+### 7. Loeb Measure (`LoebMeasure/`)
 
-1. More elegant proofs of internal set properties
-2. Automatic lifting of standard theorems
+**Core files: NO sorries**
 
-### Next Steps
+What's proven:
+- `InternalProbSpace` with probability properties
+- `preLoebMeasure` (standard part of internal probability)
+- Finite additivity, monotonicity
+- `DecreasingConcreteEvents.sigma_additivity` - **σ-additivity proven via saturation**
+- `LoebMeasurableSet`, `LoebOuterMeasure`, `LoebInnerMeasure`
+- `LoebMeasurable` - sets where inner = outer measure
+- Cylinder sets with probability computation
+- Binomial probability computations
+- Path continuity structures (S-continuity, modulus)
+- `SqrtData.mk'` - proves dx = √dt exists
 
-**Completed Infrastructure:**
-1. ✅ `LoebMeasure/` updated with saturation infrastructure
-2. ✅ σ-additivity proven for `DecreasingConcreteEvents`
-3. ✅ Loeb outer/inner measures defined with `LoebMeasurable` structure
-4. ✅ Cylinder sets with probability computation (1-2 constraints exact)
-5. ✅ Binomial probability computations
-6. ✅ Path continuity structures (S-continuity, modulus)
-7. ✅ **Hyperreal sqrt existence** - `SqrtData.mk'` proves dx = √dt exists
+#### WienerMeasure.lean - **WIP, defines path space and Wiener measure**
+- `PathSpace`: C([0,1], ℝ) using Mathlib's ContinuousMap
+- `CylinderConstraint`: Cylinder sets determined by finite times
+- `gaussianDensity`: Gaussian density for Brownian increments
+- `standardPartMap`: S-continuous hyperfinite paths → PathSpace **PROVEN**
+- `standardPartMap_startsAtZero`: Paths start at 0 **PROVEN**
+- `gaussianDensity_integral_eq_one`: sorry (needs Gaussian integral)
+- `anderson_cylinder_convergence`: Placeholder statement (needs local CLT)
 
-**Completed Core Theorems:**
-8. ✅ **Second moment**: E[S_k²] = k (`Anderson/RandomWalkMoments.lean`)
-   - `sum_partialSumFin_sq`: Σ_flips S_k² = k * 2^n
-9. ✅ **Chebyshev bound**: P(|S_k| > M) ≤ k/M² (`Anderson/RandomWalkMoments.lean`)
-   - `chebyshev_count`: #{|S_k| > M} * M² ≤ k * 2^n
-   - `chebyshev_prob`: #{|S_k| > M} / 2^n ≤ k / M²
+#### MathlibBridge.lean - **WIP, provides Mathlib integration**
+- `loebOuterMeasure` as `MeasureTheory.OuterMeasure`
+- `loebMeasurableSet` as Carathéodory condition
+- `loebMeasure` as `MeasureTheory.Measure`
+- `IsProbabilityMeasure` instance
 
-10. ✅ **Maximal inequality**: P(max_{i≤k} |S_i| > M) ≤ (k+1)²/M² (`Anderson/MaximalInequality.lean`)
-   - `maximal_count`: #{max |S_i| > M} * M² ≤ (k+1)² * 2^n
-   - `maximal_prob`: P(max |S_i| > M) ≤ (k+1)² / M²
-   - Uses union bound + Chebyshev (weaker than reflection principle)
+## Roadmap to Complete SDEs
 
-11. ✅ **Increment variance**: E[(S_{k+h} - S_k)²] = h (`Anderson/SContinuity.lean`)
-   - `sum_windowIncrement_sq`: Σ_flips (S_{k+h} - S_k)² = h * 2^n
-   - `increment_chebyshev_count`: #{|increment| > M} * M² ≤ h * 2^n
+### Phase 1: Loeb Measure (In Progress)
+1. ✅ σ-additivity for decreasing sequences (via saturation)
+2. ⬜ Complete Carathéodory extension (MathlibBridge.lean)
+3. ⬜ Prove Loeb measurable sets form σ-algebra
 
-12. ✅ **Modulus bounds**: P(max increment over windows > M) ≤ numWindows * h / M²
-   - `maxIncrement_chebyshev`: Union bound + Chebyshev for each window
-   - `modulus_bound_prob`: Probability form of the bound
-   - `modulus_bound_full_coverage`: Simplified bound n/M² when windows cover all steps
+### Phase 2: S-Continuity Almost Surely
+4. ✅ Chebyshev bounds and maximal inequality
+5. ✅ Increment variance and modulus bounds
+6. ✅ Fill remaining numerical sorries in SContinuityAS.lean
+7. ✅ LocalCLT Stirling infrastructure (via Mathlib's `Stirling.le_factorial_stirling`)
+   - Remaining CLT sorries: `local_clt_error_bound`, `hoeffding_random_walk`, etc.
 
-13. ✅ **Lévy modulus fraction**: P(Lévy modulus satisfied) ≥ 1 - 1/C² (`Anderson/SContinuityAS.lean`)
-   - `levyModulusFraction`: Definition using ceiling for correct bound direction
-   - `levyModulusFraction_large`: 1 - 1/C² ≤ levyModulusFraction n C
-   - `modulusSatisfied_prob_high`: P(satisfy) ≥ 1 - n/M²
-   - `exists_params_with_small_bound`: For any ε > 0, ∃ params with bound < ε
+### Phase 3: Standard Part and Path Space
+8. ✅ Define standard part function f(t) = st(W(⌊t·N⌋)) for S-continuous paths
+   - `standardPartPath` defined in PathContinuity.lean
+   - `standardPartPath_isSt` proven (using Mathlib's `isSt_st'`)
+   - `hyperfiniteWalkValue_finite_of_S_continuous` - **PROVEN** (uses chaining lemma)
+   - `standardPartPath_continuous` - **PROVEN** (ε-δ argument with S-continuity modulus)
+9. ✅ Prove oscillation bound (chaining argument using S-continuity)
+   - `oscillation_bound_by_chaining` - **PROVEN** via strong induction
+10. ✅ Prove f is continuous (uses S-continuity modulus)
+   - Key lemmas: `ofSeq_le_ofSeq`, `Int.cast_abs`, `st_le_of_le`, `st_id_real`
+11. ✅ Define path space C([0,T]) with Wiener measure
+   - `PathSpace` = `C(UnitInterval, ℝ)` using Mathlib's ContinuousMap
+   - Cylinder sets and Gaussian density defined
+   - `standardPartMap` sends S-continuous paths to PathSpace
 
-14. ✅ **Main theorem structure** (`Anderson/SContinuityAS.lean`)
-   - `S_continuity_loeb_almost_surely`: Main theorem connecting Lévy modulus to S-continuity
-   - First conjunct: For C > 1, violation probability ≤ 1/C²
-   - Second conjunct: Lévy modulus ⟹ S-continuity (modulo detailed calculation)
+### Phase 4: Anderson's Theorem
+12. ⬜ Pushforward of Loeb measure under st = Wiener measure
+   - Requires: local CLT completion (binomial → Gaussian)
+   - Statement: `anderson_cylinder_convergence` (placeholder in WienerMeasure.lean)
+13. ⬜ Itô integral = standard part of hyperfinite stochastic integral
 
-**Remaining Sorries (2 in SContinuityAS.lean):**
-- `modulusViolationProb_infinitesimal`: **Incorrectly formulated** - probability is a small
-  constant for fixed δ, not infinitesimal. The correct approach uses Borel-Cantelli over C values.
-- `levyModulus_implies_S_continuous`: Requires routine real analysis with √ and log bounds.
-  The proof strategy is outlined; the calculation is technically involved but straightforward.
-
-**Next Priority: Core Probability Theorems**
-15. **Local CLT**: Prove binomial → Gaussian convergence
-   - Requires Stirling's approximation: n! ≈ √(2πn)(n/e)^n
-   - Then |P(S_k = j) - φ(j/√k)/√k| = O(1/k)
-
-**After core theorems:**
-16. Define standard part function f(t) = st(W(t)) for S-continuous paths
-17. Prove Loeb measurable sets form σ-algebra (Carathéodory extension)
-18. Complete Anderson's theorem (pushforward = Wiener measure)
+### Phase 5: SDEs
+14. ⬜ Solution theory for hyperfinite SDEs: dX = a(X)dt + b(X)dW
+15. ⬜ Standard part gives classical SDE solution
+16. ⬜ Existence and uniqueness via Picard iteration (hyperfinitely)
 
 ## File Structure
 
 ```
 Nonstandard/
 ├── Foundation/
-│   ├── Hypernatural.lean        [COMPLETE - no sorries]
-│   ├── HyperfiniteSum.lean      [COMPLETE - no sorries]
-│   ├── InternalMembership.lean  [COMPLETE - no sorries]
-│   └── Saturation.lean          [COMPLETE - no sorries]
+│   ├── Hypernatural.lean        [COMPLETE]
+│   ├── HyperfiniteSum.lean      [COMPLETE]
+│   ├── InternalMembership.lean  [COMPLETE]
+│   └── Saturation.lean          [COMPLETE]
 ├── Anderson/
-│   ├── RandomWalkMoments.lean   [COMPLETE - no sorries] E[S_k²]=k, Chebyshev
-│   ├── MaximalInequality.lean   [COMPLETE - no sorries] P(max |S_i| > M) bound
-│   ├── SContinuity.lean         [COMPLETE - no sorries] Increment variance, modulus bounds
-│   └── SContinuityAS.lean       [WIP - 2 sorries] Lévy modulus, Loeb measure connection
+│   ├── RandomWalkMoments.lean   [COMPLETE] E[S_k²]=k, Chebyshev
+│   ├── MaximalInequality.lean   [COMPLETE] P(max |S_i| > M) bound
+│   ├── SContinuity.lean         [COMPLETE] Increment variance, modulus
+│   ├── SContinuityAS.lean       [COMPLETE] Borel-Cantelli, Lévy modulus
+│   └── LocalCLT.lean            [WIP] Stirling, binomial → Gaussian
+├── LoebMeasure/
+│   ├── InternalProbSpace.lean   [COMPLETE]
+│   ├── SigmaAdditivity.lean     [COMPLETE]
+│   ├── LoebMeasurable.lean      [COMPLETE]
+│   ├── CylinderSets.lean        [COMPLETE]
+│   ├── CoinFlipSpace.lean       [COMPLETE]
+│   ├── PathContinuity.lean      [COMPLETE] standardPartPath, continuity proven
+│   ├── WienerMeasure.lean       [WIP] Wiener measure, Anderson's theorem
+│   └── MathlibBridge.lean       [WIP] Carathéodory extension
 ├── Anderson.lean                [module file]
-├── HyperfiniteRandomWalk.lean   [COMPLETE - no sorries]
-├── HyperfiniteWhiteNoise.lean   [COMPLETE - no sorries]
-├── HyperfiniteIntegration.lean  [COMPLETE - no sorries]
-├── HyperfiniteStochasticIntegral.lean [COMPLETE - no sorries]
-├── InternalSets.lean            [DEPRECATED - redundant with Foundation/, not imported]
-├── LoebMeasure.lean             [COMPLETE - no sorries]
+├── HyperfiniteRandomWalk.lean   [COMPLETE]
+├── HyperfiniteWhiteNoise.lean   [COMPLETE]
+├── HyperfiniteIntegration.lean  [COMPLETE]
+├── HyperfiniteStochasticIntegral.lean [COMPLETE]
+├── LoebMeasure.lean             [COMPLETE]
 ├── Nonstandard.lean             [module file]
 └── TODO.md                      [this file]
 ```
@@ -252,9 +234,8 @@ Nonstandard/
 2. **Hypernat as subtype**: `Hypernat := { x : ℝ* // IsHypernat x }` for type safety
 3. **toSeq via Classical.choose**: Extract representative sequences non-constructively
 4. **Honest about limitations**: Theorems that require Loeb measure are documented, not sorry'd
-5. **Removed false theorems**: `walkAt_stepIndex_finite` was false; removed with explanation
-6. **Rigorous definitions only**: Deleted trivial/circular theorems that claimed more than they proved
-7. **Hyperreal sqrt proved**: `SqrtData.mk'` proves √dt exists using eventual positivity
+5. **Rigorous definitions only**: Deleted trivial/circular theorems that claimed more than they proved
+6. **Hyperreal sqrt proved**: `SqrtData.mk'` proves √dt exists using eventual positivity
 
 ## References
 

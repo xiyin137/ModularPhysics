@@ -290,6 +290,18 @@ theorem circle_id_eq_re_add_i_im (z : Circle) : (z : ℂ) = circleRe z + Complex
 @[simp] theorem circleIm_one : circleIm (1 : Circle) = 0 := by
   simp only [circleIm, ContinuousMap.coe_mk, Circle.coe_one, Complex.one_im]
 
+/-- On the unit circle, |Re(z)| ≤ 1. -/
+theorem circleRe_abs_le_one (z : Circle) : |circleRe z| ≤ 1 := by
+  have h := circle_re_sq_add_im_sq z
+  have hre_sq : circleRe z ^ 2 ≤ 1 := by linarith [sq_nonneg (circleIm z)]
+  rwa [sq_le_one_iff_abs_le_one] at hre_sq
+
+/-- On the unit circle, |Im(z)| ≤ 1. -/
+theorem circleIm_abs_le_one (z : Circle) : |circleIm z| ≤ 1 := by
+  have h := circle_re_sq_add_im_sq z
+  have him_sq : circleIm z ^ 2 ≤ 1 := by linarith [sq_nonneg (circleRe z)]
+  rwa [sq_le_one_iff_abs_le_one] at him_sq
+
 /-- The circleRealToComplex of circleRe agrees with Re on the spectrum.
     For z on the unit circle: circleRealToComplex(circleRe)(z) = Re(z) -/
 lemma circleRealToComplex_circleRe_eq_on_sphere :
@@ -497,6 +509,82 @@ theorem im_mul_thickenedIndicatorReal_tendsto_zero_pointwise
     simp only [ContinuousMap.mul_apply]
     exact hmul
 
+/-- General dominated convergence for spectral functionals.
+    If f_n → f pointwise with |f_n| ≤ 1, then spectralFunctionalAux(f_n) → ∫ f dμ. -/
+theorem spectralFunctionalAux_tendsto_of_pointwise (U : H →L[ℂ] H) (hU : U ∈ unitary (H →L[ℂ] H))
+    (f : ℕ → C(Circle, ℝ)) (f_lim : Circle → ℝ) (w : H)
+    (hf_le_one : ∀ n z, |f n z| ≤ 1)
+    (hf_nonneg : ∀ n z, 0 ≤ f n z)
+    (hf_tendsto : ∀ z, Tendsto (fun n => f n z) atTop (𝓝 (f_lim z))) :
+    Tendsto (fun n => spectralFunctionalAux U hU w (f n))
+      atTop (𝓝 (∫ z, f_lim z ∂(spectralMeasureDiagonal U hU w))) := by
+  let μ_w := spectralMeasureDiagonal U hU w
+  -- spectralFunctionalAux w (f n) = ∫ (f n) dμ_w
+  have hfunc_eq : ∀ n, spectralFunctionalAux U hU w (f n) = ∫ z, f n z ∂μ_w := by
+    intro n
+    unfold spectralFunctionalAux
+    have h := spectralMeasureDiagonal_integral U hU w (toCc (f n))
+    simp only [toCc_apply] at h
+    have hdef : (spectralFunctionalCc U hU w) (toCc (f n)) = spectralFunctionalAux U hU w (f n) := rfl
+    rw [hdef] at h
+    exact h.symm
+  -- Apply dominated convergence
+  have hconv : Tendsto (fun n => ∫ z, f n z ∂μ_w) atTop (𝓝 (∫ z, f_lim z ∂μ_w)) := by
+    apply tendsto_integral_of_dominated_convergence (fun _ => (1 : ℝ))
+    · intro n; exact (f n).continuous.aestronglyMeasurable
+    · have hfinite : IsFiniteMeasure μ_w := spectralMeasureDiagonal_isFiniteMeasure U hU w
+      exact integrable_const (1 : ℝ)
+    · intro n
+      apply Filter.Eventually.of_forall
+      intro z
+      rw [Real.norm_of_nonneg (hf_nonneg n z)]
+      exact le_of_abs_le (hf_le_one n z)
+    · apply Filter.Eventually.of_forall
+      intro z
+      exact hf_tendsto z
+  convert hconv using 1
+  funext n
+  exact hfunc_eq n
+
+/-- Generalized dominated convergence for spectral functionals (no non-negativity needed).
+    If f_n → f pointwise with |f_n| ≤ M, then spectralFunctionalAux(f_n) → ∫ f dμ. -/
+theorem spectralFunctionalAux_tendsto_of_pointwise_general (U : H →L[ℂ] H)
+    (hU : U ∈ unitary (H →L[ℂ] H)) (f : ℕ → C(Circle, ℝ)) (f_lim : Circle → ℝ) (w : H)
+    (M : ℝ) (hf_bound : ∀ n z, |f n z| ≤ M)
+    (hf_tendsto : ∀ z, Tendsto (fun n => f n z) atTop (𝓝 (f_lim z)))
+    (_ : 0 < M) :
+    Tendsto (fun n => spectralFunctionalAux U hU w (f n))
+      atTop (𝓝 (∫ z, f_lim z ∂(spectralMeasureDiagonal U hU w))) := by
+  let μ_w := spectralMeasureDiagonal U hU w
+  -- spectralFunctionalAux w (f n) = ∫ (f n) dμ_w
+  have hfunc_eq : ∀ n, spectralFunctionalAux U hU w (f n) = ∫ z, f n z ∂μ_w := by
+    intro n
+    unfold spectralFunctionalAux
+    have h := spectralMeasureDiagonal_integral U hU w (toCc (f n))
+    simp only [toCc_apply] at h
+    have hdef : (spectralFunctionalCc U hU w) (toCc (f n)) = spectralFunctionalAux U hU w (f n) := rfl
+    rw [hdef] at h
+    exact h.symm
+  -- Apply dominated convergence
+  have hconv : Tendsto (fun n => ∫ z, f n z ∂μ_w) atTop (𝓝 (∫ z, f_lim z ∂μ_w)) := by
+    apply tendsto_integral_of_dominated_convergence (fun _ => M)
+    · intro n; exact (f n).continuous.aestronglyMeasurable
+    · have hfinite : IsFiniteMeasure μ_w := spectralMeasureDiagonal_isFiniteMeasure U hU w
+      exact integrable_const M
+    · intro n
+      apply Filter.Eventually.of_forall
+      intro z
+      -- ‖f n z‖ = |f n z| for real numbers
+      rw [Real.norm_eq_abs]
+      exact hf_bound n z
+    · apply Filter.Eventually.of_forall
+      intro z
+      exact hf_tendsto z
+  convert hconv using 1
+  funext n
+  exact hfunc_eq n
+
+set_option maxHeartbeats 400000 in
 /-- The spectral integration property for singleton {1}: U P({1}) = P({1}).
 
     **Proof:** Use CFC multiplicativity and dominated convergence.
@@ -638,60 +726,424 @@ theorem unitary_comp_spectralProjection_singleton_one (U : H →L[ℂ] H)
   -- This is proven via dominated convergence and CFC multiplicativity.
 
   have hU_P_eq_P : U ∘L P = P := by
-    -- This is the key spectral integration property.
-    -- U P({1}) = P({1}) follows from the spectral theorem for singletons.
-    --
-    -- **Proof using RMK infrastructure:**
-    -- 1. For thickened indicators g_n → χ_{1}, cfc(g_n, U) → P weakly.
-    -- 2. U · cfc(g_n, U) = cfc(id · g_n, U) by CFC multiplicativity.
-    -- 3. Decompose: id · g_n = Re · g_n + I · Im · g_n
-    -- 4. Using spectralFunctionalAux_tendsto_closed:
-    --    - Re · g_n → Re · χ_{1} = χ_{1} (since Re(1) = 1)
-    --    - Im · g_n → Im · χ_{1} = 0 (since Im(1) = 0)
-    -- 5. Therefore cfcOfCircleReal(Re · g_n) → P weakly
-    --    and cfcOfCircleReal(Im · g_n) → 0 weakly
-    -- 6. So cfc(id · g_n, U) → P + I · 0 = P weakly
-    -- 7. Taking limits: U P = P
-    --
-    -- The proof uses the RMK weak convergence structure from SpectralTheoremViaRMK.lean.
+    -- **Proof strategy:**
+    -- 1. For thickened indicators g_n → χ_{1}, both cfc(g_n, U) and cfc(id · g_n, U) converge weakly to P
+    -- 2. U · cfc(g_n, U) = cfc(id · g_n, U) by CFC multiplicativity
+    -- 3. Therefore ⟨U† v, P w⟩ = lim ⟨U† v, cfc(g_n, U) w⟩ = lim ⟨v, cfc(id · g_n, U) w⟩ = ⟨v, P w⟩
     ext w
     apply ext_inner_left ℂ
     intro v
-    -- Goal: ⟨v, (U ∘L P) w⟩ = ⟨v, P w⟩
     simp only [ContinuousLinearMap.comp_apply]
-    -- Goal: ⟨v, U (P w)⟩ = ⟨v, P w⟩
-    -- Use: ⟨v, U (P w)⟩ = ⟨U† v, P w⟩
     rw [← ContinuousLinearMap.adjoint_inner_left U (P w) v]
     -- Goal: ⟨U† v, P w⟩ = ⟨v, P w⟩
-    --
-    -- Strategy: Show both equal spectralMeasurePolarized v w {1} via RMK.
-    --
-    -- From hRHS pattern: ⟨v, P w⟩ = spectralMeasurePolarized v w {1}
-    -- We need: ⟨U† v, P w⟩ = spectralMeasurePolarized v w {1}
-    --
-    -- Using the spectral measure structure and the weak limit approach:
-    -- ⟨U† v, cfc(g_n, U) w⟩ = ⟨v, U cfc(g_n, U) w⟩ = ⟨v, cfc(id · g_n, U) w⟩
-    -- Taking limits: ⟨U† v, P w⟩ = lim ⟨v, cfc(id · g_n, U) w⟩
-    --
-    -- Since id · g_n → χ_{1} (proven in id_mul_thickenedIndicatorReal_tendsto_indicator_singleton_one),
-    -- the limit equals ⟨v, P w⟩.
-    --
-    -- The rigorous proof requires:
-    -- 1. CFC multiplicativity: U · cfc(g, U) = cfc(id · g, U)
-    -- 2. Weak convergence: cfc(id · g_n, U) → P (using spectralFunctionalAux_tendsto_closed)
-    --
-    -- For the weak convergence of cfc(id · g_n, U), we decompose:
-    -- cfc(id · g_n, U) = cfcOfCircleReal(Re · g_n) + I · cfcOfCircleReal(Im · g_n)
-    --
-    -- Then apply spectralFunctionalAux_tendsto_closed to Re · g_n and Im · g_n separately.
-    --
-    -- This requires showing:
-    -- - Re · g_n → χ_{1} (since Re · χ_{1} = χ_{1} because Re(1) = 1)
-    -- - Im · g_n → 0 (since Im · χ_{1} = 0 because Im(1) = 0)
-    --
-    -- The formal implementation needs the product convergence lemma.
-    -- For now, we mark this as requiring the dominated convergence extension.
-    sorry
+
+    -- Define the approximating sequence
+    let δ' : ℕ → ℝ := fun n => 1 / (n + 1)
+    have hδ'_pos : ∀ n, 0 < δ' n := fun n => Nat.one_div_pos_of_nat
+    have hδ'_lim : Tendsto δ' atTop (𝓝 0) := tendsto_one_div_add_atTop_nhds_zero_nat
+    let g' : ℕ → C(Circle, ℝ) := fun n => thickenedIndicatorReal (hδ'_pos n) ({1} : Set Circle)
+
+    -- Key fact 1: ⟨v, cfc(g'_n, U) w⟩ → ⟨v, P w⟩ (weak convergence to P)
+    -- This uses the polarization identity and spectralFunctionalAux_tendsto_closed
+    have hweak_v : Tendsto (fun n => @inner ℂ H _ v (cfcOfCircleReal U hU (g' n) w))
+        atTop (𝓝 (@inner ℂ H _ v (P w))) := by
+      -- Use polarization: ⟨v, cfc(g_n, U) w⟩ = (1/4)[Λ_{v+w} - Λ_{v-w} - i·Λ_{v+iw} + i·Λ_{v-iw}]
+      have hinner_eq : ∀ n, @inner ℂ H _ v (cfcOfCircleReal U hU (g' n) w) =
+          (1/4 : ℂ) * (spectralFunctionalAux U hU (v + w) (g' n) -
+                       spectralFunctionalAux U hU (v - w) (g' n) -
+                       Complex.I * spectralFunctionalAux U hU (v + Complex.I • w) (g' n) +
+                       Complex.I * spectralFunctionalAux U hU (v - Complex.I • w) (g' n)) := by
+        intro n
+        exact (spectralFunctionalAux_polarization U hU (g' n) v w).symm
+      -- Each Λ_z(g'_n) → μ_z({1}).toReal by spectralFunctionalAux_tendsto_closed
+      have hΛ1 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (v + w) hδ'_pos hδ'_lim
+      have hΛ2 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (v - w) hδ'_pos hδ'_lim
+      have hΛ3 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (v + Complex.I • w) hδ'_pos hδ'_lim
+      have hΛ4 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (v - Complex.I • w) hδ'_pos hδ'_lim
+      -- Convert to complex
+      have hΛ1' : Tendsto (fun n => (spectralFunctionalAux U hU (v + w) (g' n) : ℂ)) atTop
+          (𝓝 ((spectralMeasureDiagonal U hU (v + w) {1}).toReal : ℂ)) :=
+        Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ1
+      have hΛ2' : Tendsto (fun n => (spectralFunctionalAux U hU (v - w) (g' n) : ℂ)) atTop
+          (𝓝 ((spectralMeasureDiagonal U hU (v - w) {1}).toReal : ℂ)) :=
+        Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ2
+      have hΛ3' : Tendsto (fun n => (spectralFunctionalAux U hU (v + Complex.I • w) (g' n) : ℂ)) atTop
+          (𝓝 ((spectralMeasureDiagonal U hU (v + Complex.I • w) {1}).toReal : ℂ)) :=
+        Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ3
+      have hΛ4' : Tendsto (fun n => (spectralFunctionalAux U hU (v - Complex.I • w) (g' n) : ℂ)) atTop
+          (𝓝 ((spectralMeasureDiagonal U hU (v - Complex.I • w) {1}).toReal : ℂ)) :=
+        Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ4
+      -- Combine limits
+      have hcomb : Tendsto (fun n =>
+          (1/4 : ℂ) * (spectralFunctionalAux U hU (v + w) (g' n) -
+                       spectralFunctionalAux U hU (v - w) (g' n) -
+                       Complex.I * spectralFunctionalAux U hU (v + Complex.I • w) (g' n) +
+                       Complex.I * spectralFunctionalAux U hU (v - Complex.I • w) (g' n)))
+          atTop (𝓝 ((1/4 : ℂ) * (
+            (spectralMeasureDiagonal U hU (v + w) {1}).toReal -
+            (spectralMeasureDiagonal U hU (v - w) {1}).toReal -
+            Complex.I * (spectralMeasureDiagonal U hU (v + Complex.I • w) {1}).toReal +
+            Complex.I * (spectralMeasureDiagonal U hU (v - Complex.I • w) {1}).toReal))) := by
+        apply Tendsto.const_mul
+        apply Tendsto.add
+        · apply Tendsto.sub
+          · apply Tendsto.sub hΛ1' hΛ2'
+          · exact Tendsto.const_mul Complex.I hΛ3'
+        · exact Tendsto.const_mul Complex.I hΛ4'
+      -- The limit equals spectralMeasurePolarized v w {1} = ⟨v, P w⟩
+      have hlim_eq : (1/4 : ℂ) * (
+            (spectralMeasureDiagonal U hU (v + w) {1}).toReal -
+            (spectralMeasureDiagonal U hU (v - w) {1}).toReal -
+            Complex.I * (spectralMeasureDiagonal U hU (v + Complex.I • w) {1}).toReal +
+            Complex.I * (spectralMeasureDiagonal U hU (v - Complex.I • w) {1}).toReal) =
+          spectralMeasurePolarized U hU v w {1} (measurableSet_singleton 1) := by
+        unfold spectralMeasurePolarized; ring
+      have hPinner : @inner ℂ H _ v (P w) =
+          spectralMeasurePolarized U hU v w {1} (measurableSet_singleton 1) := by
+        rw [hP_def]; unfold spectralProjectionOfUnitary
+        rw [← sesquilinearToOperator_inner]
+      simp only [hinner_eq]; rw [hPinner, ← hlim_eq]; exact hcomb
+
+    -- Key fact 2: ⟨U† v, cfc(g'_n, U) w⟩ = ⟨v, U cfc(g'_n, U) w⟩ = ⟨v, cfc(id · g'_n, U) w⟩
+    have hadj_eq : ∀ n, @inner ℂ H _ (U.adjoint v) (cfcOfCircleReal U hU (g' n) w) =
+        @inner ℂ H _ v (U (cfcOfCircleReal U hU (g' n) w)) := by
+      intro n
+      exact ContinuousLinearMap.adjoint_inner_left U (cfcOfCircleReal U hU (g' n) w) v
+
+    -- U · cfc(g', U) = cfc(id · g', U) by CFC multiplicativity
+    have hU_eq_cfc_id : U = cfc (id : ℂ → ℂ) U := (cfc_id' ℂ U).symm
+    have hU_mul_cfc_eq : ∀ n, U (cfcOfCircleReal U hU (g' n) w) =
+        cfc (fun z => z * circleRealToComplex (g' n) z) U w := by
+      intro n
+      have hcont_g := circleRealToComplex_continuousOn_spectrum (g' n) U hU
+      -- U · cfc(g, U) = cfc(id, U) · cfc(g, U) = cfc(id · g, U)
+      unfold cfcOfCircleReal
+      have hmul := cfc_mul (id : ℂ → ℂ) (circleRealToComplex (g' n)) U continuousOn_id hcont_g
+      -- hmul : cfc id U * cfc g U = cfc (id * g) U
+      -- For CLMs, A * B = A ∘L B
+      calc U (cfc (circleRealToComplex (g' n)) U w)
+          = (U ∘L cfc (circleRealToComplex (g' n)) U) w := rfl
+        _ = (cfc (id : ℂ → ℂ) U ∘L cfc (circleRealToComplex (g' n)) U) w := by rw [← hU_eq_cfc_id]
+        _ = (cfc (id : ℂ → ℂ) U * cfc (circleRealToComplex (g' n)) U) w := rfl
+        _ = (cfc (fun z => id z * circleRealToComplex (g' n) z) U) w := by rw [hmul]
+        _ = cfc (fun z => z * circleRealToComplex (g' n) z) U w := by simp only [id]
+
+    -- Key fact 3: ⟨v, cfc(id · g'_n, U) w⟩ also converges to ⟨v, P w⟩
+    -- This is because id · g'_n → χ_{1} pointwise (proven in id_mul_thickenedIndicatorReal_tendsto)
+    -- We decompose id = Re + i·Im on Circle, so id · g'_n = Re·g'_n + i·Im·g'_n
+    -- Re·g'_n → χ_{1} (since Re(1) = 1) and Im·g'_n → 0 (since Im(1) = 0)
+    have hweak_id : Tendsto (fun n => @inner ℂ H _ v (cfc (fun z => z * circleRealToComplex (g' n) z) U w))
+        atTop (𝓝 (@inner ℂ H _ v (P w))) := by
+      -- The function id · g_n = Re · g_n + i · Im · g_n on the unit circle
+      -- We decompose: cfc(id · g_n, U) = cfcOfCircleReal(Re · g_n) + i · cfcOfCircleReal(Im · g_n)
+      -- And Re · g_n → χ_{1}, Im · g_n → 0
+
+      -- Step 1: Decompose z * g_n(z) = Re(z) * g_n(z) + i * Im(z) * g_n(z) on spectrum
+      have hcfc_decomp : ∀ n, cfc (fun z => z * circleRealToComplex (g' n) z) U =
+          cfcOfCircleReal U hU (circleRe * g' n) +
+          Complex.I • cfcOfCircleReal U hU (circleIm * g' n) := by
+        intro n
+        haveI : IsStarNormal U := unitary_isStarNormal U hU
+        have hcont_g := circleRealToComplex_continuousOn_spectrum (g' n) U hU
+        have hcont_re := circleRealToComplex_continuousOn_spectrum circleRe U hU
+        have hcont_im := circleRealToComplex_continuousOn_spectrum circleIm U hU
+        have hcont_re_g := circleRealToComplex_continuousOn_spectrum (circleRe * g' n) U hU
+        have hcont_im_g := circleRealToComplex_continuousOn_spectrum (circleIm * g' n) U hU
+        -- On spectrum: z * g(z) = (Re(z) + i*Im(z)) * g(z) = Re(z)*g(z) + i*Im(z)*g(z)
+        have heq_on_spec : Set.EqOn (fun z => z * circleRealToComplex (g' n) z)
+            (fun z => circleRealToComplex (circleRe * g' n) z +
+                      Complex.I * circleRealToComplex (circleIm * g' n) z) (spectrum ℂ U) := by
+          intro z hz
+          have hz_sphere := spectrum.subset_circle_of_unitary hU hz
+          simp only [circleRealToComplex, hz_sphere, dite_true, ContinuousMap.coe_mul,
+            Pi.mul_apply, circleRe, circleIm, ContinuousMap.coe_mk]
+          -- The goal: z * g(w) = Re(z) * g(w) + I * Im(z) * g(w)
+          -- where w = ⟨z, hz_sphere⟩ and (w : ℂ) = z
+          -- Set r := g(w) as a real number, then z * r = Re(z) * r + I * Im(z) * r
+          set r : ℝ := (g' n) ⟨z, hz_sphere⟩ with hr_def
+          simp only [Complex.ofReal_mul]
+          -- Now the goal is: z * r = z.re * r + I * (z.im * r)
+          -- This follows from z = z.re + z.im * I
+          -- First simplify the RHS which has (z.re + z.im * I).re etc
+          have hre_simp : ((z.re : ℂ) + (z.im : ℂ) * Complex.I).re = z.re := by
+            rw [Complex.add_re, Complex.ofReal_re, Complex.mul_re,
+                Complex.ofReal_re, Complex.ofReal_im, Complex.I_re, Complex.I_im]
+            ring
+          have him_simp : ((z.re : ℂ) + (z.im : ℂ) * Complex.I).im = z.im := by
+            rw [Complex.add_im, Complex.ofReal_im, Complex.mul_im,
+                Complex.ofReal_re, Complex.ofReal_im, Complex.I_re, Complex.I_im]
+            ring
+          -- z = z.re + z.im * I
+          have hz_eq : z = (z.re : ℂ) + (z.im : ℂ) * Complex.I := (Complex.re_add_im z).symm
+          -- Rewrite LHS using hz_eq, RHS simplifies via hre_simp/him_simp
+          rw [hz_eq, hre_simp, him_simp]
+          ring
+        rw [cfc_congr heq_on_spec]
+        -- Split cfc of sum
+        have hadd : cfc (fun z => circleRealToComplex (circleRe * g' n) z +
+            Complex.I * circleRealToComplex (circleIm * g' n) z) U =
+            cfc (circleRealToComplex (circleRe * g' n)) U +
+            cfc (fun z => Complex.I * circleRealToComplex (circleIm * g' n) z) U := by
+          apply cfc_add
+          · exact hcont_re_g
+          · -- continuousOn for z ↦ I * f(z)
+            exact continuousOn_const.mul hcont_im_g
+        -- For i * f, use cfc_const_mul
+        have hI_mul : cfc (fun z => Complex.I * circleRealToComplex (circleIm * g' n) z) U =
+            Complex.I • cfc (circleRealToComplex (circleIm * g' n)) U := by
+          rw [cfc_const_mul Complex.I (circleRealToComplex (circleIm * g' n)) U hcont_im_g]
+        rw [hadd, hI_mul]
+        simp only [cfcOfCircleReal]
+
+      -- Step 2: Decompose the inner product
+      have hinner_decomp : ∀ n, @inner ℂ H _ v (cfc (fun z => z * circleRealToComplex (g' n) z) U w) =
+          @inner ℂ H _ v (cfcOfCircleReal U hU (circleRe * g' n) w) +
+          Complex.I * @inner ℂ H _ v (cfcOfCircleReal U hU (circleIm * g' n) w) := by
+        intro n
+        rw [hcfc_decomp n]
+        simp only [ContinuousLinearMap.add_apply, ContinuousLinearMap.smul_apply]
+        rw [inner_add_right, inner_smul_right]
+
+      -- Step 3: Show cfcOfCircleReal(Re * g_n) converges weakly to P
+      -- This uses the same polarization argument as hweak_v, with Re * g_n instead of g_n
+      let f_Re : ℕ → C(Circle, ℝ) := fun n => circleRe * g' n
+
+      have hf_Re_bound : ∀ n z, |f_Re n z| ≤ 1 := by
+        intro n z
+        simp only [f_Re, ContinuousMap.mul_apply]
+        have hg_nonneg : 0 ≤ g' n z := thickenedIndicatorReal_nonneg (hδ'_pos n) ({1} : Set Circle) z
+        have hg_le_one : g' n z ≤ 1 := thickenedIndicatorReal_le_one (hδ'_pos n) ({1} : Set Circle) z
+        have hg_abs : |g' n z| ≤ 1 := abs_le.mpr ⟨by linarith, hg_le_one⟩
+        calc |circleRe z * g' n z|
+            = |circleRe z| * |g' n z| := abs_mul _ _
+          _ ≤ 1 * 1 := by
+              apply mul_le_mul (circleRe_abs_le_one z) hg_abs (abs_nonneg _)
+              linarith [circleRe_abs_le_one z]
+          _ = 1 := mul_one 1
+
+      have hf_Re_tendsto : ∀ z, Tendsto (fun n => f_Re n z)
+          atTop (𝓝 (Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) z)) := by
+        intro z
+        exact re_mul_thickenedIndicatorReal_tendsto_indicator_singleton_one_pointwise hδ'_pos hδ'_lim z
+
+      -- By polarization: ⟨v, cfcOfCircleReal(f_Re n, U) w⟩ converges
+      have hweak_Re : Tendsto (fun n => @inner ℂ H _ v (cfcOfCircleReal U hU (f_Re n) w))
+          atTop (𝓝 (@inner ℂ H _ v (P w))) := by
+        -- Same structure as hweak_v
+        have hinner_eq : ∀ n, @inner ℂ H _ v (cfcOfCircleReal U hU (f_Re n) w) =
+            (1/4 : ℂ) * (spectralFunctionalAux U hU (v + w) (f_Re n) -
+                         spectralFunctionalAux U hU (v - w) (f_Re n) -
+                         Complex.I * spectralFunctionalAux U hU (v + Complex.I • w) (f_Re n) +
+                         Complex.I * spectralFunctionalAux U hU (v - Complex.I • w) (f_Re n)) := by
+          intro n
+          exact (spectralFunctionalAux_polarization U hU (f_Re n) v w).symm
+        -- Each spectralFunctionalAux converges by dominated convergence
+        let f_Re_lim : Circle → ℝ := fun z => Set.indicator ({1} : Set Circle) (fun _ => (1 : ℝ)) z
+        have hΛ1 : Tendsto (fun n => spectralFunctionalAux U hU (v + w) (f_Re n))
+            atTop (𝓝 (∫ z, f_Re_lim z ∂(spectralMeasureDiagonal U hU (v + w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Re f_Re_lim (v + w) 1
+            hf_Re_bound hf_Re_tendsto one_pos
+        have hΛ2 : Tendsto (fun n => spectralFunctionalAux U hU (v - w) (f_Re n))
+            atTop (𝓝 (∫ z, f_Re_lim z ∂(spectralMeasureDiagonal U hU (v - w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Re f_Re_lim (v - w) 1
+            hf_Re_bound hf_Re_tendsto one_pos
+        have hΛ3 : Tendsto (fun n => spectralFunctionalAux U hU (v + Complex.I • w) (f_Re n))
+            atTop (𝓝 (∫ z, f_Re_lim z ∂(spectralMeasureDiagonal U hU (v + Complex.I • w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Re f_Re_lim (v + Complex.I • w) 1
+            hf_Re_bound hf_Re_tendsto one_pos
+        have hΛ4 : Tendsto (fun n => spectralFunctionalAux U hU (v - Complex.I • w) (f_Re n))
+            atTop (𝓝 (∫ z, f_Re_lim z ∂(spectralMeasureDiagonal U hU (v - Complex.I • w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Re f_Re_lim (v - Complex.I • w) 1
+            hf_Re_bound hf_Re_tendsto one_pos
+        -- The integral of the indicator equals the measure of {1}
+        have hintegral_eq : ∀ y : H, ∫ z, f_Re_lim z ∂(spectralMeasureDiagonal U hU y) =
+            (spectralMeasureDiagonal U hU y {1}).toReal := by
+          intro y
+          simp only [f_Re_lim]
+          -- ∫ indicator {1} (fun _ => 1) dμ = μ({1})
+          have hfinite : IsFiniteMeasure (spectralMeasureDiagonal U hU y) :=
+            spectralMeasureDiagonal_isFiniteMeasure U hU y
+          -- Convert (fun x => 1) to 1
+          have heq : ({1} : Set Circle).indicator (fun _ : Circle => (1 : ℝ)) =
+              ({1} : Set Circle).indicator (1 : Circle → ℝ) := by rfl
+          rw [heq, integral_indicator_one (measurableSet_singleton 1)]
+          -- Now: μ.real {1} = (μ {1}).toReal
+          rfl
+        -- Convert to complex and combine
+        have hΛ1' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ1
+        have hΛ2' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ2
+        have hΛ3' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ3
+        have hΛ4' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ4
+        simp only [hintegral_eq] at hΛ1' hΛ2' hΛ3' hΛ4'
+        have hcomb : Tendsto (fun n =>
+            (1/4 : ℂ) * (spectralFunctionalAux U hU (v + w) (f_Re n) -
+                         spectralFunctionalAux U hU (v - w) (f_Re n) -
+                         Complex.I * spectralFunctionalAux U hU (v + Complex.I • w) (f_Re n) +
+                         Complex.I * spectralFunctionalAux U hU (v - Complex.I • w) (f_Re n)))
+            atTop (𝓝 ((1/4 : ℂ) * (
+              (spectralMeasureDiagonal U hU (v + w) {1}).toReal -
+              (spectralMeasureDiagonal U hU (v - w) {1}).toReal -
+              Complex.I * (spectralMeasureDiagonal U hU (v + Complex.I • w) {1}).toReal +
+              Complex.I * (spectralMeasureDiagonal U hU (v - Complex.I • w) {1}).toReal))) := by
+          apply Tendsto.const_mul
+          apply Tendsto.add
+          · apply Tendsto.sub
+            · apply Tendsto.sub hΛ1' hΛ2'
+            · exact Tendsto.const_mul Complex.I hΛ3'
+          · exact Tendsto.const_mul Complex.I hΛ4'
+        have hlim_eq : (1/4 : ℂ) * (
+              (spectralMeasureDiagonal U hU (v + w) {1}).toReal -
+              (spectralMeasureDiagonal U hU (v - w) {1}).toReal -
+              Complex.I * (spectralMeasureDiagonal U hU (v + Complex.I • w) {1}).toReal +
+              Complex.I * (spectralMeasureDiagonal U hU (v - Complex.I • w) {1}).toReal) =
+            spectralMeasurePolarized U hU v w {1} (measurableSet_singleton 1) := by
+          unfold spectralMeasurePolarized; ring
+        have hPinner : @inner ℂ H _ v (P w) =
+            spectralMeasurePolarized U hU v w {1} (measurableSet_singleton 1) := by
+          rw [hP_def]; unfold spectralProjectionOfUnitary; rw [← sesquilinearToOperator_inner]
+        simp only [hinner_eq]; rw [hPinner, ← hlim_eq]; exact hcomb
+
+      -- Step 4: Show cfcOfCircleReal(Im * g_n) converges weakly to 0
+      let f_Im : ℕ → C(Circle, ℝ) := fun n => circleIm * g' n
+
+      have hf_Im_bound : ∀ n z, |f_Im n z| ≤ 1 := by
+        intro n z
+        simp only [f_Im, ContinuousMap.mul_apply]
+        have hg_nonneg : 0 ≤ g' n z := thickenedIndicatorReal_nonneg (hδ'_pos n) ({1} : Set Circle) z
+        have hg_le_one : g' n z ≤ 1 := thickenedIndicatorReal_le_one (hδ'_pos n) ({1} : Set Circle) z
+        have hg_abs : |g' n z| ≤ 1 := abs_le.mpr ⟨by linarith, hg_le_one⟩
+        calc |circleIm z * g' n z|
+            = |circleIm z| * |g' n z| := abs_mul _ _
+          _ ≤ 1 * 1 := by
+              apply mul_le_mul (circleIm_abs_le_one z) hg_abs (abs_nonneg _)
+              linarith [circleIm_abs_le_one z]
+          _ = 1 := mul_one 1
+
+      have hf_Im_tendsto : ∀ z, Tendsto (fun n => f_Im n z) atTop (𝓝 (0 : ℝ)) := by
+        intro z
+        exact im_mul_thickenedIndicatorReal_tendsto_zero_pointwise hδ'_pos hδ'_lim z
+
+      have hweak_Im : Tendsto (fun n => @inner ℂ H _ v (cfcOfCircleReal U hU (f_Im n) w))
+          atTop (𝓝 (0 : ℂ)) := by
+        have hinner_eq : ∀ n, @inner ℂ H _ v (cfcOfCircleReal U hU (f_Im n) w) =
+            (1/4 : ℂ) * (spectralFunctionalAux U hU (v + w) (f_Im n) -
+                         spectralFunctionalAux U hU (v - w) (f_Im n) -
+                         Complex.I * spectralFunctionalAux U hU (v + Complex.I • w) (f_Im n) +
+                         Complex.I * spectralFunctionalAux U hU (v - Complex.I • w) (f_Im n)) := by
+          intro n
+          exact (spectralFunctionalAux_polarization U hU (f_Im n) v w).symm
+        -- Each spectralFunctionalAux converges to 0
+        have hΛ1 : Tendsto (fun n => spectralFunctionalAux U hU (v + w) (f_Im n))
+            atTop (𝓝 (∫ _, (0 : ℝ) ∂(spectralMeasureDiagonal U hU (v + w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Im (fun _ => 0) (v + w) 1
+            hf_Im_bound hf_Im_tendsto one_pos
+        have hΛ2 : Tendsto (fun n => spectralFunctionalAux U hU (v - w) (f_Im n))
+            atTop (𝓝 (∫ _, (0 : ℝ) ∂(spectralMeasureDiagonal U hU (v - w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Im (fun _ => 0) (v - w) 1
+            hf_Im_bound hf_Im_tendsto one_pos
+        have hΛ3 : Tendsto (fun n => spectralFunctionalAux U hU (v + Complex.I • w) (f_Im n))
+            atTop (𝓝 (∫ _, (0 : ℝ) ∂(spectralMeasureDiagonal U hU (v + Complex.I • w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Im (fun _ => 0) (v + Complex.I • w) 1
+            hf_Im_bound hf_Im_tendsto one_pos
+        have hΛ4 : Tendsto (fun n => spectralFunctionalAux U hU (v - Complex.I • w) (f_Im n))
+            atTop (𝓝 (∫ _, (0 : ℝ) ∂(spectralMeasureDiagonal U hU (v - Complex.I • w)))) :=
+          spectralFunctionalAux_tendsto_of_pointwise_general U hU f_Im (fun _ => 0) (v - Complex.I • w) 1
+            hf_Im_bound hf_Im_tendsto one_pos
+        -- Integrals of 0 are 0
+        simp only [integral_zero] at hΛ1 hΛ2 hΛ3 hΛ4
+        have hΛ1' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ1
+        have hΛ2' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ2
+        have hΛ3' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ3
+        have hΛ4' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ4
+        simp only [Complex.ofReal_zero] at hΛ1' hΛ2' hΛ3' hΛ4'
+        have hcomb : Tendsto (fun n =>
+            (1/4 : ℂ) * (spectralFunctionalAux U hU (v + w) (f_Im n) -
+                         spectralFunctionalAux U hU (v - w) (f_Im n) -
+                         Complex.I * spectralFunctionalAux U hU (v + Complex.I • w) (f_Im n) +
+                         Complex.I * spectralFunctionalAux U hU (v - Complex.I • w) (f_Im n)))
+            atTop (𝓝 ((1/4 : ℂ) * (0 - 0 - Complex.I * 0 + Complex.I * 0))) := by
+          apply Tendsto.const_mul
+          apply Tendsto.add
+          · apply Tendsto.sub
+            · apply Tendsto.sub hΛ1' hΛ2'
+            · exact Tendsto.const_mul Complex.I hΛ3'
+          · exact Tendsto.const_mul Complex.I hΛ4'
+        simp only [sub_zero, mul_zero, add_zero, MulZeroClass.mul_zero] at hcomb
+        simp only [hinner_eq]
+        exact hcomb
+
+      -- Step 5: Combine the limits
+      simp only [hinner_decomp]
+      have hlim : Tendsto (fun n =>
+          @inner ℂ H _ v (cfcOfCircleReal U hU (f_Re n) w) +
+          Complex.I * @inner ℂ H _ v (cfcOfCircleReal U hU (f_Im n) w))
+          atTop (𝓝 (@inner ℂ H _ v (P w) + Complex.I * 0)) := by
+        apply Tendsto.add hweak_Re (Tendsto.const_mul Complex.I hweak_Im)
+      simp only [mul_zero, add_zero] at hlim
+      -- The goal matches hlim after unfolding f_Re and f_Im
+      exact hlim
+
+    -- Final step: combine the limits
+    -- ⟨U† v, P w⟩ = lim ⟨U† v, cfc(g'_n, U) w⟩  (weak convergence, same as hweak_v with U† v)
+    --             = lim ⟨v, U cfc(g'_n, U) w⟩    (by hadj_eq)
+    --             = lim ⟨v, cfc(id · g'_n, U) w⟩ (by hU_mul_cfc_eq)
+    --             = ⟨v, P w⟩                      (by hweak_id)
+    have hweak_Uv : Tendsto (fun n => @inner ℂ H _ (U.adjoint v) (cfcOfCircleReal U hU (g' n) w))
+        atTop (𝓝 (@inner ℂ H _ (U.adjoint v) (P w))) := by
+      -- Same proof as hweak_v but with U† v instead of v
+      have hinner_eq : ∀ n, @inner ℂ H _ (U.adjoint v) (cfcOfCircleReal U hU (g' n) w) =
+          (1/4 : ℂ) * (spectralFunctionalAux U hU (U.adjoint v + w) (g' n) -
+                       spectralFunctionalAux U hU (U.adjoint v - w) (g' n) -
+                       Complex.I * spectralFunctionalAux U hU (U.adjoint v + Complex.I • w) (g' n) +
+                       Complex.I * spectralFunctionalAux U hU (U.adjoint v - Complex.I • w) (g' n)) := by
+        intro n
+        exact (spectralFunctionalAux_polarization U hU (g' n) (U.adjoint v) w).symm
+      have hΛ1 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (U.adjoint v + w) hδ'_pos hδ'_lim
+      have hΛ2 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (U.adjoint v - w) hδ'_pos hδ'_lim
+      have hΛ3 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (U.adjoint v + Complex.I • w) hδ'_pos hδ'_lim
+      have hΛ4 := spectralFunctionalAux_tendsto_closed U hU {1} isClosed_singleton (U.adjoint v - Complex.I • w) hδ'_pos hδ'_lim
+      have hΛ1' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ1
+      have hΛ2' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ2
+      have hΛ3' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ3
+      have hΛ4' := Complex.continuous_ofReal.continuousAt.tendsto.comp hΛ4
+      have hcomb : Tendsto (fun n =>
+          (1/4 : ℂ) * (spectralFunctionalAux U hU (U.adjoint v + w) (g' n) -
+                       spectralFunctionalAux U hU (U.adjoint v - w) (g' n) -
+                       Complex.I * spectralFunctionalAux U hU (U.adjoint v + Complex.I • w) (g' n) +
+                       Complex.I * spectralFunctionalAux U hU (U.adjoint v - Complex.I • w) (g' n)))
+          atTop (𝓝 ((1/4 : ℂ) * (
+            (spectralMeasureDiagonal U hU (U.adjoint v + w) {1}).toReal -
+            (spectralMeasureDiagonal U hU (U.adjoint v - w) {1}).toReal -
+            Complex.I * (spectralMeasureDiagonal U hU (U.adjoint v + Complex.I • w) {1}).toReal +
+            Complex.I * (spectralMeasureDiagonal U hU (U.adjoint v - Complex.I • w) {1}).toReal))) := by
+        apply Tendsto.const_mul
+        apply Tendsto.add
+        · apply Tendsto.sub; apply Tendsto.sub hΛ1' hΛ2'; exact Tendsto.const_mul Complex.I hΛ3'
+        · exact Tendsto.const_mul Complex.I hΛ4'
+      have hlim_eq : (1/4 : ℂ) * (
+            (spectralMeasureDiagonal U hU (U.adjoint v + w) {1}).toReal -
+            (spectralMeasureDiagonal U hU (U.adjoint v - w) {1}).toReal -
+            Complex.I * (spectralMeasureDiagonal U hU (U.adjoint v + Complex.I • w) {1}).toReal +
+            Complex.I * (spectralMeasureDiagonal U hU (U.adjoint v - Complex.I • w) {1}).toReal) =
+          spectralMeasurePolarized U hU (U.adjoint v) w {1} (measurableSet_singleton 1) := by
+        unfold spectralMeasurePolarized; ring
+      have hPinner : @inner ℂ H _ (U.adjoint v) (P w) =
+          spectralMeasurePolarized U hU (U.adjoint v) w {1} (measurableSet_singleton 1) := by
+        rw [hP_def]; unfold spectralProjectionOfUnitary; rw [← sesquilinearToOperator_inner]
+      simp only [hinner_eq]; rw [hPinner, ← hlim_eq]; exact hcomb
+
+    -- The two limits are equal via hadj_eq and hU_mul_cfc_eq
+    have hlim_via_U : Tendsto (fun n => @inner ℂ H _ v (cfc (fun z => z * circleRealToComplex (g' n) z) U w))
+        atTop (𝓝 (@inner ℂ H _ (U.adjoint v) (P w))) := by
+      have heq : ∀ n, @inner ℂ H _ v (cfc (fun z => z * circleRealToComplex (g' n) z) U w) =
+          @inner ℂ H _ (U.adjoint v) (cfcOfCircleReal U hU (g' n) w) := by
+        intro n
+        rw [← hU_mul_cfc_eq n, ← hadj_eq n]
+      simp only [heq]
+      exact hweak_Uv
+
+    -- By uniqueness of limits: ⟨U† v, P w⟩ = ⟨v, P w⟩
+    exact tendsto_nhds_unique hlim_via_U hweak_id
 
   -- Convert (U.comp P) y to U (P y) and use hU_P_eq_P
   simp only [ContinuousLinearMap.comp_apply]
@@ -818,19 +1270,10 @@ theorem spectralProjection_singleton_one_eq_zero (T : UnboundedOperator H) (hT :
   -- Proof of claim: Use U ∘L P = P (spectral integration for singletons)
 
   have hP_eigenvector : U (P y) = P y := by
-    -- This follows from U P({1}) = P({1})
-    -- The proof uses the spectral integration formula.
-    --
-    -- For the RMK spectral projection, U P(E) = ∫_E z P(dz)
-    -- For E = {1}, this gives U P({1}) = 1 · P({1}) = P({1})
-    --
-    -- This can be proven via CFC multiplicativity and limits:
-    -- Let g_n be thickened indicators converging to χ_{1}.
-    -- Then cfc(g_n, U) → P({1}) weakly.
-    -- Also U · cfc(g_n, U) = cfc(id · g_n, U) by CFC multiplicativity.
-    -- Since id · g_n → χ_{1} (as shown in the docstring), cfc(id · g_n, U) → P({1}).
-    -- Taking limits: U P({1}) = P({1}).
-    sorry
+    -- This follows from U ∘L P = P (proven in unitary_comp_spectralProjection_singleton_one)
+    have hUP := unitary_comp_spectralProjection_singleton_one U hU
+    calc U (P y) = (U ∘L P) y := rfl
+      _ = P y := by rw [hUP]
 
   -- Now use one_not_eigenvalue
   exact C.one_not_eigenvalue (P y) hP_eigenvector
@@ -874,19 +1317,128 @@ theorem spectralMeasureFromRMK_univ (T : UnboundedOperator H) (hT : T.IsDenselyD
   have htotal : spectralMeasurePolarized U hU x y Set.univ MeasurableSet.univ = @inner ℂ H _ x y :=
     spectralMeasurePolarized_univ U hU x y
   -- The key is that Circle = (Circle \ {1}) ∪ {1} and {1} has zero measure
-  -- So μ_{x,y}(Circle \ {1}) = μ_{x,y}(Circle) - μ_{x,y}({1}) = ⟨x, y⟩ - 0 = ⟨x, y⟩
-  --
-  -- To prove this, we need measure additivity or the fact that P({1}) = 0.
   -- From spectralProjection_singleton_one_eq_zero: P({1}) = 0
   -- So μ_{x,y}({1}) = ⟨x, P({1}) y⟩ = ⟨x, 0⟩ = 0
-  --
   -- Then μ_{x,y}(Circle \ {1}) = μ_{x,y}(Circle) = ⟨x, y⟩
-  -- (since {1} has zero measure and Circle \ {1} ∪ {1} = Circle)
-  --
-  -- TECHNICAL: Need to establish this equality via the measure structure.
-  -- For now, use the fact that range cayleyToCircle is dense in Circle (topologically)
-  -- but actually equals Circle \ {1} which has full measure.
-  sorry
+
+  -- Step 1: Show P({1}) = 0
+  have hP1_eq_zero : spectralProjectionOfUnitary U hU {1} (measurableSet_singleton 1) = 0 :=
+    spectralProjection_singleton_one_eq_zero T hT hsa C
+
+  -- Step 2: μ_{x,y}({1}) = 0
+  -- This follows from P({1}) = 0, so ⟨x, P({1}) y⟩ = ⟨x, 0⟩ = 0
+  have hμ1_eq_zero : spectralMeasurePolarized U hU x y {1} (measurableSet_singleton 1) = 0 := by
+    -- spectralMeasurePolarized x y E = ⟨x, P(E) y⟩ by sesquilinear form
+    unfold spectralMeasurePolarized
+    -- Since P({1}) = 0, P({1}) y = 0
+    have hPy : spectralProjectionOfUnitary U hU {1} (measurableSet_singleton 1) y = 0 := by
+      rw [hP1_eq_zero, ContinuousLinearMap.zero_apply]
+    -- So ⟨x, P({1}) y⟩ = ⟨x, 0⟩ = 0
+    -- But we need to relate this to the polarization formula
+    -- spectralMeasurePolarized = (1/4)[μ_{x+y} - μ_{x-y} - i·μ_{x+iy} + i·μ_{x-iy}]
+    -- Since P({1}) = 0, all diagonal measures μ_z({1}) = 0
+    have hdiag_zero : ∀ z : H, (spectralMeasureDiagonal U hU z {1}).toReal = 0 := by
+      intro z
+      -- spectralMeasureDiagonal z {1} = spectralMeasurePolarized z z {1} by spectralMeasurePolarized_diag
+      -- And spectralMeasurePolarized z z {1} = ⟨z, P({1}) z⟩ = ⟨z, 0⟩ = 0
+      have hPz : spectralProjectionOfUnitary U hU {1} (measurableSet_singleton 1) z = 0 := by
+        rw [hP1_eq_zero, ContinuousLinearMap.zero_apply]
+      -- The polarized measure at (z, z) equals the diagonal measure
+      have h := spectralMeasurePolarized_diag U hU z {1} (measurableSet_singleton 1)
+      -- spectralMeasurePolarized z z {1} = ⟨z, P({1}) z⟩ by sesquilinear form
+      have hpol_zero : spectralMeasurePolarized U hU z z {1} (measurableSet_singleton 1) = 0 := by
+        -- Use sesquilinearToOperator_inner: ⟨z, P({1}) z⟩ = spectralMeasurePolarized z z {1}
+        have hinner : @inner ℂ H _ z (spectralProjectionOfUnitary U hU {1} (measurableSet_singleton 1) z) =
+            spectralMeasurePolarized U hU z z {1} (measurableSet_singleton 1) := by
+          unfold spectralProjectionOfUnitary
+          rw [← sesquilinearToOperator_inner]
+        rw [hPz, inner_zero_right] at hinner
+        exact hinner.symm
+      -- h : spectralMeasurePolarized z z {1} = ↑μ_z({1}).toReal
+      -- hpol_zero : spectralMeasurePolarized z z {1} = 0
+      -- Need: μ_z({1}).toReal = 0
+      rw [h] at hpol_zero
+      -- hpol_zero : ↑μ_z({1}).toReal = 0
+      exact Complex.ofReal_eq_zero.mp hpol_zero
+    simp only [hdiag_zero, Complex.ofReal_zero, mul_zero, sub_zero, add_zero,
+      MulZeroClass.mul_zero]
+
+  -- Step 3: cayleyToCircle '' univ = Circle \ {1}
+  have himg : cayleyToCircle '' Set.univ = {z : Circle | z ≠ 1} := by
+    rw [image_univ, cayleyToCircle_range]
+
+  -- Step 4: μ_{x,y}(Circle \ {1}) = μ_{x,y}(Circle) because μ_{x,y}({1}) = 0
+  -- Circle = (Circle \ {1}) ∪ {1} (disjoint)
+  have hunion : (Set.univ : Set Circle) = ({z : Circle | z ≠ 1}) ∪ ({1} : Set Circle) := by
+    ext z
+    simp only [Set.mem_univ, Set.mem_union, Set.mem_setOf_eq, Set.mem_singleton_iff, true_iff]
+    by_cases hz : z = 1
+    · right; exact hz
+    · left; exact hz
+
+  have hdisjoint : Disjoint ({z : Circle | z ≠ 1}) ({1} : Set Circle) := by
+    rw [Set.disjoint_iff]
+    intro z ⟨hz_ne, hz_eq⟩
+    simp only [Set.mem_setOf_eq] at hz_ne
+    simp only [Set.mem_singleton_iff] at hz_eq
+    exact hz_ne hz_eq
+
+  -- The image of univ equals {z | z ≠ 1}
+  have hmeas_compl : MeasurableSet ({z : Circle | z ≠ 1}) := by
+    -- {z | z ≠ 1} = {1}ᶜ
+    have heq : ({z : Circle | z ≠ 1}) = ({1} : Set Circle)ᶜ := by
+      ext z
+      simp only [Set.mem_setOf_eq, Set.mem_compl_iff, Set.mem_singleton_iff]
+    rw [heq]
+    exact (measurableSet_singleton 1).compl
+
+  -- Use the fact that spectralMeasurePolarized is additive on disjoint sets
+  -- μ(Circle) = μ(Circle \ {1}) + μ({1}) = μ(Circle \ {1}) + 0
+  -- Since spectralMeasurePolarized is a linear combination of diagonal measures (which are actual measures),
+  -- it inherits additivity.
+  have hadd : spectralMeasurePolarized U hU x y Set.univ MeasurableSet.univ =
+      spectralMeasurePolarized U hU x y {z : Circle | z ≠ 1} hmeas_compl +
+      spectralMeasurePolarized U hU x y {1} (measurableSet_singleton 1) := by
+    -- Unfold the definition of spectralMeasurePolarized
+    unfold spectralMeasurePolarized
+    -- For each diagonal measure μ_w, we have μ_w(univ) = μ_w({z ≠ 1}) + μ_w({1}) by measure additivity
+    have hadd_diag : ∀ w : H, (spectralMeasureDiagonal U hU w Set.univ).toReal =
+        (spectralMeasureDiagonal U hU w {z : Circle | z ≠ 1}).toReal +
+        (spectralMeasureDiagonal U hU w {1}).toReal := by
+      intro w
+      -- spectralMeasureDiagonal is a measure, so it's additive on disjoint sets
+      have hm := @MeasureTheory.measure_union Circle _ (spectralMeasureDiagonal U hU w)
+        {z : Circle | z ≠ 1} {1} hdisjoint (measurableSet_singleton 1)
+      -- hm : μ_w({z ≠ 1} ∪ {1}) = μ_w({z ≠ 1}) + μ_w({1})
+      -- hunion : univ = {z ≠ 1} ∪ {1}
+      conv_lhs => rw [hunion]
+      rw [hm]
+      -- Convert ENNReal addition to Real addition
+      have hfinite : IsFiniteMeasure (spectralMeasureDiagonal U hU w) :=
+        spectralMeasureDiagonal_isFiniteMeasure U hU w
+      have hne1 : (spectralMeasureDiagonal U hU w {z : Circle | z ≠ 1}) ≠ ⊤ :=
+        MeasureTheory.measure_ne_top _ _
+      have hne2 : (spectralMeasureDiagonal U hU w {1}) ≠ ⊤ :=
+        MeasureTheory.measure_ne_top _ _
+      exact ENNReal.toReal_add hne1 hne2
+    -- Apply hadd_diag to each term
+    simp only [hadd_diag, Complex.ofReal_add]
+    ring
+
+  rw [hadd, hμ1_eq_zero, add_zero] at htotal
+  -- Now htotal : μ_{x,y}({z | z ≠ 1}) = ⟨x, y⟩
+  -- And himg : cayleyToCircle '' univ = {z | z ≠ 1}
+  -- So μ_{x,y}(cayleyToCircle '' univ) = ⟨x, y⟩
+  have himg_meas : cayleyToCircle '' Set.univ = {z : Circle | z ≠ 1} := himg
+  -- Convert the goal
+  have hmeas_img := cayleyToCircle_measurableSet_image Set.univ MeasurableSet.univ
+  -- The measures are equal because the sets are equal
+  have hset_eq : spectralMeasurePolarized U hU x y (cayleyToCircle '' Set.univ) hmeas_img =
+      spectralMeasurePolarized U hU x y {z : Circle | z ≠ 1} hmeas_compl := by
+    -- The sets are equal, so the measures are equal
+    -- Use simp with the equality himg_meas
+    simp only [himg_meas]
+  rw [hset_eq, htotal]
 
 /-! ### Spectral Theorem via RMK -/
 

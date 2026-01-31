@@ -107,6 +107,29 @@ theorem windowIncrement_eq_sum (n : ℕ) (flips : Fin n → Bool) (k h : ℕ) (_
     _ = ((Finset.univ : Finset (Fin n)).filter (fun i => k ≤ i.val ∧ i.val < k + h)).sum
           (fun i => boolToInt (flips i)) := rfl
 
+/-- For h = 1 and k < n, the window increment is the single coin flip contribution at k -/
+theorem windowIncrement_single_step (n : ℕ) (flips : Fin n → Bool) (k : ℕ) (hk : k < n) :
+    windowIncrement n flips k 1 = boolToInt (flips ⟨k, hk⟩) := by
+  rw [windowIncrement_eq_sum n flips k 1 (by omega : k + 1 ≤ n)]
+  -- The filter selects exactly one element: ⟨k, hk⟩
+  have heq : (Finset.univ : Finset (Fin n)).filter (fun i => k ≤ i.val ∧ i.val < k + 1) = {⟨k, hk⟩} := by
+    ext i
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and, Finset.mem_singleton]
+    constructor
+    · intro ⟨hle, hlt⟩
+      have h1 : i.val = k := by omega
+      ext; exact h1
+    · intro heq
+      simp only [heq, Fin.val_mk, le_refl, true_and]
+      omega
+  rw [heq, Finset.sum_singleton]
+
+/-- Single-step window increments have absolute value 1 -/
+theorem windowIncrement_single_step_abs (n : ℕ) (flips : Fin n → Bool) (k : ℕ) (hk : k < n) :
+    |windowIncrement n flips k 1| = 1 := by
+  rw [windowIncrement_single_step n flips k hk]
+  cases flips ⟨k, hk⟩ <;> simp [boolToInt]
+
 /-- Sum of increment² over all flip sequences equals h * 2^n when the window is valid -/
 theorem sum_windowIncrement_sq (n : ℕ) (k h : ℕ) (hkh : k + h ≤ n) :
     (Finset.univ : Finset (Fin n → Bool)).sum
@@ -233,6 +256,19 @@ def maxWindowIncrement (n : ℕ) (flips : Fin n → Bool) (h : ℕ) (numWindows 
       (fun w => |windowIncrement n flips (w * h) h|)
   else
     0
+
+/-- Max window increment with h = 1 is at most 1, since each window is a single step -/
+theorem maxWindowIncrement_single_step_le_one (n : ℕ) (flips : Fin n → Bool) (numWindows : ℕ)
+    (hn : 0 < numWindows) (hle : numWindows ≤ n) :
+    maxWindowIncrement n flips 1 numWindows ≤ 1 := by
+  unfold maxWindowIncrement
+  simp only [hn, ↓reduceDIte, mul_one]
+  apply Finset.sup'_le
+  intro w hw
+  simp only [Finset.mem_range] at hw
+  -- w < numWindows ≤ n, so w < n
+  have hwn : w < n := Nat.lt_of_lt_of_le hw hle
+  rw [windowIncrement_single_step_abs n flips w hwn]
 
 /-- Union bound for max increment: #{max increment > M} ≤ Σ #{window i increment > M} -/
 theorem maxIncrement_union_bound (n : ℕ) (h : ℕ) (numWindows : ℕ) (M : ℕ)
