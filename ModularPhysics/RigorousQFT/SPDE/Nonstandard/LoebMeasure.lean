@@ -5,6 +5,11 @@ Authors: ModularPhysics Contributors
 -/
 import Mathlib.Analysis.Real.Hyperreal
 import Mathlib.MeasureTheory.Measure.MeasureSpace
+import Mathlib.Order.Filter.Ultrafilter.Basic
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.Hypernatural
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.HyperfiniteSum
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.InternalMembership
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.Saturation
 
 /-!
 # Loeb Measure Construction
@@ -21,16 +26,23 @@ In the hyperfinite world, probability is just counting:
 This is a finitely additive measure on the internal algebra.
 Loeb's construction extends this to a σ-additive measure on a σ-algebra.
 
-## Limitations
+## Current State
 
-A complete formalization of Loeb measure requires:
-- Internal set theory (distinguishing internal vs external sets)
-- Saturation properties of the nonstandard universe
-- Carathéodory extension theorem
-- Transfer principle for measure-theoretic statements
+This file provides:
+- Pre-Loeb measure (standard part of internal probability)
+- Basic properties: non-negativity, finite additivity, monotonicity
+- Connection to coin flip spaces and hyperfinite random walks
 
-This file provides the basic definitions and states the key theorems,
-with proofs for what's provable from the basic Hyperreal API in mathlib.
+The saturation infrastructure is now available in `Foundation.Saturation`,
+enabling σ-additivity arguments. See the section "Saturation and σ-Additivity"
+below for details.
+
+## Remaining Work
+
+A complete formalization still requires:
+- Carathéodory extension for the σ-algebra
+- Full definition of Loeb measurability for external sets
+- Anderson's theorem (pushforward = Wiener measure)
 
 ## References
 
@@ -39,7 +51,7 @@ with proofs for what's provable from the basic Hyperreal API in mathlib.
 * Cutland, N. "Loeb Measures in Practice: Recent Advances"
 -/
 
-open MeasureTheory Hyperreal Classical
+open MeasureTheory Hyperreal Classical Ultrafilter
 
 namespace SPDE.Nonstandard
 
@@ -203,27 +215,153 @@ theorem preLoebMeasure_add (Ω : InternalProbSpace) (card₁ card₂ : ℝ*)
     h1.add h2
   exact h3.st_eq
 
+/-! ## σ-Additivity via Saturation
+
+The key to proving σ-additivity of Loeb measure is the following lemma:
+For a decreasing sequence of internal sets Aₙ with μ(Aₙ) ≥ ε > 0 for all n,
+the intersection ⋂ₙ Aₙ is nonempty (by saturation).
+
+Contrapositive: If ⋂ₙ Aₙ = ∅, then μ(Aₙ) → 0.
+
+This gives σ-additivity from above (continuity at ∅), which together with
+finite additivity implies full σ-additivity.
+
+The saturation theorem is in `Foundation.Saturation.countable_saturation_standard`.
+-/
+
+/-- A decreasing sequence of internal sets (for the saturation argument).
+    This represents Aₙ ⊇ Aₙ₊₁ for all n. -/
+structure DecreasingInternalFamily where
+  /-- The sequence of internal sets -/
+  sets : ℕ → Foundation.InternalSet
+  /-- Decreasing: Aₙ ⊇ Aₙ₊₁ at each level -/
+  decreasing : ∀ (n m k : ℕ), n ≤ m → (sets m).sets k ⊆ (sets n).sets k
+
+/-- Convert a decreasing family to a CountableInternalFamily for saturation. -/
+def DecreasingInternalFamily.toCountableFamily (F : DecreasingInternalFamily) :
+    Foundation.CountableInternalFamily where
+  family := F.sets
+
+/-- The key lemma for σ-additivity: if all sets in a decreasing family are
+    "nonempty at level n" (for the saturation argument), then the intersection
+    is nonempty.
+
+    This follows from `countable_saturation_standard` applied to the family.
+    The decreasing property ensures that level-n witnesses transfer correctly. -/
+theorem decreasing_family_saturation (F : DecreasingInternalFamily)
+    (hFIP : F.toCountableFamily.HasStandardFIP) :
+    ∃ x : ℝ*, ∀ n : ℕ, (F.sets n).mem x :=
+  Foundation.countable_saturation_standard F.toCountableFamily hFIP
+
+/-! ### Application to Loeb Measure σ-Additivity
+
+For the actual σ-additivity proof, we would need to:
+1. Define internal sets Aₙ with μ(Aₙ) ≥ ε
+2. Show these form a family with HasStandardFIP
+3. Apply saturation to get a point in ⋂ Aₙ
+4. Derive contradiction if ⋂ Aₙ was assumed empty
+
+The details depend on how internal sets are represented. The saturation
+infrastructure is ready; the remaining work is in the measure-theoretic setup.
+-/
+
 /-! ## The Coin Flip Space
 
 The canonical example: N fair coin flips. Sample space has 2^N elements.
 -/
 
-/-- Hyperreal exponentiation: 2^N for hyperreal N.
-    Defined via ofSeq for sequences. -/
-noncomputable def hyperPow2 (N : ℝ*) : ℝ* :=
-  -- For a proper definition, we'd need N to come from a sequence
-  -- and define 2^N as ofSeq (fun n => 2^(sequence n))
-  -- For now, we axiomatize that it's positive
-  N * N  -- Placeholder; actual 2^N requires more infrastructure
+/-- Hyperreal exponentiation: 2^n for sequence-defined hyperreals.
+    For a hyperreal N = ofSeq f, we define 2^N = ofSeq (2^(f n)).
+    This requires N to be a hypernatural (from a sequence of naturals). -/
+noncomputable def hyperPow2Seq (f : ℕ → ℕ) : ℝ* :=
+  ofSeq (fun n => (2 : ℝ)^(f n))
+
+/-- 2^N is positive for any sequence -/
+theorem hyperPow2Seq_pos (f : ℕ → ℕ) : 0 < hyperPow2Seq f := by
+  have h : ∀ n, (0 : ℝ) < 2^(f n) := fun n => pow_pos (by norm_num : (0 : ℝ) < 2) (f n)
+  exact ofSeq_lt_ofSeq.mpr (Filter.Eventually.of_forall h)
+
+/-- 2^N is infinite when N → ∞.
+    The key idea: 2^(f n) → ∞ as f n → ∞, so 2^(f n) > M for almost all n. -/
+theorem hyperPow2Seq_infinite (f : ℕ → ℕ) (hf : Filter.Tendsto f Filter.atTop Filter.atTop) :
+    Infinite (hyperPow2Seq f) := by
+  left  -- Show InfinitePos
+  intro M
+  -- Find N₀ such that for n ≥ N₀, f(n) is large enough that 2^(f(n)) > M
+  -- This uses that f → ∞ and 2^k → ∞ as k → ∞
+  have hev : ∀ᶠ n in Filter.atTop, M < (2 : ℝ)^(f n) := by
+    -- 2^(f n) → ∞ as n → ∞ when f n → ∞
+    have h2pow : Filter.Tendsto (fun n => (2 : ℝ)^(f n)) Filter.atTop Filter.atTop := by
+      -- Composition: (2^·) ∘ f tends to ∞ since f → ∞ and 2^· : ℕ → ℝ → ∞
+      have hbase : Filter.Tendsto (fun k : ℕ => (2 : ℝ)^k) Filter.atTop Filter.atTop :=
+        tendsto_pow_atTop_atTop_of_one_lt (by norm_num : (1 : ℝ) < 2)
+      exact hbase.comp hf
+    exact h2pow.eventually_gt_atTop M
+  -- The set {n | M < 2^(f n)} is cofinite (contains a tail), hence in hyperfilter
+  rw [Filter.eventually_atTop] at hev
+  obtain ⟨N₀, hN₀⟩ := hev
+  have hcofin : {n | M < (2 : ℝ)^(f n)} ∈ Filter.cofinite := by
+    rw [Filter.mem_cofinite]
+    refine (Set.finite_lt_nat N₀).subset ?_
+    intro n hn
+    simp only [Set.mem_compl_iff, Set.mem_setOf_eq, not_lt] at hn
+    simp only [Set.mem_setOf_eq]
+    by_contra hge
+    push_neg at hge
+    exact not_lt.mpr hn (hN₀ n hge)
+  -- hyperfilter extends cofinite for infinite types
+  -- hyperfilter_le_cofinite : ↑(hyperfilter α) ≤ cofinite
+  -- So if s ∈ cofinite, then s ∈ hyperfilter
+  have hmem : {n | M < (2 : ℝ)^(f n)} ∈ (Filter.hyperfilter ℕ : Filter ℕ) := by
+    -- Use that hyperfilter ≤ cofinite
+    exact Filter.hyperfilter_le_cofinite hcofin
+  exact ofSeq_lt_ofSeq.mpr hmem
+
+/-- 2^N is infinite when N is an infinite hypernatural.
+    This version uses ultrafilter membership directly, avoiding pointwise convergence. -/
+theorem hyperPow2Seq_infinite_of_hypernat (N : Foundation.Hypernat)
+    (hNinf : Foundation.Hypernat.Infinite N) : Infinite (hyperPow2Seq N.toSeq) := by
+  left  -- Show InfinitePos
+  intro M
+  -- For any M, we need {n | M < 2^(N.toSeq n)} ∈ hyperfilter
+  -- Find b such that 2^b > M, then use that {n | b < N.toSeq n} ∈ hyperfilter
+  have harch : ∃ b : ℕ, M < (2 : ℝ)^b := by
+    have htend : Filter.Tendsto (fun k : ℕ => (2 : ℝ)^k) Filter.atTop Filter.atTop :=
+      tendsto_pow_atTop_atTop_of_one_lt (by norm_num : (1 : ℝ) < 2)
+    exact (htend.eventually_gt_atTop M).exists
+  obtain ⟨b, hb⟩ := harch
+  -- For n with N.toSeq n > b, we have 2^(N.toSeq n) > 2^b > M
+  have hev_gt : ∀ᶠ n in Filter.hyperfilter ℕ, b < N.toSeq n :=
+    Foundation.Hypernat.toSeq_eventually_gt_of_infinite N hNinf b
+  have hmem : ∀ᶠ n in Filter.hyperfilter ℕ, M < (2 : ℝ)^(N.toSeq n) := by
+    apply hev_gt.mono
+    intro n hn
+    -- Show M < 2^b < 2^(N.toSeq n)
+    have hpow_mono : (2 : ℝ)^b < (2 : ℝ)^(N.toSeq n) := by
+      have h2gt1 : (1 : ℝ) < 2 := by norm_num
+      have h2pos : (0 : ℝ) < 2 := by norm_num
+      -- 2^k is strictly increasing for k : ℕ when base > 1
+      have hbase : ∀ k : ℕ, (2 : ℝ)^k < (2 : ℝ)^(k+1) := by
+        intro k
+        calc (2 : ℝ)^k < (2 : ℝ)^k * 2 := by nlinarith [pow_pos h2pos k]
+          _ = (2 : ℝ)^(k + 1) := by ring
+      -- Apply strict monotonicity
+      have hmono : StrictMono (fun k : ℕ => (2 : ℝ)^k) :=
+        strictMono_nat_of_lt_succ hbase
+      exact hmono hn
+    linarith
+  exact ofSeq_lt_ofSeq.mpr hmem
 
 /-- The internal probability space of N coin flips.
+    Uses hyperPow2Seq to properly compute 2^N from the underlying sequence. -/
+noncomputable def coinFlipSpace (f : ℕ → ℕ) : InternalProbSpace where
+  size := hyperPow2Seq f
+  size_pos := hyperPow2Seq_pos f
 
-    **Note**: A complete definition would use hyperreal exponentiation 2^N.
-    This placeholder uses N² which has the same qualitative behavior
-    (infinite when N is infinite). -/
-noncomputable def coinFlipSpace (N : ℝ*) (hN : 0 < N) : InternalProbSpace where
-  size := N * N  -- Placeholder for 2^N
-  size_pos := mul_pos hN hN
+/-- Alternative: coin flip space from a hypernatural -/
+noncomputable def coinFlipSpaceHypernat (N : Foundation.Hypernat) : InternalProbSpace where
+  size := hyperPow2Seq N.toSeq
+  size_pos := hyperPow2Seq_pos N.toSeq
 
 /-! ## Loeb σ-algebra and Measure
 
@@ -236,54 +374,58 @@ distinguishes between internal sets (those definable in the nonstandard
 model) and external sets. This is beyond what mathlib's Hyperreal provides.
 -/
 
-/-- A set is Loeb measurable if it can be approximated by internal sets.
-    (Simplified placeholder - full version needs internal set theory) -/
-def IsLoebMeasurable (Ω : InternalProbSpace) (_A : Set ℕ) : Prop :=
-  ∀ eps : ℝ, eps > 0 → ∃ (inner outer : ℝ*),
-    inner ≤ outer ∧
-    preLoebMeasure Ω outer - preLoebMeasure Ω inner < eps
+/-! ## Loeb Measure: What We Can and Cannot Prove
 
-/-- Every internal set is Loeb measurable (with inner = outer = its cardinality) -/
-theorem internal_isLoebMeasurable (Ω : InternalProbSpace) (A : Set ℕ) :
-    IsLoebMeasurable Ω A := by
-  intro eps heps
-  -- For an internal set, inner = outer = card(A), so difference = 0 < eps
-  use 0, 0
-  constructor
-  · exact le_refl 0
-  · simp [preLoebMeasure]
-    exact heps
+The Loeb measure construction converts internal (hyperfinite) finitely additive
+measures into genuine σ-additive measures. The key insight is that the standard
+part operation, when applied to internal probabilities, yields a countably
+additive measure on a suitable σ-algebra.
 
-/-- The Loeb measure of a Loeb-measurable set.
+### What's Proven Here
 
-    **Note**: This is a placeholder. The actual Loeb measure is defined
-    as the common value of st(P(C)) for internal C approximating A. -/
-noncomputable def loebMeasure (Ω : InternalProbSpace) (_A : Set ℕ)
-    (_hA : IsLoebMeasurable Ω _A) : ℝ := 0  -- Placeholder
+1. **Pre-Loeb measure**: We define `preLoebMeasure` as the standard part of
+   internal probabilities. This is well-defined for probabilities in [0,1].
 
-/-! ## Key Theorem: Loeb Measure is σ-Additive
+2. **Basic properties**: Pre-Loeb measure is non-negative, bounded by 1,
+   and finitely additive (proven above).
 
-The miracle of Loeb's construction: although we start with a merely
-finitely additive internal measure, the standard part gives a
-σ-additive measure on the Loeb σ-algebra.
+3. **Internal probability spaces**: Proper definitions with 2^N size for
+   coin flip spaces.
 
-**Proof idea** (not formalized):
-1. For internal sets, pre-Loeb measure is finitely additive
-2. Saturation implies countable unions of disjoint Loeb-measurable sets
-   can be approximated by internal sets
-3. The standard part preserves the additivity
+4. **Saturation**: The ℵ₁-saturation theorem is now available in
+   `Foundation.Saturation`. This enables σ-additivity proofs.
 
-This requires saturation properties not available in mathlib's Hyperreal.
+### Saturation and σ-Additivity
+
+The key use of saturation is to prove σ-additivity from above (continuity at ∅):
+If {Aₙ} is a decreasing sequence of internal sets with ⋂ₙ Aₙ = ∅,
+then μ_L(Aₙ) → 0.
+
+**Proof sketch using saturation**:
+Suppose μ(Aₙ) ≥ ε > 0 for all n (where ε is standard positive).
+Consider the internal sets Aₙ ∩ [probability ≥ ε/2].
+These form a countable family with the finite intersection property
+(since μ(Aₙ) ≥ ε > 0 implies Aₙ is nonempty).
+By saturation, ⋂ₙ Aₙ ≠ ∅, contradicting the assumption.
+
+The saturation theorem `countable_saturation_standard` in `Foundation.Saturation`
+provides the infrastructure for such arguments.
+
+### What Still Requires Work
+
+1. **Carathéodory extension**: Building a σ-algebra from the internal algebra.
+   This is standard measure theory but requires careful bookkeeping.
+
+2. **Full Loeb measurability**: Defining when an external set is Loeb measurable.
+
+3. **Anderson's theorem**: Proving the pushforward equals Wiener measure.
+
+### References
+
+- Loeb, P. "Conversion from nonstandard to standard measure spaces" (1975)
+- Goldblatt, R. "Lectures on the Hyperreals", Chapter 16
+- Cutland, N. "Loeb Measures in Practice"
 -/
-
-/-- Loeb measure is countably additive (statement only - proof requires saturation) -/
-theorem loebMeasure_countably_additive (Ω : InternalProbSpace)
-    (A : ℕ → Set ℕ) (hA : ∀ n, IsLoebMeasurable Ω (A n))
-    (_hdisj : ∀ i j, i ≠ j → Disjoint (A i) (A j))
-    (hUnion : IsLoebMeasurable Ω (⋃ n, A n)) :
-    loebMeasure Ω (⋃ n, A n) hUnion = ∑' n, loebMeasure Ω (A n) (hA n) := by
-  -- With the placeholder definition, both sides are 0
-  simp [loebMeasure]
 
 /-! ## Connection to Hyperfinite Random Walks
 
@@ -298,38 +440,27 @@ how many of the 2^N paths satisfy this condition.
 -/
 
 /-- The probability space underlying a hyperfinite random walk with N steps.
+    The sample space is {-1, +1}^N with 2^N elements. -/
+noncomputable def walkProbSpace (N : Foundation.Hypernat) : InternalProbSpace :=
+  coinFlipSpaceHypernat N
 
-    The sample space is {-1, +1}^N with 2^N elements.
-    We use N² as a placeholder for 2^N (see hyperPow2 comment). -/
-noncomputable def walkProbSpace (N : ℝ*) (hN : 0 < N) : InternalProbSpace :=
-  coinFlipSpace N hN
-
-/-- For a fair coin, exactly half the paths go up (+1) at any given step -/
-theorem halfPaths_goUp (N : ℝ*) (hN : 0 < N) :
-    (walkProbSpace N hN).prob ((N * N) / 2) = 1 / 2 := by
-  unfold walkProbSpace coinFlipSpace InternalProbSpace.prob
-  simp only
-  field_simp
-
-/-- Each individual path has probability 1/N² (placeholder for 1/2^N) -/
-theorem singlePath_prob (N : ℝ*) (hN : 0 < N) :
-    (walkProbSpace N hN).prob 1 = 1 / (N * N) := by
-  unfold walkProbSpace coinFlipSpace InternalProbSpace.prob
+/-- Each individual path has probability 1/2^N -/
+theorem singlePath_prob (N : Foundation.Hypernat) :
+    (walkProbSpace N).prob 1 = 1 / (walkProbSpace N).size := by
+  unfold walkProbSpace coinFlipSpaceHypernat InternalProbSpace.prob
   simp only [one_div]
 
 /-- When N is infinite, individual paths have infinitesimal probability -/
-theorem singlePath_infinitesimal (N : ℝ*) (hN : 0 < N) (hNinf : Infinite N) :
-    Infinitesimal ((walkProbSpace N hN).prob 1) := by
-  rw [singlePath_prob N hN, one_div]
-  -- 1/(N*N) = (N*N)⁻¹ is infinitesimal when N is infinite
-  have hNN : Infinite (N * N) := hNinf.mul hNinf
-  exact infinitesimal_inv_of_infinite hNN
-
-/-- The probability that the walk at step 1 is positive (= 1/2) -/
-theorem walk_step1_pos_prob (N : ℝ*) (hN : 0 < N) (_hN1 : 1 ≤ N) :
-    -- Half the paths have X₁ = +1
-    (walkProbSpace N hN).prob ((N * N) / 2) = 1 / 2 :=
-  halfPaths_goUp N hN
+theorem singlePath_infinitesimal (N : Foundation.Hypernat) (hNinf : Foundation.Hypernat.Infinite N) :
+    Infinitesimal ((walkProbSpace N).prob 1) := by
+  rw [singlePath_prob N, one_div]
+  -- 1/2^N is infinitesimal when N is infinite
+  have hsize : Infinite (walkProbSpace N).size := by
+    unfold walkProbSpace coinFlipSpaceHypernat
+    simp only
+    -- Use the direct lemma that works with Hypernat
+    exact hyperPow2Seq_infinite_of_hypernat N hNinf
+  exact infinitesimal_inv_of_infinite hsize
 
 /-! ## Application: Wiener Measure from Hyperfinite Walks
 
@@ -339,38 +470,44 @@ gives Wiener measure on continuous path space.
 
 /-- The hyperfinite path space: sequences of N coin flips -/
 structure HyperfinitePathSpace where
-  /-- The number of steps -/
-  numSteps : ℝ*
-  /-- The number of steps is positive -/
-  numSteps_pos : 0 < numSteps
+  /-- The number of steps as a hypernatural -/
+  numSteps : Foundation.Hypernat
   /-- The number of steps is infinite -/
-  numSteps_infinite : Infinite numSteps
+  numSteps_infinite : Foundation.Hypernat.Infinite numSteps
 
 namespace HyperfinitePathSpace
 
 /-- The underlying probability space of a hyperfinite path space -/
 noncomputable def probSpace (Ω : HyperfinitePathSpace) : InternalProbSpace :=
-  walkProbSpace Ω.numSteps Ω.numSteps_pos
+  walkProbSpace Ω.numSteps
 
 /-- The time step dt = T/N for unit time interval T = 1 -/
-noncomputable def dt (Ω : HyperfinitePathSpace) : ℝ* := 1 / Ω.numSteps
+noncomputable def dt (Ω : HyperfinitePathSpace) : ℝ* := 1 / Ω.numSteps.val
 
-/-- The space step dx = √dt -/
-noncomputable def dx (Ω : HyperfinitePathSpace) : ℝ* :=
-  -- Placeholder: we'd need hyperreal sqrt
-  -- For now, just record that dx² = dt
-  Ω.dt  -- This is wrong but placeholder
+/-- The space step dx = √dt.
+    Note: A proper definition requires hyperreal square root.
+    We store dx as a hyperreal satisfying dx² = dt. -/
+structure SqrtData (Ω : HyperfinitePathSpace) where
+  /-- The value of √dt -/
+  dx : ℝ*
+  /-- The defining property: dx² = dt -/
+  dx_sq : dx ^ 2 = Ω.dt
+  /-- dx is positive -/
+  dx_pos : 0 < dx
 
 /-- The time step is infinitesimal -/
 theorem dt_infinitesimal (Ω : HyperfinitePathSpace) : Infinitesimal Ω.dt := by
   unfold dt
   rw [one_div]
-  exact infinitesimal_inv_of_infinite Ω.numSteps_infinite
+  have hinfN := Ω.numSteps_infinite
+  rw [Foundation.Hypernat.infinite_iff_infinitePos] at hinfN
+  have hinf : Infinite Ω.numSteps.val := Or.inl hinfN
+  exact infinitesimal_inv_of_infinite hinf
 
 /-- Individual paths have infinitesimal probability -/
 theorem path_prob_infinitesimal (Ω : HyperfinitePathSpace) :
     Infinitesimal (Ω.probSpace.prob 1) :=
-  singlePath_infinitesimal Ω.numSteps Ω.numSteps_pos Ω.numSteps_infinite
+  singlePath_infinitesimal Ω.numSteps Ω.numSteps_infinite
 
 /-- The pre-Loeb measure of individual paths is 0 -/
 theorem path_preLoeb_zero (Ω : HyperfinitePathSpace) :
@@ -382,39 +519,24 @@ theorem path_preLoeb_zero (Ω : HyperfinitePathSpace) :
 
 end HyperfinitePathSpace
 
-/-! ## Cylinder Sets and Finite-Dimensional Distributions
+/-! ## Future Work: Cylinder Sets and Wiener Measure
 
-A cylinder set is defined by constraints on the walk at finitely many times.
-These are the "nice" sets for which we can compute probabilities explicitly.
+A complete treatment would include:
+
+1. **Cylinder sets**: Sets defined by constraints at finitely many times.
+   For these, we can compute probabilities explicitly using the internal
+   counting measure.
+
+2. **Standard part map**: The map from hyperfinite paths to continuous paths
+   via `HyperfiniteWalk.stdPartProcess`. This requires proving that walk
+   values are finite almost surely, which needs Loeb measure.
+
+3. **Anderson's theorem**: The pushforward of Loeb measure under the standard
+   part map equals Wiener measure on C([0,T], ℝ). This is the crowning
+   achievement of nonstandard probability theory.
+
+With saturation now available in `Foundation.Saturation`, the key obstacle
+is building the Carathéodory extension and proving path regularity properties.
 -/
-
-/-- A cylinder set specification: constraints at finitely many time indices -/
-structure CylinderSet where
-  /-- The time indices (as standard naturals) -/
-  times : List ℕ
-  /-- The constraint: which values are allowed at those times -/
-  constraint : (List ℕ → Prop)
-
-/-- Taking standard parts maps hyperfinite paths to continuous paths.
-
-    **Note**: This requires the full machinery of:
-    - Hyperfinite random walks (from HyperfiniteRandomWalk.lean)
-    - Loeb measure on the path space
-    - Standard part function on function spaces
-
-    The key theorem (Anderson 1976) is that this map pushes forward
-    Loeb measure to Wiener measure. -/
-noncomputable def HyperfinitePathSpace.stdPartMap
-    (_Ω : HyperfinitePathSpace) : Set ℕ → Set (ℝ → ℝ) :=
-  fun _ => ∅  -- Placeholder
-
-/-- The pushforward of Loeb measure under stdPart is Wiener measure.
-
-    This is the main theorem of Anderson (1976). A full proof requires:
-    - Construction of Loeb measure on path space
-    - Showing the standard part map is measurable
-    - Verifying the pushforward satisfies Wiener measure properties -/
-theorem loeb_pushforward_is_wiener (_Ω : HyperfinitePathSpace) :
-    True := trivial
 
 end SPDE.Nonstandard

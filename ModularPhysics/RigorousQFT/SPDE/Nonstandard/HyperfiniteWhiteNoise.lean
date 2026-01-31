@@ -63,7 +63,7 @@ structure HyperfiniteWhiteNoise where
   /-- The underlying hyperfinite random walk -/
   walk : HyperfiniteWalk
   /-- The number of steps is infinite -/
-  numSteps_infinite : Infinite walk.numSteps
+  numSteps_infinite : Foundation.Hypernat.Infinite walk.numSteps
 
 namespace HyperfiniteWhiteNoise
 
@@ -104,9 +104,12 @@ theorem at_sq (k : ℕ) : (ξ.at' k)^2 = 1 / ξ.dt := by
 /-- dt is positive -/
 theorem dt_pos : 0 < ξ.dt := by
   have h1 : (0 : ℝ) < ξ.walk.totalTime := ξ.walk.totalTime_pos
-  have h2 : 0 < ξ.walk.numSteps := ξ.walk.numSteps_pos
+  -- From infinite hypernatural, we get positive value
+  have hinf := ξ.numSteps_infinite
+  rw [Foundation.Hypernat.infinite_iff_infinitePos] at hinf
+  have hpos : (0 : ℝ*) < ξ.walk.numSteps.val := hinf 0
   unfold dt HyperfiniteWalk.dt
-  exact div_pos (by exact_mod_cast h1) h2
+  exact div_pos (by exact_mod_cast h1) hpos
 
 /-- dt is nonzero -/
 theorem dt_ne_zero : ξ.dt ≠ 0 := ne_of_gt ξ.dt_pos
@@ -204,7 +207,7 @@ the standard stochastic integral.
 Key theorem (informal): For nice test functions φ,
   st(∫ ξ·φ dt) = ∫ φ dW (Itô integral)
 
-This requires probabilistic reasoning (Loeb measure) and is left as a sorry.
+This requires the full Loeb measure construction (see LoebMeasure.lean).
 -/
 
 /-- The hyperfinite white noise integral, for test function sequences -/

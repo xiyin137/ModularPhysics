@@ -179,30 +179,100 @@ noncomputable def standardIntegrand (walk : HyperfiniteWalk)
 noncomputable def integralSeq (walk : HyperfiniteWalk) (H : ℕ → ℝ) (n : ℕ) : ℝ :=
   ∑ k ∈ range n, H k * (if walk.coins.flips k = 1 then 1 else -1) * st walk.dx
 
-/-! ## Connection to Standard Itô Integral
+/-! ## Properties for Standard Indices
 
-The standard part of the hyperfinite integral should equal the Itô integral.
-This requires:
-1. The integrand H to be adapted and sufficiently regular
-2. Taking limits as the number of steps → ∞
-3. Using Loeb measure for the probability structure
-
-The key theorem (informal):
-  st(Σₖ Hₖ · ΔWₖ) = ∫₀ᵗ H dW  (Itô integral)
-
-A complete proof requires the Loeb measure machinery from LoebMeasure.lean.
+For standard (finite) step indices, the hyperfinite integral has simple properties.
 -/
 
-/-- Placeholder: Standard part of hyperfinite integral equals Itô integral.
+/-- For standard k, the hyperfinite stochastic integral is infinitesimal.
 
-    This would require:
-    - Loeb measure on the path space
-    - Adaptedness of the integrand
-    - L² bounds on H
-    - The standard part map on function spaces -/
-theorem st_hyperfinite_eq_ito (_walk : HyperfiniteWalk)
-    (_hN : Infinite _walk.numSteps) (_H : ℕ → ℝ) :
-    True := trivial
+    This is because the integral is a sum of k terms, each of the form H(i) * (±dx),
+    where dx is infinitesimal. The sum of finitely many infinitesimals is infinitesimal. -/
+theorem integral_infinitesimal_of_standard (walk : HyperfiniteWalk)
+    (hN : Infinite walk.numSteps) (H : ℕ → ℝ) (k : ℕ) :
+    let I := standardIntegrand walk hN H
+    Infinitesimal (I.integral k) := by
+  -- The integral is Σᵢ₌₀^{k-1} H(i) * flips(i) * dx
+  -- Each term is a standard real times an infinitesimal
+  have hdt_inf : Infinitesimal walk.dt := walk.dt_infinitesimal hN
+  have hdx_sq : walk.dx^2 = walk.dt := walk.dx_sq_eq_dt
+  have hdx_pos : 0 < walk.dx := walk.dx_pos
+  -- dx is infinitesimal: dx² = dt is infinitesimal and dx > 0
+  have hdx_inf : Infinitesimal walk.dx := by
+    rw [Infinitesimal, isSt_iff_abs_sub_lt_delta]
+    intro δ hδ
+    have hdt_lt : walk.dt < δ^2 := by
+      have hδ2_pos : (0 : ℝ) < δ^2 := sq_pos_of_pos hδ
+      exact lt_of_pos_of_infinitesimal hdt_inf (δ^2) hδ2_pos
+    have hδ_pos' : (0 : ℝ*) < (δ : ℝ*) := by exact_mod_cast hδ
+    calc |walk.dx - (0 : ℝ*)| = |walk.dx| := by rw [sub_zero]
+      _ = walk.dx := abs_of_pos hdx_pos
+      _ < (δ : ℝ*) := by
+          have h : walk.dx^2 < (δ : ℝ*)^2 := by rw [hdx_sq]; exact_mod_cast hdt_lt
+          -- From dx > 0, δ > 0, and dx² < δ², we get |dx| < |δ|, i.e., dx < δ
+          have habs : |walk.dx| < |(δ : ℝ*)| := sq_lt_sq.mp h
+          rwa [abs_of_pos hdx_pos, abs_of_pos hδ_pos'] at habs
+  -- Each term H(i) * flips(i) * dx is infinitesimal
+  unfold standardIntegrand HyperfiniteStochasticIntegral.integral
+    HyperfiniteStochasticIntegral.increment HyperfiniteStochasticIntegral.dx
+  -- Show that each term is infinitesimal
+  have hterm : ∀ i, Infinitesimal ((H i : ℝ*) * (walk.coins.flips i * walk.dx)) := by
+    intro i
+    -- flips i = ±1, so flips i * dx = ±dx is infinitesimal
+    have hflip_dx_inf : Infinitesimal (walk.coins.flips i * walk.dx) := by
+      rcases walk.coins.flips_pm_one i with h | h
+      · rw [h, one_mul]; exact hdx_inf
+      · rw [h, neg_one_mul]
+        exact hdx_inf.neg
+    -- (H i : ℝ*) * infinitesimal = infinitesimal
+    have hH_st : IsSt (H i : ℝ*) (H i) := isSt_refl_real (H i)
+    have h := hH_st.mul hflip_dx_inf
+    simp only [mul_zero] at h
+    exact h
+  -- Sum of k infinitesimals is infinitesimal
+  induction k with
+  | zero =>
+    simp only [range_zero, sum_empty]
+    exact infinitesimal_zero
+  | succ k ih =>
+    simp only at ih ⊢
+    rw [sum_range_succ]
+    exact ih.add (hterm k)
+
+/-- For standard k, the integral is not infinite (trivial consequence). -/
+theorem integral_not_infinite_of_standard (walk : HyperfiniteWalk)
+    (hN : Infinite walk.numSteps) (H : ℕ → ℝ) (k : ℕ) :
+    let I := standardIntegrand walk hN H
+    ¬Hyperreal.Infinite (I.integral k) :=
+  (integral_infinitesimal_of_standard walk hN H k).not_infinite
+
+/-! ## Connection to Standard Itô Integral
+
+The hyperfinite stochastic integral should equal the Itô integral after
+taking standard parts and limits. This requires:
+
+1. **Hypernatural step indices**: For times t > 0, the step index K = ⌊t/dt⌋
+   is hyperfinite (infinite), not a standard natural.
+
+2. **Loeb measure**: To make probabilistic statements about the integral,
+   we need the Loeb measure construction from LoebMeasure.lean.
+
+3. **L² bounds**: The integrand must be adapted and L²-bounded.
+
+The formal theorem connecting st(hyperfinite integral) to the Itô integral
+is a deep result (Anderson's theorem) that requires the full Loeb machinery.
+We do not attempt to state it here without proper foundations.
+
+**What we CAN prove without Loeb measure**:
+- For standard k, the integral is infinitesimal (proven above)
+- The Itô isometry holds exactly: Σ(H·ΔW)² = Σ H²·dt
+- Linearity and basic algebraic properties
+
+**What REQUIRES Loeb measure**:
+- Convergence of st(integral at K) to Itô integral ∫₀ᵗ H dW
+- Almost sure properties of paths
+- L² convergence statements
+-/
 
 /-! ## Simple Integrands
 

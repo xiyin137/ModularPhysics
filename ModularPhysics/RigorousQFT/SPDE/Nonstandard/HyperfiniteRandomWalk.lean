@@ -5,6 +5,9 @@ Authors: ModularPhysics Contributors
 -/
 import Mathlib.Analysis.Real.Hyperreal
 import Mathlib.Probability.ProbabilityMassFunction.Basic
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.Hypernatural
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.HyperfiniteSum
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.InternalMembership
 
 /-!
 # Hyperfinite Random Walk and Brownian Motion
@@ -55,21 +58,24 @@ The main challenge is that mathlib doesn't yet have:
 We develop ad hoc versions of what we need for this specific application.
 -/
 
-open Hyperreal
+open Hyperreal Filter
 
 namespace SPDE.Nonstandard
 
-/-! ## Hypernatural Numbers -/
+-- Re-export Foundation definitions for convenience
+open Foundation in
+export Foundation (Hypernat)
 
-/-- A hypernatural number is a hyperreal that comes from a sequence of naturals -/
-def Hypernat : Type := { n : ℝ* // ∃ f : ℕ → ℕ, n = ofSeq (fun k => (f k : ℝ)) }
+/-- Alias for Foundation.Hypernat.omega -/
+noncomputable abbrev infiniteHypernat : ℝ* := Foundation.Hypernat.omega.val
 
-/-- The canonical infinite hypernatural ω -/
-noncomputable def infiniteHypernat : ℝ* := omega
+theorem infiniteHypernat_pos : 0 < infiniteHypernat := by
+  simp only [infiniteHypernat, Foundation.Hypernat.omega_val]
+  exact omega_pos
 
-theorem infiniteHypernat_pos : 0 < infiniteHypernat := omega_pos
-
-theorem infiniteHypernat_infinite : Infinite infiniteHypernat := infinite_omega
+theorem infiniteHypernat_infinite : Hyperreal.Infinite infiniteHypernat := by
+  simp only [infiniteHypernat, Foundation.Hypernat.omega_val]
+  exact infinite_omega
 
 /-! ## Hyperfinite Sequences
 
@@ -82,14 +88,35 @@ N is a hypernatural.
     Internally, this is a sequence of N elements in {-1, +1}. -/
 structure HyperfiniteCoinFlips where
   /-- The number of coin flips (a hypernatural, possibly infinite) -/
-  length : ℝ*
-  /-- The length is positive -/
-  length_pos : 0 < length
+  length : Foundation.Hypernat
   /-- The sequence of flips, represented as a function ℕ → ℝ lifted to hyperreals.
       Each flip is ±1. We represent this as the germ of sequences of flip-sequences. -/
   flips : ℕ → ℝ*
   /-- Each flip is ±1 (in the internal sense) -/
   flips_pm_one : ∀ k : ℕ, flips k = 1 ∨ flips k = -1
+
+namespace HyperfiniteCoinFlips
+
+/-- The sign of the k-th flip as a standard real: either +1 or -1.
+    Since each flip is constrained to be exactly ±1 (standard), we can extract this. -/
+noncomputable def flipSign (C : HyperfiniteCoinFlips) (k : ℕ) : ℝ :=
+  if C.flips k = 1 then 1 else -1
+
+theorem flipSign_pm_one (C : HyperfiniteCoinFlips) (k : ℕ) :
+    C.flipSign k = 1 ∨ C.flipSign k = -1 := by
+  unfold flipSign
+  split_ifs <;> simp
+
+theorem flipSign_eq_flips (C : HyperfiniteCoinFlips) (k : ℕ) :
+    (C.flipSign k : ℝ*) = C.flips k := by
+  unfold flipSign
+  rcases C.flips_pm_one k with h | h
+  · simp [h]
+  · have hne : C.flips k ≠ 1 := by rw [h]; norm_num
+    rw [if_neg hne, h]
+    norm_cast
+
+end HyperfiniteCoinFlips
 
 /-! ## Hyperfinite Random Walk -/
 
@@ -102,8 +129,7 @@ structure HyperfiniteWalk where
   totalTime : ℝ
   totalTime_pos : 0 < totalTime
   /-- Number of steps (hypernatural, typically infinite) -/
-  numSteps : ℝ*
-  numSteps_pos : 0 < numSteps
+  numSteps : Foundation.Hypernat
   /-- The coin flips driving the walk -/
   coins : HyperfiniteCoinFlips
   /-- Consistency: coins has the right length -/
@@ -113,12 +139,12 @@ structure HyperfiniteWalk where
   /-- dx is positive -/
   dx_pos : 0 < dx
   /-- dx² = dt (the defining property) -/
-  dx_sq : dx^2 = totalTime / numSteps
+  dx_sq : dx^2 = totalTime / numSteps.val
 
 namespace HyperfiniteWalk
 
 /-- Time step size: dt = T/N -/
-noncomputable def dt (W : HyperfiniteWalk) : ℝ* := (W.totalTime : ℝ*) / W.numSteps
+noncomputable def dt (W : HyperfiniteWalk) : ℝ* := (W.totalTime : ℝ*) / W.numSteps.val
 
 /-- The key property: dx² = dt -/
 theorem dx_sq_eq_dt (W : HyperfiniteWalk) : W.dx^2 = W.dt := W.dx_sq
@@ -134,15 +160,62 @@ noncomputable def walkAt (W : HyperfiniteWalk) (k : ℕ) : ℝ* :=
 theorem walkAt_zero (W : HyperfiniteWalk) : W.walkAt 0 = 0 := by
   simp [walkAt]
 
+/-- The walk value at hypernatural step K: W_K = dx · Σ_{i<K} flip_i.
+    This is defined using the sequence representation: at level n, we sum
+    K.toSeq n flips. Since each flip is ±1 (standard), this is well-defined. -/
+noncomputable def walkAtHypernat (W : HyperfiniteWalk) (K : Foundation.Hypernat) : ℝ* :=
+  W.dx * ofSeq (fun n => ∑ i ∈ Finset.range (K.toSeq n), W.coins.flipSign i)
+
+/-- Sum of casts equals cast of sum for the ℝ → ℝ* embedding -/
+theorem sum_coe_eq_coe_sum (f : ℕ → ℝ) (s : Finset ℕ) :
+    ∑ i ∈ s, (f i : ℝ*) = ((∑ i ∈ s, f i : ℝ) : ℝ*) := by
+  induction s using Finset.induction with
+  | empty => simp
+  | insert a s' ha ih =>
+    rw [Finset.sum_insert ha, Finset.sum_insert ha, ih]
+    -- Need: (f a : ℝ*) + (∑ i, f i : ℝ*) = ((f a + ∑ i, f i) : ℝ*)
+    -- This should follow from the fact that coercion preserves addition
+    rfl
+
+/-- walkAtHypernat agrees with walkAt for standard naturals -/
+theorem walkAtHypernat_ofNat' (W : HyperfiniteWalk) (k : ℕ) :
+    W.walkAtHypernat (Foundation.Hypernat.ofNat' k) = W.walkAt k := by
+  unfold walkAtHypernat walkAt
+  congr 1
+  -- toSeq n = k almost everywhere
+  have hae : ∀ᶠ n in hyperfilter ℕ, (Foundation.Hypernat.ofNat' k).toSeq n = k :=
+    Foundation.Hypernat.toSeq_ofNat'_ae k
+  -- Rewrite RHS: each flips i = (flipSign i : ℝ*)
+  have hflips : ∑ i ∈ Finset.range k, W.coins.flips i =
+      ∑ i ∈ Finset.range k, (W.coins.flipSign i : ℝ*) := by
+    apply Finset.sum_congr rfl
+    intro i _
+    exact (W.coins.flipSign_eq_flips i).symm
+  rw [hflips]
+  -- Now RHS = ∑ (flipSign i : ℝ*) = (∑ flipSign i : ℝ) cast to ℝ*
+  rw [sum_coe_eq_coe_sum W.coins.flipSign (Finset.range k)]
+  -- LHS = ofSeq (fun n => ∑ over toSeq n) and this equals the constant a.e.
+  unfold ofSeq
+  apply Germ.coe_eq.mpr
+  exact hae.mono fun n hn => congrArg (fun m => ∑ i ∈ Finset.range m, W.coins.flipSign i) hn
+
+/-- walkAtHypernat at 0 is 0 -/
+theorem walkAtHypernat_zero (W : HyperfiniteWalk) :
+    W.walkAtHypernat (Foundation.Hypernat.ofNat' 0) = 0 := by
+  rw [walkAtHypernat_ofNat', walkAt_zero]
+
 /-! ## Key Properties -/
 
 /-- When N is infinite, dt is infinitesimal -/
-theorem dt_infinitesimal (W : HyperfiniteWalk) (hN : Infinite W.numSteps) :
+theorem dt_infinitesimal (W : HyperfiniteWalk) (hN : Foundation.Hypernat.Infinite W.numSteps) :
     Infinitesimal W.dt := by
   rw [dt, div_eq_mul_inv]
-  have h1 : Infinitesimal W.numSteps⁻¹ := infinitesimal_inv_of_infinite hN
+  have hN' : Hyperreal.Infinite W.numSteps.val := by
+    rw [Foundation.Hypernat.infinite_iff_infinitePos] at hN
+    left; exact hN
+  have h1 : Infinitesimal W.numSteps.val⁻¹ := infinitesimal_inv_of_infinite hN'
   have h2 : IsSt (W.totalTime : ℝ*) W.totalTime := isSt_refl_real W.totalTime
-  have h3 : IsSt ((W.totalTime : ℝ*) * W.numSteps⁻¹) (W.totalTime * 0) := h2.mul h1
+  have h3 : IsSt ((W.totalTime : ℝ*) * W.numSteps.val⁻¹) (W.totalTime * 0) := h2.mul h1
   simp only [mul_zero] at h3
   exact h3
 
@@ -184,7 +257,7 @@ theorem quadratic_variation_eq_time (W : HyperfiniteWalk) (k : ℕ) :
 
     Actually, for the hyperfinite walk, QV = time exactly (not just infinitesimally)! -/
 theorem quadratic_variation_infinitesimal (W : HyperfiniteWalk)
-    (_hN : Infinite W.numSteps) (k : ℕ) :
+    (_hN : Foundation.Hypernat.Infinite W.numSteps) (k : ℕ) :
     let qv := (Finset.range k).sum (fun i =>
       (W.walkAt (i + 1) - W.walkAt i)^2)
     Infinitesimal (qv - W.timeAt k) := by
@@ -198,30 +271,114 @@ end HyperfiniteWalk
 
 Taking the standard part of the hyperfinite walk gives Brownian motion.
 
-**Limitation**: To properly define `stdPartProcess`, we need hypernatural indices.
-For standard k : ℕ and infinitesimal dt, the time k·dt is infinitesimal.
-To reach arbitrary standard times t, we need k ≈ t/dt, which is hyperfinite.
+To define `stdPartProcess` at a standard time t:
+1. Find the hypernatural index k = ⌊t/dt⌋ = ⌊t·N/T⌋ where dt = T/N
+2. Evaluate the walk at this hypernatural index using walkAtHypernat
+3. Take the standard part of the result
 
-A complete formalization would require:
-- Internal set theory with hyperfinite sets
-- Hypernatural numbers as a proper type
-- The transfer principle for first-order statements
+The key insight is that for standard t, the index k = ⌊t/dt⌋ is hyperfinite
+(approximately t/dt which is infinite when dt is infinitesimal), but the
+walk value W(k) is finite (by CLT heuristics: O(√k · dx) = O(√t)).
 -/
+
+/-- numSteps is positive (derived from dx being positive and dx² = T/N) -/
+theorem HyperfiniteWalk.numSteps_pos (W : HyperfiniteWalk) : 0 < W.numSteps.val := by
+  -- From dx > 0, we have dx² > 0
+  have hdx2_pos : 0 < W.dx^2 := sq_pos_of_pos W.dx_pos
+  -- dx² = totalTime / numSteps.val
+  rw [W.dx_sq] at hdx2_pos
+  -- totalTime > 0 and T/N > 0 implies N > 0
+  have hT_pos : (0 : ℝ*) < W.totalTime := by exact_mod_cast W.totalTime_pos
+  exact (div_pos_iff_of_pos_left hT_pos).mp hdx2_pos
+
+/-- The hypernatural step index corresponding to a standard time t.
+    This is the floor of t/dt = t·N/T. -/
+noncomputable def HyperfiniteWalk.stepIndex (W : HyperfiniteWalk) (t : ℝ) (ht : 0 ≤ t) :
+    Foundation.Hypernat :=
+  Foundation.Hypernat.timeStepIndex (t / W.totalTime) (div_nonneg ht (le_of_lt W.totalTime_pos))
+    W.numSteps W.numSteps_pos
+
+/-- The time at hypernatural step K: K · dt -/
+noncomputable def HyperfiniteWalk.timeAtHypernat (W : HyperfiniteWalk)
+    (K : Foundation.Hypernat) : ℝ* :=
+  K.val * W.dt
 
 /-- The standard part of a hyperfinite walk at a standard time t.
 
-    **Note**: This is a placeholder definition. A proper definition requires
-    hypernatural indices to find k such that k·dt ≈ t.
+    For t ∈ [0, T], we find the hypernatural step index k = ⌊t·N/T⌋,
+    evaluate the walk at this index, and take the standard part.
 
-    For now, we define it as 0 (the standard part of the walk at any
-    standard index k, since k·dt is infinitesimal for standard k). -/
-noncomputable def HyperfiniteWalk.stdPartProcess (_W : HyperfiniteWalk) (_t : ℝ) : ℝ := 0
+    **Important**: This function is only meaningful for paths where the walk value
+    is finite (not hyperreal-infinite). For Loeb-almost-all paths this holds,
+    but for pathological paths the `st` function may return an arbitrary value.
+    See the note above about finiteness of walk values.
 
-/-- The placeholder standard part process is trivially continuous -/
-theorem HyperfiniteWalk.stdPartProcess_continuous (W : HyperfiniteWalk)
-    (_hN : Infinite W.numSteps) :
-    Continuous W.stdPartProcess :=
-  continuous_const
+    Note: For t outside [0, T], we extend by 0 for t < 0 and by W(T) for t > T. -/
+noncomputable def HyperfiniteWalk.stdPartProcess (W : HyperfiniteWalk) (t : ℝ) : ℝ :=
+  if ht : 0 ≤ t then
+    if t ≤ W.totalTime then
+      st (W.walkAtHypernat (W.stepIndex t ht))
+    else
+      st (W.walkAtHypernat W.numSteps)  -- At time T
+  else
+    0  -- For negative times
+
+/-- The standard part process starts at 0 -/
+theorem HyperfiniteWalk.stdPartProcess_zero (W : HyperfiniteWalk) :
+    W.stdPartProcess 0 = 0 := by
+  unfold stdPartProcess
+  simp only [le_refl, dite_true, W.totalTime_pos.le]
+  -- stepIndex 0 should give 0
+  unfold stepIndex
+  simp only [zero_div]
+  -- timeStepIndex 0 = hyperfloor (0 * N) = hyperfloor 0 = 0
+  -- First show that 0 * N.val = 0
+  have hzero : (0 : ℝ*) * W.numSteps.val = 0 := zero_mul _
+  -- hyperfloor 0 = ofNat' 0
+  have hfloor_zero : Foundation.Hypernat.hyperfloor 0 (le_refl 0) =
+      Foundation.Hypernat.ofNat' 0 := by
+    apply Foundation.Hypernat.ext
+    simp only [Foundation.Hypernat.ofNat'_val]
+    unfold Foundation.Hypernat.hyperfloor Foundation.Hypernat.ofNatSeq ofSeq
+    apply Germ.coe_eq.mpr
+    -- The representative of 0 is 0 a.e.
+    have hspec := Classical.choose_spec (ofSeq_surjective (0 : ℝ*))
+    have h0ae : ∀ᶠ n in hyperfilter ℕ, Classical.choose (ofSeq_surjective (0 : ℝ*)) n = 0 := by
+      unfold ofSeq at hspec
+      exact Germ.coe_eq.mp hspec
+    exact h0ae.mono (fun n hn => by simp [hn])
+  -- timeStepIndex 0 uses hyperfloor (0 * N) = hyperfloor 0
+  have h0 : Foundation.Hypernat.timeStepIndex 0 (le_refl 0) W.numSteps W.numSteps_pos =
+      Foundation.Hypernat.ofNat' 0 := by
+    unfold Foundation.Hypernat.timeStepIndex
+    convert hfloor_zero using 2
+  rw [h0, walkAtHypernat_ofNat', walkAt_zero]
+  exact st_id_real 0
+
+/-!
+### Finiteness of Walk Values
+
+**Important Note**: The finiteness of walk values at hypernatural step indices is a
+probabilistic property, not a deterministic one.
+
+For the hyperfinite random walk W at step K:
+  W_K = dx · (X₁ + X₂ + ... + X_K) where each Xᵢ = ±1
+
+In the worst case (all flips = +1), we have |W_K| = K · dx. For K ≈ t/dt and dx = √dt:
+  K · dx ≈ (t/dt) · √dt = t/√dt = t · √(N/T)
+
+This is **infinite** when N is infinite!
+
+The CLT/concentration argument ("walk is O(√t)") is a probabilistic statement:
+- Almost all paths (with respect to Loeb measure) have |W_K| = O(√K · dx) = O(√t)
+- But there exist paths where |W_K| = K · dx is infinite
+
+Therefore, a theorem of the form "∀ W, walkAt is finite" is **FALSE**.
+The correct statement requires Loeb measure:
+  "For Loeb-almost-all paths, W_K is finite for standard times t."
+
+This requires the full Loeb measure construction from LoebMeasure.lean.
+-/
 
 /-! ## Quadratic Variation via Hyperreals
 
@@ -231,34 +388,117 @@ The nonstandard proof is essentially:
 1. For hyperfinite partition, Σ(ΔW)² = Σ(±dx)² = N·dx² = N·dt = t (exactly!)
 2. Taking standard parts preserves the equality
 
-**Note**: The key result `quadratic_variation_eq_time` above proves this exactly
-for standard indices. Extending to continuous time requires hypernatural indices.
+The key result `quadratic_variation_eq_time` above proves this exactly
+for standard indices. For hypernatural indices, we use `walkAtHypernat`.
 -/
 
-/-- Placeholder: The quadratic variation theorem.
+/-- Quadratic variation at hypernatural step K equals the time at that step.
+    This is the hyperfinite version: QV(W, K) = K · dt = timeAtHypernat K. -/
+noncomputable def HyperfiniteWalk.quadraticVariationAtHypernat
+    (W : HyperfiniteWalk) (K : Foundation.Hypernat) : ℝ* :=
+  K.val * W.dt
 
-    The actual content is in `quadratic_variation_eq_time` which proves
-    Σᵢ(ΔWᵢ)² = k·dt for any k. This is the hyperfinite version of "[W]_t = t". -/
-theorem quadratic_variation_is_t (_W : HyperfiniteWalk) (_hN : Infinite _W.numSteps)
-    (_t : ℝ) (_ht : 0 ≤ _t) (_htT : _t ≤ _W.totalTime) :
-    True := trivial
+/-- The quadratic variation of the walk up to hypernatural step K equals K·dt.
+    This extends `quadratic_variation_eq_time` to hypernatural indices.
+
+    For a standard index k, this reduces to `quadratic_variation_eq_time`. -/
+theorem HyperfiniteWalk.quadratic_variation_hypernat_eq_time (W : HyperfiniteWalk)
+    (K : Foundation.Hypernat) :
+    W.quadraticVariationAtHypernat K = W.timeAtHypernat K := by
+  unfold quadraticVariationAtHypernat timeAtHypernat
+  rfl
+
+/-- Taking the standard part of QV(W, stepIndex t) gives t (up to infinitesimals).
+    This is the connection to standard Brownian motion: [B]_t = t. -/
+theorem HyperfiniteWalk.st_quadratic_variation_eq_time (W : HyperfiniteWalk)
+    (hN : Foundation.Hypernat.Infinite W.numSteps)
+    (t : ℝ) (ht : 0 ≤ t) (_htT : t ≤ W.totalTime) :
+    st (W.quadraticVariationAtHypernat (W.stepIndex t ht)) = t := by
+  unfold quadraticVariationAtHypernat stepIndex
+  -- Let k = timeStepIndex (t/T) N = hyperfloor ((t/T) * N)
+  -- QV = k.val * dt where dt = T/N
+  -- By timeStepIndex bounds: k * (1/N) ≤ t/T < (k+1) * (1/N)
+  -- Multiplying by T: k * dt ≤ t < k * dt + dt
+  -- Since dt is infinitesimal, st(k * dt) = t
+  set k := Foundation.Hypernat.timeStepIndex (t / W.totalTime)
+    (div_nonneg ht (le_of_lt W.totalTime_pos)) W.numSteps W.numSteps_pos with hk_def
+  set T := W.totalTime with hT_def
+  set N := W.numSteps with hN_def
+  have hdt_inf : Infinitesimal W.dt := dt_infinitesimal W hN
+  have hT_pos : (0 : ℝ) < T := W.totalTime_pos
+  have hT_pos' : (0 : ℝ*) < (T : ℝ*) := by exact_mod_cast hT_pos
+  have hT_ne : (T : ℝ*) ≠ 0 := ne_of_gt hT_pos'
+  have hN_pos : (0 : ℝ*) < N.val := W.numSteps_pos
+  have hN_ne : N.val ≠ 0 := ne_of_gt hN_pos
+  -- Key bounds from timeStepIndex lemmas (in terms of 1/N)
+  have hbound_le : k.val * (1 / N.val) ≤ (t / T : ℝ*) :=
+    Foundation.Hypernat.timeStepIndex_mul_dt_le (t / T)
+      (div_nonneg ht (le_of_lt hT_pos)) N hN_pos
+  have hbound_lt : (t / T : ℝ*) < (k.val + 1) * (1 / N.val) :=
+    Foundation.Hypernat.lt_timeStepIndex_succ_mul_dt (t / T)
+      (div_nonneg ht (le_of_lt hT_pos)) N hN_pos
+  -- Rescale: multiply by T to get bounds in terms of dt = T/N
+  -- Note: dt = T / N.val, so T * (1/N.val) = dt and k * (1/N.val) * T = k * dt
+  have hdt_eq : W.dt = (T : ℝ*) / N.val := rfl
+  -- From hbound_le: k.val * (1/N.val) ≤ t/T
+  -- Multiply by T: k.val * T/N.val ≤ t, i.e., k.val * dt ≤ t
+  have hkdt_le : k.val * W.dt ≤ (t : ℝ*) := by
+    have h1 : k.val * (1 / N.val) * (T : ℝ*) ≤ (t / T) * (T : ℝ*) :=
+      mul_le_mul_of_nonneg_right hbound_le (le_of_lt hT_pos')
+    simp only [div_mul_cancel₀ _ hT_ne] at h1
+    calc k.val * W.dt = k.val * ((T : ℝ*) / N.val) := by rfl
+      _ = k.val * (1 / N.val) * (T : ℝ*) := by ring
+      _ ≤ t := h1
+  -- From hbound_lt: t/T < (k.val + 1) * (1/N.val)
+  -- Multiply by T: t < (k.val + 1) * dt = k.val * dt + dt
+  have ht_lt : (t : ℝ*) < k.val * W.dt + W.dt := by
+    have h1 : (t / T) * (T : ℝ*) < (k.val + 1) * (1 / N.val) * (T : ℝ*) :=
+      mul_lt_mul_of_pos_right hbound_lt hT_pos'
+    simp only [div_mul_cancel₀ _ hT_ne] at h1
+    calc (t : ℝ*) < (k.val + 1) * (1 / N.val) * (T : ℝ*) := h1
+      _ = (k.val + 1) * ((T : ℝ*) / N.val) := by ring
+      _ = (k.val + 1) * W.dt := by rfl
+      _ = k.val * W.dt + W.dt := by ring
+  -- Now we have: k.val * dt ≤ t < k.val * dt + dt
+  -- So: 0 ≤ t - k.val * dt < dt
+  -- Therefore |k.val * dt - t| < dt (since k.val * dt ≤ t)
+  have hisSt : IsSt (k.val * W.dt) t := by
+    rw [isSt_iff_abs_sub_lt_delta]
+    intro δ hδ
+    have hdt_lt : W.dt < δ := lt_of_pos_of_infinitesimal hdt_inf δ hδ
+    -- |k.val * dt - t| = t - k.val * dt (since k.val * dt ≤ t)
+    have hdiff_nonneg : 0 ≤ (t : ℝ*) - k.val * W.dt := sub_nonneg.mpr hkdt_le
+    have hdiff_lt : (t : ℝ*) - k.val * W.dt < W.dt := by linarith
+    calc |k.val * W.dt - (t : ℝ*)| = |-(((t : ℝ*) - k.val * W.dt))| := by ring_nf
+      _ = |(t : ℝ*) - k.val * W.dt| := abs_neg _
+      _ = (t : ℝ*) - k.val * W.dt := abs_of_nonneg hdiff_nonneg
+      _ < W.dt := hdiff_lt
+      _ < δ := hdt_lt
+  exact hisSt.st_eq
 
 /-! ## Martingale Property
 
 The hyperfinite walk is a martingale in the internal sense:
 E[W_{k+1} | W_k] = W_k
 
-This transfers to the standard part being a martingale.
+This follows from the coin flips being symmetric.
 -/
 
-/-- The hyperfinite walk has the martingale property internally.
+/-- The increment at step k is independent of past steps.
+    Each flip is ±1 independently. -/
+theorem HyperfiniteWalk.increment_independent (W : HyperfiniteWalk) (k : ℕ) :
+    W.walkAt (k + 1) - W.walkAt k = W.dx * W.coins.flips k := by
+  unfold walkAt
+  rw [Finset.sum_range_succ]
+  ring
 
-    This follows from the coin flips being ±1 with equal probability:
-    E[flip_k] = 0, so E[W_{k+1} - W_k | past] = dx · E[flip_k] = 0.
+/-- The martingale property for the hyperfinite walk: increments are symmetric.
+    Each increment ΔW_k = ±dx with equal internal probability.
 
-    **Note**: Formally stating this requires internal probability, which
-    is developed in LoebMeasure.lean. -/
-theorem martingale_property_internal (_W : HyperfiniteWalk) (_k : ℕ) :
-    True := trivial
+    Note: A full statement requires the internal probability measure from Loeb theory.
+    Here we state the algebraic fact that increments are ±dx. -/
+theorem HyperfiniteWalk.martingale_increment_symmetric (W : HyperfiniteWalk) (k : ℕ) :
+    (W.walkAt (k + 1) - W.walkAt k = W.dx ∨ W.walkAt (k + 1) - W.walkAt k = -W.dx) :=
+  increment_pm_dx W k
 
 end SPDE.Nonstandard

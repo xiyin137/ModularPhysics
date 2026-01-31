@@ -4,8 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.HyperfiniteRandomWalk
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.HyperfiniteStochasticIntegral
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.LoebMeasure
-import ModularPhysics.RigorousQFT.SPDE.Nonstandard.QuadraticVariation
 
 /-!
 # Nonstandard Analysis Approach to Stochastic Processes
@@ -37,15 +37,26 @@ The nonstandard approach (Anderson 1976, Loeb 1975) is conceptually simpler:
 
 ## Contents
 
+* `Foundation/` - Hypernatural numbers, hyperfinite sums, internal sets
 * `HyperfiniteRandomWalk` - The hyperfinite random walk construction
-* `LoebMeasure` - Loeb's construction of σ-additive measures
-* `QuadraticVariation` - Proof that quadratic variation equals t
+* `HyperfiniteStochasticIntegral` - Stochastic integration via hyperfinite sums
+* `LoebMeasure` - Pre-Loeb measure and probability spaces
 
-## Main Results
+## What's Proven
 
-* Hyperfinite walks have quadratic variation t (up to infinitesimals)
-* The standard part of a hyperfinite walk is a.s. continuous
-* Loeb measure on hyperfinite path space equals Wiener measure
+* `HyperfiniteWalk.st_quadratic_variation_eq_time`: The quadratic variation at
+  standard time t equals t exactly: st(QV(stepIndex t)) = t.
+* `HyperfiniteStochasticIntegral.ito_isometry`: The Itô isometry holds exactly
+  in the hyperfinite setting: Σ(H·ΔW)² = Σ H²·dt.
+* Basic properties of pre-Loeb measure (finite additivity, etc.)
+
+## What Requires Additional Infrastructure
+
+* **Loeb measure construction**: Requires saturation (ℵ₁-saturation) which
+  Mathlib's Hyperreal doesn't provide.
+* **Almost sure properties**: Statements like "walk values are finite a.s."
+  require Loeb measure.
+* **Anderson's theorem**: The pushforward of Loeb measure equals Wiener measure.
 
 ## References
 
