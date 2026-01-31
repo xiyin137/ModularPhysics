@@ -37,7 +37,7 @@ The nonstandard approach (Anderson 1976, Loeb 1975) is conceptually simpler:
 
 ## Contents
 
-* `Foundation/` - Hypernatural numbers, hyperfinite sums, internal sets
+* `Foundation/` - Hypernatural numbers, hyperfinite sums, internal sets, saturation
 * `HyperfiniteRandomWalk` - The hyperfinite random walk construction
 * `HyperfiniteStochasticIntegral` - Stochastic integration via hyperfinite sums
 * `LoebMeasure` - Pre-Loeb measure and probability spaces
@@ -49,13 +49,19 @@ The nonstandard approach (Anderson 1976, Loeb 1975) is conceptually simpler:
 * `HyperfiniteStochasticIntegral.ito_isometry`: The Itô isometry holds exactly
   in the hyperfinite setting: Σ(H·ΔW)² = Σ H²·dt.
 * Basic properties of pre-Loeb measure (finite additivity, etc.)
+* `Foundation.Saturation.countable_saturation_standard`: ℵ₁-saturation for
+  countable families of internal sets with standard FIP.
 
-## What Requires Additional Infrastructure
+## What's Now Available
 
-* **Loeb measure construction**: Requires saturation (ℵ₁-saturation) which
-  Mathlib's Hyperreal doesn't provide.
+* **Saturation (ℵ₁-saturation)**: The saturation theorem is in
+  `Foundation.Saturation`. This enables σ-additivity proofs for Loeb measure.
+
+## What Still Requires Work
+
+* **Full Loeb measure**: Carathéodory extension for the σ-algebra.
 * **Almost sure properties**: Statements like "walk values are finite a.s."
-  require Loeb measure.
+  require the full Loeb measure construction.
 * **Anderson's theorem**: The pushforward of Loeb measure equals Wiener measure.
 
 ## References

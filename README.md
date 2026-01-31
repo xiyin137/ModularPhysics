@@ -47,6 +47,9 @@ ModularPhysics/
 │   │   ├── EKMS/
 │   │   ├── Examples/
 │   │   └── Nonstandard/
+│   │       ├── Foundation/
+│   │       ├── Anderson/
+│   │       └── LoebMeasure/
 │   ├── vNA/
 │   │   ├── MeasureTheory/
 │   │   ├── Spectral/
