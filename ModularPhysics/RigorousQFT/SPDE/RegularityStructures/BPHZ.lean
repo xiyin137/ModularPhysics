@@ -60,8 +60,9 @@ choosing the right element g ∈ G such that Π^g has finite limits.
 structure RenormGroupElement (d : ℕ) where
   /-- The linear map M : T → T -/
   M : TreeSymbol d → FormalSum d
-  /-- Triangularity: M τ = τ + lower order terms -/
-  triangular : ∀ τ : TreeSymbol d, True  -- Leading term is τ itself
+  /-- Triangularity: The coefficient of τ in M(τ) is 1.
+      This means M(τ) = τ + (lower order terms). -/
+  triangular : ∀ τ : TreeSymbol d, (M τ).coeff τ = 1
 
 namespace RenormGroupElement
 
@@ -70,14 +71,19 @@ variable {d : ℕ}
 /-- The identity element -/
 def one : RenormGroupElement d where
   M := fun τ => FormalSum.single τ
-  triangular := fun _ => trivial
+  triangular := fun τ => FormalSum.coeff_single_self τ
 
 /-- Composition of renormalization group elements.
     (g * h).M(τ) = g.M applied linearly to h.M(τ)
     If h.M(τ) = Σᵢ cᵢ σᵢ, then (g * h).M(τ) = Σᵢ cᵢ · g.M(σᵢ) -/
 noncomputable def mul (g h : RenormGroupElement d) : RenormGroupElement d where
   M := fun τ => FormalSum.bind (h.M τ) g.M
-  triangular := fun _ => trivial
+  triangular := fun τ => by
+    -- Need: (bind (h.M τ) g.M).coeff τ = 1
+    -- h.M τ has coeff 1 at τ, and g.M τ has coeff 1 at τ
+    -- The bind picks out the τ-component from h and applies g, giving coeff 1
+    -- Full proof requires lemmas about coeff and bind interaction
+    sorry
 
 /-- The lower-order part of a renormalization group element.
     If M(τ) = τ + L(τ), returns L(τ). -/
@@ -104,7 +110,12 @@ noncomputable def inv (g : RenormGroupElement d) : RenormGroupElement d where
       (fun acc n =>
         acc + (if n % 2 = 0 then (1 : ℝ) else (-1 : ℝ)) • lowerOrderPower g n τ)
       FormalSum.zero
-  triangular := fun _ => trivial
+  triangular := fun τ => by
+    -- The n=0 term is L^0(τ) = single τ with coefficient 1
+    -- Higher n terms: L^n(τ) for n ≥ 1 has coeff 0 at τ (L lowers homogeneity)
+    -- So total coeff at τ is 1*1 = 1
+    -- Full proof requires lemmas about coeff, smul, foldl interaction
+    sorry
 
 instance : One (RenormGroupElement d) := ⟨one⟩
 noncomputable instance : Mul (RenormGroupElement d) := ⟨mul⟩
@@ -241,8 +252,19 @@ variable {d : ℕ} {params : ModelParameters d}
 /-- The renormalization element in G induced by the BPHZ character.
     This element g ∈ G is defined by M_g τ = τ + g(τ) · 1 -/
 noncomputable def toGroupElement (char : BPHZCharacter d params) : RenormGroupElement d where
-  M := fun τ => FormalSum.add (FormalSum.single τ) (FormalSum.smul (char.g τ) (FormalSum.single .one))
-  triangular := fun _ => trivial
+  M := fun τ => FormalSum.single τ + (char.g τ) • FormalSum.single .one
+  triangular := fun τ => by
+    -- coeff τ (single τ + g(τ) • single 1) = coeff τ (single τ) + coeff τ (g(τ) • single 1)
+    rw [FormalSum.coeff_add, FormalSum.coeff_smul, FormalSum.coeff_single_self]
+    -- = 1 + g(τ) * coeff τ (single 1)
+    by_cases hτ : τ = .one
+    · -- τ = 1: coeff 1 (single 1) = 1, but char.g 1 = 0
+      subst hτ
+      rw [FormalSum.coeff_single_self, char.unit_zero]
+      ring
+    · -- τ ≠ 1: coeff τ (single 1) = 0
+      rw [FormalSum.coeff_single_ne .one τ hτ]
+      ring
 
 end BPHZCharacter
 

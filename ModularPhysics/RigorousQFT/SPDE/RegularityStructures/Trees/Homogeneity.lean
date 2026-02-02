@@ -167,6 +167,79 @@ theorem zero_add (f : FormalSum d) : 0 + f = f := by
   show FormalSum.add zero f = f
   simp only [add, zero, List.nil_append]
 
+/-- Coefficient of τ in single τ is 1 -/
+theorem coeff_single_self (τ : TreeSymbol d) : (single τ).coeff τ = 1 := by
+  simp only [coeff, single, List.foldl_cons, List.foldl_nil, ite_true]
+  ring
+
+/-- Coefficient of σ in single τ is 0 when σ ≠ τ -/
+theorem coeff_single_ne (τ σ : TreeSymbol d) (h : σ ≠ τ) : (single τ).coeff σ = 0 := by
+  simp only [coeff, single, List.foldl_cons, List.foldl_nil, h.symm, ite_false]
+
+/-- Helper: foldl with conditional add is additive over append -/
+private theorem coeff_foldl_append (l₁ l₂ : List (ℝ × TreeSymbol d)) (τ : TreeSymbol d) (init : ℝ) :
+    List.foldl (fun acc (c, σ) => if σ = τ then acc + c else acc) init (l₁ ++ l₂) =
+    List.foldl (fun acc (c, σ) => if σ = τ then acc + c else acc)
+      (List.foldl (fun acc (c, σ) => if σ = τ then acc + c else acc) init l₁) l₂ := by
+  rw [List.foldl_append]
+
+/-- Helper: foldl for coeff starting from x equals x + foldl starting from 0 -/
+private theorem coeff_foldl_shift (l : List (ℝ × TreeSymbol d)) (τ : TreeSymbol d) (x : ℝ) :
+    List.foldl (fun acc (c, σ) => if σ = τ then acc + c else acc) x l =
+    x + List.foldl (fun acc (c, σ) => if σ = τ then acc + c else acc) 0 l := by
+  induction l generalizing x with
+  | nil => simp [List.foldl_nil]
+  | cons h t ih =>
+    simp only [List.foldl_cons]
+    by_cases hσ : h.2 = τ
+    · simp only [hσ, ite_true]
+      rw [ih (x + h.1), ih (0 + h.1)]
+      ring
+    · simp only [hσ, ite_false]
+      exact ih x
+
+/-- Coefficient distributes over addition -/
+theorem coeff_add (f g : FormalSum d) (τ : TreeSymbol d) :
+    (f + g).coeff τ = f.coeff τ + g.coeff τ := by
+  unfold coeff
+  show List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0
+         (FormalSum.add f g).terms =
+       List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0 f.terms +
+       List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0 g.terms
+  simp only [FormalSum.add, List.foldl_append]
+  rw [coeff_foldl_shift]
+
+/-- Helper: coeff of smul via map scales the foldl result -/
+private theorem coeff_smul_foldl (c : ℝ) (l : List (ℝ × TreeSymbol d)) (τ : TreeSymbol d) :
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0
+      (l.map (fun (a, σ) => (c * a, σ))) =
+    c * List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0 l := by
+  induction l with
+  | nil => simp [List.foldl_nil, List.map_nil]
+  | cons h t ih =>
+    simp only [List.map_cons, List.foldl_cons]
+    by_cases hσ : h.2 = τ
+    · simp only [hσ, ite_true]
+      -- Goal: foldl ... (0 + c * h.1) (map ...) = c * foldl ... (0 + h.1) t
+      conv_lhs => rw [show (0 : ℝ) + c * h.1 = c * h.1 by ring]
+      conv_rhs => rw [show (0 : ℝ) + h.1 = h.1 by ring]
+      rw [coeff_foldl_shift (t.map _) τ (c * h.1)]
+      rw [coeff_foldl_shift t τ h.1]
+      rw [ih]
+      ring
+    · simp only [hσ, ite_false]
+      exact ih
+
+/-- Coefficient of scalar multiple -/
+theorem coeff_smul (c : ℝ) (f : FormalSum d) (τ : TreeSymbol d) :
+    (c • f).coeff τ = c * f.coeff τ := by
+  unfold coeff
+  show List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0
+         (FormalSum.smul c f).terms =
+       c * List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0 f.terms
+  simp only [FormalSum.smul]
+  exact coeff_smul_foldl c f.terms τ
+
 /-- Single is mapped correctly by bind -/
 theorem bind_single (τ : TreeSymbol d) (g : TreeSymbol d → FormalSum d) :
     bind (single τ) g = g τ := by
