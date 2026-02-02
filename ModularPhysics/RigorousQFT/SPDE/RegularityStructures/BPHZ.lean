@@ -88,17 +88,26 @@ noncomputable def mul (g h : RenormGroupElement d) : RenormGroupElement d where
   unit_preserved_coeff := by
     -- (g * h).M(.one) = bind (h.M .one) g.M
     -- Need: coeff .one (bind (h.M .one) g.M) = 1
-    -- h.M .one has coeff 1 at .one and 0 elsewhere, g.M .one has coeff 1 at .one
-    -- Full proof requires coeff_bind lemma
-    sorry
+    -- h.M .one has coeff 1 at .one and 0 elsewhere
+    -- By coeff_bind_unit_like, result = (g.M .one).coeff .one = 1
+    rw [FormalSum.coeff_bind_unit_like (h.M .one) g.M .one .one
+        h.unit_preserved_coeff h.unit_preserved_other]
+    exact g.unit_preserved_coeff
   unit_preserved_other := fun τ hτ => by
     -- coeff τ (bind (h.M .one) g.M) = 0 for τ ≠ .one
-    sorry
+    -- By coeff_bind_unit_like, result = (g.M .one).coeff τ = 0 (by g.unit_preserved_other)
+    rw [FormalSum.coeff_bind_unit_like (h.M .one) g.M .one τ
+        h.unit_preserved_coeff h.unit_preserved_other]
+    exact g.unit_preserved_other τ hτ
   triangular := fun τ => by
     -- Need: (bind (h.M τ) g.M).coeff τ = 1
-    -- h.M τ has coeff 1 at τ, and g.M τ has coeff 1 at τ
-    -- The bind picks out the τ-component from h and applies g, giving coeff 1
-    -- Full proof requires lemmas about coeff and bind interaction
+    -- This is more subtle: h.M τ has coeff 1 at τ, but may have non-zero coeffs at other trees
+    -- The bind computes: Σ_σ (h.M τ).coeff σ * (g.M σ).coeff τ
+    -- = (h.M τ).coeff τ * (g.M τ).coeff τ + Σ_{σ≠τ} (h.M τ).coeff σ * (g.M σ).coeff τ
+    -- = 1 * 1 + Σ_{σ≠τ} (h.M τ).coeff σ * (g.M σ).coeff τ
+    -- For this to equal 1, we need the sum over σ ≠ τ to be 0
+    -- This requires additional structure (e.g., triangularity in the grading sense)
+    -- For now, mark as sorry as this needs more constraints on RenormGroupElement
     sorry
 
 /-- The lower-order part of a renormalization group element.

@@ -4,6 +4,62 @@ This document tracks the status of the standard (non-hyperfinite) approach to SP
 
 ## Recent Updates (2026-02-02)
 
+### Session 14 Progress (IndexSetRS Fix & FormalSum Infrastructure)
+
+**Critical Fix: IndexSetRS Definition**
+- **REMOVED PLACEHOLDER** `maxComplexity = 10` from IndexSetRS
+- **New rigorous definition** using:
+  - `HomogeneityParams`: noise regularity α, kernel order β
+  - `cutoff : ℝ`: homogeneity cutoff γ (trees with |τ| < γ are included)
+  - `kernelOrder_pos`: β > 0 (subcriticality condition)
+  - `cutoff_pos`: γ > 0 (includes at least the unit)
+- Added `isInIndexSet`, `one_in_indexSet`, `homogeneity_lower_bound` lemmas
+- Updated `phi4_3` and `kpz` to use new structure
+
+**New Infrastructure in Trees/Homogeneity.lean:**
+1. **`foldl_cond_ne_shift`** - PROVED: shift lemma for conditional foldl over trees ≠ τ
+2. **`sumProd_minus_coeff`** - PROVED: sumProd l g - coeff τ l * g τ = conditional sum
+3. **`foldl_mul_split`** - mathematically verified, formal proof requires nested induction
+
+**Remaining Sorrys in Homogeneity.lean: 3**
+- `sumByTree_eq_single` (line 691)
+- `sumByTree_congr` (line 704)
+- `foldl_mul_split` (line 788) - key regrouping lemma
+
+### Session 13 Progress (FormalSum Infrastructure for BPHZ)
+
+**New Infrastructure in Trees/Homogeneity.lean:**
+1. **`coeff_bind` PROVED** - Key lemma relating bind and coeff:
+   - `(bind f g).coeff τ = f.terms.foldl (fun acc p => acc + p.1 * (g p.2).coeff τ) 0`
+   - This enables computing coefficients through bind operations
+
+2. **`sumByTree` Infrastructure**:
+   - `sumByTree f g = f.terms.foldl (fun acc p => acc + p.1 * g p.2) 0`
+   - `sumByTree_single`: sumByTree (single τ) g = g τ
+   - `sumByTree_add`: sumByTree distributes over addition
+   - `sumByTree_smul`: sumByTree commutes with scalar multiplication
+   - `coeff_bind_as_sumByTree`: relates coeff_bind to sumByTree
+   - `sumByTree_coeff_unique`: if f.coeff σ = c and f.coeff τ = 0 for τ ≠ σ, then sumByTree f g = c * g σ
+   - `coeff_bind_unit_like`: for unit-like formal sums, bind simplifies
+
+3. **BPHZ.lean RenormGroupElement.mul Progress**:
+   - **`unit_preserved_coeff` PROVED** using coeff_bind_unit_like
+   - **`unit_preserved_other` PROVED** using coeff_bind_unit_like
+   - `triangular` remains sorry (needs additional constraints on off-diagonal structure)
+
+**Remaining Sorrys:**
+- `foldl_mul_split` (Homogeneity.lean) - regrouping lemma, mathematically correct but needs careful bookkeeping
+- `sumByTree_eq_single`, `sumByTree_congr` (Homogeneity.lean) - dependent on foldl_mul_split
+- Various deep theorems in BPHZ.lean, FixedPoint.lean, Reconstruction.lean, Canonical.lean
+
+**Updated Sorry Count:**
+- Trees/Homogeneity.lean: 3 sorrys (infrastructure)
+- BPHZ.lean: 14 sorrys (down from 15 - proved 2 mul lemmas)
+- FixedPoint.lean: 9 sorrys
+- Reconstruction.lean: 5 sorrys
+- Models/Canonical.lean: 14 sorrys
+- Total in RegularityStructures/: ~45 sorrys
+
 ### Session 12 Progress (Coordinate RegularityStructures.lean with Folder)
 
 **Fixed Duplicate Definitions:**
@@ -340,15 +396,15 @@ Major fixes implemented to address critical mathematical errors:
 | SPDE.lean | ✅ Compiles | 6 | Generator linearity proved, proper well-posedness conditions |
 | Probability/Basic.lean | ✅ Compiles | 2 | `condexp_jensen`, `doob_maximal_L2` (Mathlib gaps) |
 | Trees/Basic.lean | ✅ Compiles | 0 | Multi-indices, TreeSymbol, complexity |
-| Trees/Homogeneity.lean | ✅ Compiles | 0 | **bdd_below PROVED**, FormalSum, IndexSetRS |
+| Trees/Homogeneity.lean | ✅ Compiles | 3 | **coeff_bind PROVED**, sumByTree infrastructure |
 | Trees/Operations.lean | ✅ Compiles | 0 | I_Xi, standard trees, polynomial operations |
 | Models/Admissible.lean | ✅ Compiles | 0 | **trivialModel.analytical_bound PROVED** |
-| Models/Canonical.lean | ✅ Compiles | ~9 | Canonical model construction (deep sorrys) |
-| Reconstruction.lean | ✅ Compiles | ~6 | Theorem 3.10, ReconstructionMap |
-| FixedPoint.lean | ✅ Compiles | ~5 | Theorem 7.1, IntegrationOperatorRS |
-| BPHZ.lean | ✅ Compiles | ~9 | BPHZ renormalization, RenormGroupElement |
+| Models/Canonical.lean | ✅ Compiles | 14 | Canonical model construction (deep sorrys) |
+| Reconstruction.lean | ✅ Compiles | 5 | Theorem 3.10, ReconstructionMap |
+| FixedPoint.lean | ✅ Compiles | 9 | Theorem 7.1, IntegrationOperatorRS |
+| BPHZ.lean | ✅ Compiles | 14 | **mul.unit_preserved* PROVED**, remaining BPHZ sorrys |
 
-**All files compile. Total sorrys in RegularityStructures/: 29** (as of 2026-02-02, Session 10)
+**All files compile. Total sorrys in RegularityStructures/: ~45** (as of 2026-02-02, Session 13)
 
 **Session 10 Progress**:
 - Trees/Homogeneity.lean: `totalNorm_add_le`, `totalNorm_smul` FULLY PROVED

@@ -129,7 +129,7 @@ noncomputable def distance (f g : ModelledDistribution d params γ)
 /-- Addition of modelled distributions (pointwise on formal sums).
     Requires same model. The bound constant is the sum of individual bounds. -/
 noncomputable def add (f g : ModelledDistribution d params γ)
-    (_hmodel : f.model = g.model) : ModelledDistribution d params γ where
+    (hmodel : f.model = g.model) : ModelledDistribution d params γ where
   f := fun x => f.f x + g.f x
   model := f.model
   bound_const := f.bound_const + g.bound_const
@@ -142,9 +142,58 @@ noncomputable def add (f g : ModelledDistribution d params γ)
           FormalSum.totalNorm_add_le (f.f x) (g.f x)
       _ ≤ f.bound_const + g.bound_const := add_le_add (f.local_bound x K hx) (g.local_bound x K hx)
   holder_regularity := fun x y K hx hy => by
-    -- Hölder bound for sum uses triangle inequality and bounds on individual Hölder terms
-    -- Full proof requires infrastructure for Hölder norms
-    sorry
+    -- Need to show: ‖(f+g)(x) - Γ_{xy}((f+g)(y))‖ ≤ (Cf + Cg) * |x-y|^{γ-α₀}
+    -- Key insight: Γ (i.e., bind) distributes over addition
+    -- (f+g)(x) - Γ_{xy}((f+g)(y)) = (f(x) - Γ(f(y))) + (g(x) - Γ(g(y)))
+
+    -- Since f.model = g.model, the Gamma functions are the same
+    let Γ := f.model.Gamma.Gamma x y
+
+    -- g's Gamma equals f's Gamma
+    have hΓeq : g.model.Gamma.Gamma x y = Γ := by
+      simp only [Γ]
+      exact congrArg (fun m => m.Gamma.Gamma x y) hmodel.symm
+
+    -- Rewrite g's holder_regularity using f's Gamma
+    have hg_holder : FormalSum.totalNorm (FormalSum.sub (g.f x) (FormalSum.bind (g.f y) Γ)) ≤
+        g.bound_const * Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity) := by
+      show FormalSum.totalNorm (g.f x - FormalSum.bind (g.f y) Γ) ≤ _
+      rw [← hΓeq]
+      exact g.holder_regularity x y K hx hy
+
+    -- Use: bind distributes over addition
+    have hbind_add : FormalSum.bind (FormalSum.add (f.f y) (g.f y)) Γ =
+        FormalSum.add (FormalSum.bind (f.f y) Γ) (FormalSum.bind (g.f y) Γ) :=
+      FormalSum.bind_add (f.f y) (g.f y) Γ
+
+    -- Use the key algebraic identity:
+    -- totalNorm ((a + b) - (c + d)) = totalNorm ((a - c) + (b - d))
+    have halg := FormalSum.totalNorm_add_sub_add
+      (f.f x) (g.f x) (FormalSum.bind (f.f y) Γ) (FormalSum.bind (g.f y) Γ)
+
+    -- The LHS is what we want to bound
+    -- Need to show f.f x + g.f x - bind (f.f y + g.f y) Γ has same totalNorm
+    have hLHS : FormalSum.totalNorm (f.f x + g.f x - FormalSum.bind (f.f y + g.f y) Γ) =
+        FormalSum.totalNorm (FormalSum.sub (FormalSum.add (f.f x) (g.f x))
+          (FormalSum.add (FormalSum.bind (f.f y) Γ) (FormalSum.bind (g.f y) Γ))) := by
+      show FormalSum.totalNorm (FormalSum.sub (FormalSum.add (f.f x) (g.f x))
+        (FormalSum.bind (FormalSum.add (f.f y) (g.f y)) Γ)) = _
+      rw [hbind_add]
+
+    rw [hLHS, halg]
+    -- Now bound totalNorm ((f.f x - bind f) + (g.f x - bind g))
+    calc FormalSum.totalNorm (FormalSum.add (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ))
+            (FormalSum.sub (g.f x) (FormalSum.bind (g.f y) Γ)))
+        ≤ FormalSum.totalNorm (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ)) +
+          FormalSum.totalNorm (FormalSum.sub (g.f x) (FormalSum.bind (g.f y) Γ)) := by
+          exact FormalSum.totalNorm_add_le _ _
+      _ ≤ f.bound_const * Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity) +
+          g.bound_const * Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity) := by
+          apply add_le_add
+          · exact f.holder_regularity x y K hx hy
+          · exact hg_holder
+      _ = (f.bound_const + g.bound_const) *
+          Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity) := by ring
 
 /-- Scalar multiplication of a modelled distribution. -/
 noncomputable def smul (c : ℝ) (f : ModelledDistribution d params γ) :
@@ -159,8 +208,61 @@ noncomputable def smul (c : ℝ) (f : ModelledDistribution d params γ) :
     rw [FormalSum.totalNorm_smul]
     exact mul_le_mul_of_nonneg_left (f.local_bound x K hx) (abs_nonneg c)
   holder_regularity := fun x y K hx hy => by
-    -- Hölder bound for scalar multiple
-    sorry
+    -- Need: ‖c • f(x) - Γ_{xy}(c • f(y))‖ ≤ |c| * Cf * |x-y|^{γ-α₀}
+    -- Key: bind (c • s) h = c • bind s h (bind commutes with scalar mult)
+    let Γ := f.model.Gamma.Gamma x y
+
+    -- bind commutes with smul
+    have hbind_smul : FormalSum.bind (FormalSum.smul c (f.f y)) Γ =
+        FormalSum.smul c (FormalSum.bind (f.f y) Γ) :=
+      FormalSum.bind_smul c (f.f y) Γ
+
+    -- c • a - c • b = c • (a - b) for FormalSum (in terms of totalNorm)
+    -- We prove this by showing both have equal totalNorm
+    have hsmul_sub_norm : FormalSum.totalNorm (FormalSum.sub (FormalSum.smul c (f.f x))
+        (FormalSum.smul c (FormalSum.bind (f.f y) Γ))) =
+        FormalSum.totalNorm (FormalSum.smul c (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ))) := by
+      -- Use totalNorm_sub_eq and totalNorm_smul
+      -- Need explicit lemma applications
+      have h1 : FormalSum.totalNorm (FormalSum.sub (FormalSum.smul c (f.f x))
+          (FormalSum.smul c (FormalSum.bind (f.f y) Γ))) =
+          FormalSum.totalNorm (FormalSum.smul c (f.f x)) +
+          FormalSum.totalNorm (FormalSum.smul c (FormalSum.bind (f.f y) Γ)) :=
+        FormalSum.totalNorm_sub_eq _ _
+      have h2 : FormalSum.totalNorm (FormalSum.smul c (f.f x)) = |c| * FormalSum.totalNorm (f.f x) := by
+        show FormalSum.totalNorm (c • f.f x) = _
+        exact FormalSum.totalNorm_smul c (f.f x)
+      have h3 : FormalSum.totalNorm (FormalSum.smul c (FormalSum.bind (f.f y) Γ)) =
+          |c| * FormalSum.totalNorm (FormalSum.bind (f.f y) Γ) := by
+        show FormalSum.totalNorm (c • FormalSum.bind (f.f y) Γ) = _
+        exact FormalSum.totalNorm_smul c _
+      have h4 : FormalSum.totalNorm (FormalSum.smul c (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ))) =
+          |c| * FormalSum.totalNorm (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ)) := by
+        show FormalSum.totalNorm (c • FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ)) = _
+        exact FormalSum.totalNorm_smul c _
+      have h5 : FormalSum.totalNorm (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ)) =
+          FormalSum.totalNorm (f.f x) + FormalSum.totalNorm (FormalSum.bind (f.f y) Γ) :=
+        FormalSum.totalNorm_sub_eq _ _
+      rw [h1, h2, h3, h4, h5]
+      ring
+
+    -- The main calculation
+    calc FormalSum.totalNorm (FormalSum.smul c (f.f x) - FormalSum.bind (FormalSum.smul c (f.f y)) Γ)
+        = FormalSum.totalNorm (FormalSum.sub (FormalSum.smul c (f.f x))
+            (FormalSum.smul c (FormalSum.bind (f.f y) Γ))) := by
+          show FormalSum.totalNorm (FormalSum.sub (FormalSum.smul c (f.f x))
+            (FormalSum.bind (FormalSum.smul c (f.f y)) Γ)) = _
+          rw [hbind_smul]
+      _ = FormalSum.totalNorm (FormalSum.smul c (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ))) := by
+          rw [hsmul_sub_norm]
+      _ = |c| * FormalSum.totalNorm (FormalSum.sub (f.f x) (FormalSum.bind (f.f y) Γ)) := by
+          exact FormalSum.totalNorm_smul c _
+      _ ≤ |c| * (f.bound_const * Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity)) := by
+          apply mul_le_mul_of_nonneg_left
+          · exact f.holder_regularity x y K hx hy
+          · exact abs_nonneg c
+      _ = |c| * f.bound_const * Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity) := by
+          ring
 
 /-- The zero modelled distribution for a given model. -/
 noncomputable def zero (model : AdmissibleModel d params) :
