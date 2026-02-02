@@ -4,6 +4,27 @@ This document tracks the status of the standard (non-hyperfinite) approach to SP
 
 ## Recent Updates (2026-02-02)
 
+### Session 12 Progress (Coordinate RegularityStructures.lean with Folder)
+
+**Fixed Duplicate Definitions:**
+1. **Removed duplicate `MultiIndex` and `MultiIndex.degree`** from RegularityStructures.lean
+   - These were exact duplicates of definitions in Trees/Basic.lean
+   - Added import for `RegularityStructures.Trees.Basic`
+   - Updated `SingularKernel.vanishing_moments` and `monomial` to use `RegularityStructures.MultiIndex`
+
+**Kept Unique Content:**
+- **Rough Path Theory** (not in folder): `TruncatedTensorAlgebra`, `RoughPath`, `IsGeometric`,
+  `SmoothPathSignatureData`, `smoothPathSignatureApprox` - these are unique to RegularityStructures.lean
+- **Abstract Type-Theoretic Approach**: `IndexSet`, `RegularityStructure`, `Model`, `ModelledDistribution`,
+  `ReconstructionOperator` - these use an abstract approach complementary to the concrete folder implementation
+- **SingularKernel** kept (different from folder's `SingularKernelRS`)
+- **BPHZRenormalization** kept (different approach from folder's `BPHZCharacter`)
+
+**Two Parallel Implementations:**
+- **RegularityStructures.lean**: Abstract type-theoretic approach with general groups G
+- **RegularityStructures/ folder**: Concrete implementation with decorated trees (TreeSymbol)
+- Both approaches are mathematically valid; they model the same theory differently
+
 ### Session 11 Progress (Deep Definition Review)
 
 **MAJOR FIX: RecenteringMap.Gamma Type Correction**
