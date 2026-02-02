@@ -4,6 +4,49 @@ This document tracks the status of the standard (non-hyperfinite) approach to SP
 
 ## Recent Updates (2026-02-02)
 
+### Session 11 Progress (Deep Definition Review)
+
+**MAJOR FIX: RecenteringMap.Gamma Type Correction**
+
+1. **Fixed RecenteringMap.Gamma** (Models/Admissible.lean):
+   - **Was**: `Gamma : TreeSymbol d → TreeSymbol d` (returns single tree)
+   - **Now**: `Gamma : TreeSymbol d → FormalSum d` (returns linear combination)
+   - **Why**: In Hairer's theory, Γ_{xy} is a LINEAR MAP on the vector space T.
+     It returns τ + (lower order terms), which is a formal sum, not a single tree.
+   - Updated `self_eq_id` and `cocycle` to use FormalSum.single and FormalSum.bind
+
+2. **Removed FormalSum.leadingTree Hack** (BPHZ.lean):
+   - This function only extracted the first term from a FormalSum, completely
+     breaking linearity
+   - Was used in renormAction's Gamma definition - mathematically incorrect
+
+3. **Fixed renormAction** (BPHZ.lean):
+   - Now correctly implements Γ^g_{xy} = M_g ∘ Γ_{xy} ∘ M_g⁻¹
+   - Uses proper FormalSum.bind for linear map composition:
+     ```lean
+     let invApplied := g.inv.M τ
+     let gammaApplied := FormalSum.bind invApplied (model.Gamma.Gamma x y)
+     FormalSum.bind gammaApplied g.M
+     ```
+
+4. **Updated All Dependent Files**:
+   - Models/Canonical.lean: Gamma returns FormalSum.single τ
+   - Reconstruction.lean: Changed mapTrees to bind, fixed applyGamma
+   - FixedPoint.lean: Already worked (uses bind patterns)
+   - All files compile successfully
+
+5. **Added ModelMap.evalFormalSum** (Models/Admissible.lean):
+   - Extends model pairing to FormalSum by linearity
+   - Used in consistency condition
+
+**Other Observations**:
+- Code duplication: evalFormalSum appears in Admissible.lean, BPHZ.lean, and
+  extendModelPairing in Reconstruction.lean - could be refactored
+- fixedPointMap uses implicit embedding D^{γ+β} ⊂ D^γ without explicit coercion
+- heatKernelSingular has kernel_dyadic := 0 as placeholder (noted, not incorrect)
+
+**All files compile. No True placeholders remaining.**
+
 ### Session 10 Progress
 
 1. **Proved FormalSum Lemmas** (Trees/Homogeneity.lean):

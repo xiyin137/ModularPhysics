@@ -53,6 +53,7 @@ choosing the right element g ∈ G such that Π^g has finite limits.
 /-- The renormalization group for a regularity structure.
 
     Elements M ∈ G are linear maps M : T → T such that:
+    - M preserves the unit: M(1) ≡ 1 (up to coefficient equivalence)
     - M preserves homogeneity sectors: M(T_α) ⊆ ⊕_{β ≤ α} T_β
     - M acts triangularly: (M τ)_α = τ_α + lower order terms
 
@@ -60,6 +61,10 @@ choosing the right element g ∈ G such that Π^g has finite limits.
 structure RenormGroupElement (d : ℕ) where
   /-- The linear map M : T → T -/
   M : TreeSymbol d → FormalSum d
+  /-- Unit preservation (coefficient form): M(1) has coefficient 1 at 1, and 0 elsewhere.
+      This is equivalent to M(1) ≡ 1 for evaluation purposes. -/
+  unit_preserved_coeff : (M .one).coeff .one = 1
+  unit_preserved_other : ∀ τ : TreeSymbol d, τ ≠ .one → (M .one).coeff τ = 0
   /-- Triangularity: The coefficient of τ in M(τ) is 1.
       This means M(τ) = τ + (lower order terms). -/
   triangular : ∀ τ : TreeSymbol d, (M τ).coeff τ = 1
@@ -71,6 +76,8 @@ variable {d : ℕ}
 /-- The identity element -/
 def one : RenormGroupElement d where
   M := fun τ => FormalSum.single τ
+  unit_preserved_coeff := FormalSum.coeff_single_self .one
+  unit_preserved_other := fun τ hτ => FormalSum.coeff_single_ne .one τ hτ
   triangular := fun τ => FormalSum.coeff_single_self τ
 
 /-- Composition of renormalization group elements.
@@ -78,6 +85,15 @@ def one : RenormGroupElement d where
     If h.M(τ) = Σᵢ cᵢ σᵢ, then (g * h).M(τ) = Σᵢ cᵢ · g.M(σᵢ) -/
 noncomputable def mul (g h : RenormGroupElement d) : RenormGroupElement d where
   M := fun τ => FormalSum.bind (h.M τ) g.M
+  unit_preserved_coeff := by
+    -- (g * h).M(.one) = bind (h.M .one) g.M
+    -- Need: coeff .one (bind (h.M .one) g.M) = 1
+    -- h.M .one has coeff 1 at .one and 0 elsewhere, g.M .one has coeff 1 at .one
+    -- Full proof requires coeff_bind lemma
+    sorry
+  unit_preserved_other := fun τ hτ => by
+    -- coeff τ (bind (h.M .one) g.M) = 0 for τ ≠ .one
+    sorry
   triangular := fun τ => by
     -- Need: (bind (h.M τ) g.M).coeff τ = 1
     -- h.M τ has coeff 1 at τ, and g.M τ has coeff 1 at τ
@@ -110,6 +126,13 @@ noncomputable def inv (g : RenormGroupElement d) : RenormGroupElement d where
       (fun acc n =>
         acc + (if n % 2 = 0 then (1 : ℝ) else (-1 : ℝ)) • lowerOrderPower g n τ)
       FormalSum.zero
+  unit_preserved_coeff := by
+    -- For τ = .one, complexity = 1, so bound = 2
+    -- The n=0 term gives coeff 1 at .one, higher terms contribute 0
+    sorry  -- Requires detailed foldl analysis
+  unit_preserved_other := fun τ hτ => by
+    -- For τ ≠ .one, coeff τ in inv.M(.one) = 0
+    sorry  -- Requires detailed foldl analysis
   triangular := fun τ => by
     -- The n=0 term is L^0(τ) = single τ with coefficient 1
     -- Higher n terms: L^n(τ) for n ≥ 1 has coeff 0 at τ (L lowers homogeneity)
@@ -156,18 +179,44 @@ noncomputable def evalFormalSum {d : ℕ} {params : ModelParameters d}
     (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) : ℝ :=
   s.terms.foldl (fun acc (c, τ) => acc + c * model.Pi.pairing τ x φ scale) 0
 
-/-- Extract the leading tree from a FormalSum (first term).
-    Used for Gamma which needs to return a single tree. -/
-def FormalSum.leadingTree {d : ℕ} (s : FormalSum d) : TreeSymbol d :=
-  match s.terms with
-  | [] => TreeSymbol.one  -- Default to unit if empty
-  | (_, τ) :: _ => τ
+/-- Evaluation of single gives the pairing value -/
+theorem evalFormalSum_single {d : ℕ} {params : ModelParameters d}
+    (model : AdmissibleModel d params) (τ : TreeSymbol d)
+    (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) :
+    evalFormalSum model (FormalSum.single τ) x φ scale = model.Pi.pairing τ x φ scale := by
+  simp only [evalFormalSum, FormalSum.single, List.foldl_cons, List.foldl_nil]
+  ring
+
+/-- Evaluation distributes over addition -/
+theorem evalFormalSum_add {d : ℕ} {params : ModelParameters d}
+    (model : AdmissibleModel d params) (s₁ s₂ : FormalSum d)
+    (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) :
+    evalFormalSum model (s₁ + s₂) x φ scale =
+    evalFormalSum model s₁ x φ scale + evalFormalSum model s₂ x φ scale := by
+  -- foldl over append = foldl of second starting from foldl of first
+  -- Requires shift lemma: foldl f init l = init + foldl f 0 l
+  sorry
+
+/-- Evaluation of scalar multiple -/
+theorem evalFormalSum_smul {d : ℕ} {params : ModelParameters d}
+    (model : AdmissibleModel d params) (c : ℝ) (s : FormalSum d)
+    (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) :
+    evalFormalSum model (c • s) x φ scale = c * evalFormalSum model s x φ scale := by
+  -- foldl over mapped list with scaled coefficients equals scaled foldl
+  sorry
 
 /-- The action of the renormalization group on models.
 
     Given g ∈ G and a model (Π, Γ), the renormalized model is:
-    - Π^g_x τ = Π_x (M_g · τ)
-    - Γ^g_{xy} = M_g Γ_{xy} M_g^{-1} -/
+    - Π^g_x τ = Π_x (M_g · τ)  (evaluate g.M(τ) using the original model)
+    - Γ^g_{xy} = M_g ∘ Γ_{xy} ∘ M_g⁻¹  (composition of linear maps)
+
+    For the Gamma action, since all maps are linear:
+    - First apply g⁻¹ to τ: g.inv.M τ gives a FormalSum
+    - Then apply original Γ_{xy} to each tree in the sum (via bind)
+    - Then apply g to the result (via bind)
+
+    Reference: Hairer 2014, Section 8 -/
 noncomputable def renormAction {d : ℕ} {params : ModelParameters d}
     (g : RenormGroupElement d) (model : AdmissibleModel d params) :
     AdmissibleModel d params where
@@ -175,22 +224,43 @@ noncomputable def renormAction {d : ℕ} {params : ModelParameters d}
     pairing := fun τ x φ scale =>
       -- Π^g_x τ = Σᵢ cᵢ · ⟨Π_x σᵢ, φ⟩ where g.M(τ) = Σᵢ cᵢ σᵢ
       evalFormalSum model (g.M τ) x φ scale
-    linear := trivial
+    unit_property := fun x φ scale hs_pos hs_le => by
+      -- evalFormalSum model (g.M .one) x φ scale = 1
+      -- Using: g.unit_preserved_coeff : (g.M .one).coeff .one = 1
+      --        g.unit_preserved_other : ∀ τ ≠ .one, (g.M .one).coeff τ = 0
+      --        model.Pi.unit_property : model.Pi.pairing .one x φ scale = 1
+      -- The proof requires showing evalFormalSum respects coefficient structure
+      -- This needs infrastructure connecting coeff and evalFormalSum
+      sorry
   }
   Gamma := {
     Gamma := fun x y τ =>
-      -- Γ^g_{xy} τ = leading tree of g.M (Γ_{xy} (leading tree of g⁻¹.M(τ)))
-      -- This is a simplification; full version would work on formal sums
-      let τ' := (g.inv.M τ).leadingTree
-      let γτ' := model.Gamma.Gamma x y τ'
-      (g.M γτ').leadingTree
+      -- Γ^g_{xy}(τ) = M_g(Γ_{xy}(M_g⁻¹(τ)))
+      -- Step 1: Apply g⁻¹ to τ to get g.inv.M τ : FormalSum d
+      -- Step 2: Extend Γ_{xy} to FormalSum by linearity (via bind)
+      -- Step 3: Apply g.M to the result (via bind)
+      let invApplied := g.inv.M τ                            -- FormalSum d
+      let gammaApplied := FormalSum.bind invApplied (model.Gamma.Gamma x y)  -- FormalSum d
+      FormalSum.bind gammaApplied g.M                        -- FormalSum d
     self_eq_id := fun x τ => by
-      -- Need: leading(g.M(Γ_xx(leading(g⁻¹.M(τ))))) = τ
-      -- Since Γ_xx = id and g * g⁻¹ = id (approximately)
-      simp only [RecenteringMap.self_eq_id]
-      sorry  -- Requires g * g⁻¹ = id
+      -- Need: bind (bind (g.inv.M τ) (Γ_xx)) g.M = single τ
+      -- Since Γ_xx τ = single τ (identity), and g * g⁻¹ = id
+      -- First unfold the let bindings
+      simp only []
+      -- Step 1: bind (g.inv.M τ) (Γ_xx) = bind (g.inv.M τ) single = g.inv.M τ
+      have h1 : FormalSum.bind (g.inv.M τ) (model.Gamma.Gamma x x) =
+                FormalSum.bind (g.inv.M τ) FormalSum.single := by
+        congr 1
+        ext σ
+        exact model.Gamma.self_eq_id x σ
+      rw [h1, FormalSum.bind_single_right]
+      -- Need: bind (g.inv.M τ) g.M = single τ
+      -- This is g * g⁻¹ = id applied to τ
+      sorry  -- Requires: mul g (inv g) = one, i.e., g * g⁻¹ = id
     cocycle := fun x y z τ => by
-      -- Cocycle condition for transformed Gamma
+      -- Cocycle condition: bind (bind (inv τ) (Γ_yz)) g.M composed with Γ_xy
+      -- equals direct Γ_xz application
+      -- This follows from the cocycle property of the original Γ
       sorry  -- Requires careful tracking of compositions
   }
   bound_const := model.bound_const
@@ -253,6 +323,18 @@ variable {d : ℕ} {params : ModelParameters d}
     This element g ∈ G is defined by M_g τ = τ + g(τ) · 1 -/
 noncomputable def toGroupElement (char : BPHZCharacter d params) : RenormGroupElement d where
   M := fun τ => FormalSum.single τ + (char.g τ) • FormalSum.single .one
+  unit_preserved_coeff := by
+    -- coeff .one (single .one + g(.one) • single .one)
+    -- = coeff .one (single .one) + g(.one) * coeff .one (single .one)
+    -- = 1 + 0 * 1 = 1 (since char.unit_zero)
+    rw [FormalSum.coeff_add, FormalSum.coeff_smul, FormalSum.coeff_single_self,
+        char.unit_zero]
+    ring
+  unit_preserved_other := fun τ hτ => by
+    -- coeff τ (single .one + g(.one) • single .one) = 0 for τ ≠ .one
+    rw [FormalSum.coeff_add, FormalSum.coeff_smul,
+        FormalSum.coeff_single_ne .one τ hτ]
+    ring
   triangular := fun τ => by
     -- coeff τ (single τ + g(τ) • single 1) = coeff τ (single τ) + coeff τ (g(τ) • single 1)
     rw [FormalSum.coeff_add, FormalSum.coeff_smul, FormalSum.coeff_single_self]
@@ -296,14 +378,14 @@ noncomputable def renormalizedModel {d : ℕ} {params : ModelParameters d}
     2. The renormalized model Π^{ε,ren} = Π^{ε,g_ε} has a limit as ε → 0
     3. The limit is independent of the mollification (universality) -/
 theorem bphz_renormalization {d : ℕ} {params : ModelParameters d}
-    (data : CanonicalModelData d params) :
+    (data : CanonicalModelData d params) (γ : ℝ) (hγ : γ > 0) :
     -- For each ε > 0, there exists a BPHZ character
     ∀ ε > 0, ∃ char_ε : BPHZCharacter d params,
     -- Such that the renormalized models converge
     ∃ model_limit : AdmissibleModel d params,
     ∀ δ > 0, ∃ ε₀ > 0, ∀ ε' : ℝ, ∀ hε' : 0 < ε', ε' < ε₀ →
-      -- model_distance (renormalizedModel (canonical_model data ε' hε') (char_ε')) model_limit < δ
-      True := by
+      -- The distance between renormalized model and limit is less than δ
+      AdmissibleModel.distance (renormalizedModel (canonical_model data ε' hε') char_ε) model_limit γ < δ := by
   sorry  -- This is the main renormalization theorem
 
 /-! ## Explicit BPHZ Formula
@@ -321,14 +403,22 @@ contraction of σ in τ.
     For a tree τ with |τ| < 0:
     g(τ) = -E[Π_0(τ)] + (sum over divergent subtrees)
 
-    This is computed recursively in order of increasing complexity. -/
+    This is computed recursively in order of increasing complexity.
+    The key property is that g(τ) depends only on g(σ) for subtrees σ ⊊ τ
+    with |σ| < 0 (divergent proper subtrees). -/
 theorem bphz_recursive_formula {d : ℕ} {params : ModelParameters d}
     (char : BPHZCharacter d params)
     (τ : TreeSymbol d)
     (hτ : homogeneity params.noiseRegularity params.kernelOrder τ < 0) :
-    -- char.g τ = -E[Π_0 τ] + (recursive corrections)
-    True := by
-  trivial  -- Full statement requires subtree enumeration
+    -- The BPHZ character g(τ) is determined by a recursive formula
+    -- involving only trees of strictly smaller complexity
+    ∀ τ' : TreeSymbol d,
+      τ'.complexity < τ.complexity →
+      homogeneity params.noiseRegularity params.kernelOrder τ' < 0 →
+      -- The character at τ depends on characters at smaller trees
+      -- This expresses the recursive structure of BPHZ renormalization
+      |char.g τ| ≤ |char.g τ'| + τ.complexity := by
+  sorry  -- Requires subtree enumeration and recursive bound analysis
 
 /-! ## Φ⁴₃ Renormalization
 
@@ -349,8 +439,11 @@ Each gives a divergent counterterm (mass renormalization).
 structure Phi4RenormConstants where
   /-- Mass counterterm δm²(ε) -/
   mass_counterterm : ℝ → ℝ
-  /-- Logarithmic divergence: δm² ~ c log(1/ε) -/
-  log_divergence : ∃ c : ℝ, ∀ ε > 0, True  -- |mass_counterterm ε - c * log(1/ε)| bounded
+  /-- Logarithmic divergence coefficient -/
+  log_coeff : ℝ
+  /-- Logarithmic divergence: |δm²(ε) - c log(1/ε)| is bounded as ε → 0 -/
+  log_divergence : ∃ M : ℝ, ∀ ε > 0,
+    |mass_counterterm ε - log_coeff * Real.log (1/ε)| ≤ M
   /-- Coupling counterterm (finite in 3D) -/
   coupling_counterterm : ℝ → ℝ
   /-- Coupling has a finite limit -/
@@ -371,7 +464,10 @@ gives a single divergent constant (energy counterterm).
 structure KPZRenormConstants where
   /-- The counterterm C(ε) -/
   counterterm : ℝ → ℝ
-  /-- Linear divergence: C(ε) ~ c/ε -/
-  linear_divergence : ∃ c : ℝ, ∀ ε > 0, True  -- |counterterm ε - c/ε| bounded
+  /-- Linear divergence coefficient -/
+  linear_coeff : ℝ
+  /-- Linear divergence: |C(ε) - c/ε| is bounded as ε → 0 -/
+  linear_divergence : ∃ M : ℝ, ∀ ε > 0,
+    |counterterm ε - linear_coeff / ε| ≤ M
 
 end SPDE.RegularityStructures

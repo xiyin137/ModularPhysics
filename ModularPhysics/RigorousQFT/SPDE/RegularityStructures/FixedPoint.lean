@@ -41,41 +41,11 @@ namespace SPDE.RegularityStructures
 
 open TreeSymbol
 
-/-! ## Singular Kernels for Regularity Structures
+/-! ## Singular Kernel Examples
 
-Following Assumptions 5.1 and 5.4 from Hairer 2014, a kernel K suitable for
-regularity structures must satisfy:
-1. K(x, y) = Σ_n K_n(x, y) with K_n supported on |x - y| ~ 2^{-n}
-2. |D^k K_n(x, y)| ≤ C 2^{(|k| + |s| - β)n}
-3. Vanishing moments: ∫ y^k K_n(x, y) dy = 0 for |k| < ⌊β⌋
+The `SingularKernelRS` structure is defined in Models/Admissible.lean.
+Here we provide concrete examples.
 -/
-
-/-- A singular kernel K satisfying the regularity structures assumptions.
-
-    Following Assumptions 5.1 and 5.4 from Hairer 2014:
-    - K admits a dyadic decomposition K = Σ_n K_n
-    - Each K_n is supported on scale 2^{-n}
-    - The bounds and vanishing moments are satisfied -/
-structure SingularKernelRS (d : ℕ) where
-  /-- The kernel order β (typically 2 for heat kernel) -/
-  order : ℝ
-  order_pos : order > 0
-  /-- The kernel K(x, y) -/
-  kernel : (Fin d → ℝ) → (Fin d → ℝ) → ℝ
-  /-- The dyadic pieces K_n -/
-  kernel_dyadic : ℕ → (Fin d → ℝ) → (Fin d → ℝ) → ℝ
-  /-- Bound constant for kernel estimates -/
-  bound_const : ℝ
-  bound_pos : bound_const > 0
-  /-- Support bound: K_n(x,y) = 0 when |x - y| > C * 2^{-n}
-      This encodes that K_n is supported on scale 2^{-n} -/
-  support_bound : ∀ n : ℕ, ∀ x y : Fin d → ℝ,
-    Real.sqrt (∑ i, (x i - y i)^2) > bound_const * (2 : ℝ)^(-(n : ℝ)) →
-    kernel_dyadic n x y = 0
-  /-- Pointwise bound: |K_n(x,y)| ≤ C * 2^{(d-β)n} for x,y in support
-      This is the basic size estimate without derivatives -/
-  pointwise_bound : ∀ n : ℕ, ∀ x y : Fin d → ℝ,
-    |kernel_dyadic n x y| ≤ bound_const * (2 : ℝ)^(((d : ℝ) - order) * n)
 
 namespace SingularKernelRS
 
@@ -121,22 +91,30 @@ structure IntegrationOperatorRS (d : ℕ) (params : ModelParameters d)
     (K : SingularKernelRS d) (γ : ℝ) where
   /-- The integration map on modelled distributions -/
   K_gamma : ModelledDistribution d params γ → ModelledDistribution d params (γ + K.order)
-  /-- Boundedness: |||K_γ f|||_{γ+β} ≤ C |||f|||_γ -/
+  /-- Bound constant for the operator -/
+  bound_const : ℝ
+  /-- Bound constant is positive -/
+  bound_pos : bound_const > 0
+  /-- Boundedness: |||K_γ f|||_{γ+β;K} ≤ C |||f|||_{γ;K}
+      The integration operator is bounded on modelled distributions. -/
   bounded : ∀ f : ModelledDistribution d params γ,
     ∀ K_set : Set (Fin d → ℝ),
-    True  -- K_gamma f seminorm bound
+    (K_gamma f).seminorm K_set ≤ bound_const * f.seminorm K_set
 
 namespace IntegrationOperatorRS
 
 variable {d : ℕ} {params : ModelParameters d} {K : SingularKernelRS d} {γ : ℝ}
 
 /-- The integration operator gains β regularity (Theorem 5.12).
-    K_γ : D^{γ,η} → D^{γ+β,η̄} with η̄ = (η ∧ α) + β - κ for small κ > 0. -/
+    K_γ : D^{γ,η} → D^{γ+β,η̄} with η̄ = (η ∧ α) + β - κ for small κ > 0.
+
+    The output regularity is γ + K.order, which is encoded in the type of K_gamma.
+    This theorem states that the seminorm bound is preserved with the operator constant. -/
 theorem gains_regularity (K_op : IntegrationOperatorRS d params K γ)
-    (_f : ModelledDistribution d params γ) :
-    -- K_gamma f has regularity γ + β
-    True := by
-  trivial
+    (f : ModelledDistribution d params γ) (K_set : Set (Fin d → ℝ)) :
+    -- K_gamma f has regularity γ + K.order with controlled seminorm
+    (K_op.K_gamma f).seminorm K_set ≤ K_op.bound_const * f.seminorm K_set :=
+  K_op.bounded f K_set
 
 end IntegrationOperatorRS
 
@@ -167,10 +145,16 @@ structure AbstractSPDEData (d : ℕ) (params : ModelParameters d)
   kernel : SingularKernelRS d
   /-- The nonlinearity as a map on modelled distributions -/
   nonlinearity : ModelledDistribution d params γ → ModelledDistribution d params γ
-  /-- Local Lipschitz bound on F -/
+  /-- Lipschitz constant for the nonlinearity -/
+  lipschitz_const : ℝ
+  /-- Lipschitz constant is nonnegative -/
+  lipschitz_nonneg : lipschitz_const ≥ 0
+  /-- Local Lipschitz bound on F: |||F(f) - F(g)|||_{γ;K} ≤ L |||f - g|||_{γ;K}
+      This ensures the fixed point map is well-behaved. -/
   nonlinearity_lipschitz : ∀ K_set : Set (Fin d → ℝ),
     ∀ f g : ModelledDistribution d params γ,
-    True  -- |||F(f) - F(g)||| ≤ C |||f - g|||
+    ModelledDistribution.distance (nonlinearity f) (nonlinearity g) K_set ≤
+      lipschitz_const * ModelledDistribution.distance f g K_set
   /-- The lifted noise Ξ as a modelled distribution -/
   noise : ModelledDistribution d params γ
   /-- Initial data -/
@@ -270,18 +254,26 @@ theorem local_existence_uniqueness {d : ℕ} {params : ModelParameters d}
   sorry
 
 /-- Continuity of solutions in the model and initial data.
-    Small changes to (Π, Γ) and u₀ produce small changes to the solution. -/
+    Small changes to (Π, Γ) and u₀ produce small changes to the solution.
+
+    The bound is: |||f₁ - f₂|||_{γ;K} ≤ C (model distance + initial data distance + noise distance)
+    where C depends on the Lipschitz constants and operator bounds. -/
 theorem solution_continuous {d : ℕ} {params : ModelParameters d}
     (γ : ℝ) (_hγ_pos : γ > 0)
     (data₁ data₂ : AbstractSPDEData d params γ)
     (K_op₁ : IntegrationOperatorRS d params data₁.kernel γ)
     (K_op₂ : IntegrationOperatorRS d params data₂.kernel γ)
     (f₁ f₂ : ModelledDistribution d params γ)
-    (_hf₁ : data₁.fixedPointMap K_op₁ f₁ = f₁)
-    (_hf₂ : data₂.fixedPointMap K_op₂ f₂ = f₂) :
-    -- |||f₁ - f₂||| ≤ C (|||Π₁ - Π₂||| + |||Γ₁ - Γ₂||| + |||u₀₁ - u₀₂|||)
-    True := by
-  trivial  -- Full statement needs model and data distances
+    (hf₁ : data₁.fixedPointMap K_op₁ f₁ = f₁)
+    (hf₂ : data₂.fixedPointMap K_op₂ f₂ = f₂)
+    (K_set : Set (Fin d → ℝ)) :
+    -- |||f₁ - f₂|||_{γ;K} ≤ C (initial data distance + noise distance)
+    -- The constant C depends on Lipschitz constants and operator bounds
+    ∃ C : ℝ, C > 0 ∧
+      ModelledDistribution.distance f₁ f₂ K_set ≤
+        C * (ModelledDistribution.distance data₁.initial_data data₂.initial_data K_set +
+             ModelledDistribution.distance data₁.noise data₂.noise K_set) := by
+  sorry  -- Requires contraction mapping argument and stability analysis
 
 /-! ## From Modelled Distribution to Actual Solution
 
@@ -290,17 +282,21 @@ into an actual distribution/function solving the SPDE.
 -/
 
 /-- The actual solution Ru ∈ C^α_s obtained from the modelled solution.
-    This is the final step: compose the abstract fixed point with R. -/
+    This is the final step: compose the abstract fixed point with R.
+
+    The theorem states that there exists a fixed point f_star of the abstract map,
+    and applying the reconstruction map R gives an actual distribution u in C^α_s. -/
 theorem actual_solution_exists {d : ℕ} {params : ModelParameters d}
     (γ : ℝ) (hγ_pos : γ > 0)
     (data : AbstractSPDEData d params γ)
     (K_op : IntegrationOperatorRS d params data.kernel γ)
     (R : ReconstructionMap d params γ) :
-    -- The reconstructed solution Ru exists in C^α_s
+    -- The reconstructed solution Ru exists in C^α_s and is the fixed point reconstruction
     ∃ (f_star : ModelledDistribution d params γ),
-    ∃ (_u : HolderBesov d params.minHomogeneity),
-    -- u = R.R f_star
-    True := by
-  sorry
+    -- f_star is a fixed point of the abstract map
+    data.fixedPointMap K_op f_star = f_star ∧
+    -- The reconstructed solution is R.R f_star (which has type HolderBesov by definition)
+    (R.R f_star).bound_const ≤ R.bound_const * f_star.bound_const := by
+  sorry  -- Requires abstract fixed point theorem and reconstruction bounds
 
 end SPDE.RegularityStructures

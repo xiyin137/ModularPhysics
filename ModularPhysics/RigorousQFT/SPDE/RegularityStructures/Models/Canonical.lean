@@ -44,10 +44,8 @@ open TreeSymbol
 structure CanonicalModelData (d : ℕ) (params : ModelParameters d) where
   /-- The mollified noise ξ_ε as a function of cutoff ε, point x -/
   mollified_noise : ℝ → (Fin d → ℝ) → ℝ
-  /-- The convolution kernel K(x, y) -/
-  kernel : (Fin d → ℝ) → (Fin d → ℝ) → ℝ
-  /-- The kernel satisfies singular kernel bounds -/
-  kernel_singular : True  -- Full statement in RegularityStructures.lean
+  /-- The singular convolution kernel K satisfying Assumptions 5.1 and 5.4 of Hairer 2014 -/
+  singular_kernel : SingularKernelRS d
   /-- Variance of mollified noise -/
   noise_variance : ℝ → ℝ  -- ε → Var(ξ_ε(x))
   /-- Variance grows as ε → 0 -/
@@ -57,11 +55,25 @@ namespace CanonicalModelData
 
 variable {d : ℕ} {params : ModelParameters d}
 
+/-- A placeholder singular kernel for the heat kernel structure.
+    The dyadic decomposition is set to 0; actual construction requires careful analysis. -/
+noncomputable def heatKernelSingular (d : ℕ) : SingularKernelRS d where
+  order := 2  -- Heat kernel has order 2
+  order_pos := two_pos
+  kernel := fun x y => Real.exp (-(∑ i, (x i - y i)^2) / 4)  -- Heat kernel at t=1
+  kernel_dyadic := fun _n _x _y => 0  -- Placeholder: dyadic decomposition needs construction
+  bound_const := 1
+  bound_pos := one_pos
+  support_bound := fun _n _x _y _h => rfl  -- Trivial since kernel_dyadic = 0
+  pointwise_bound := fun _n _x _y => by
+    simp only [abs_zero]
+    apply mul_nonneg one_pos.le
+    exact Real.rpow_nonneg (by norm_num : (2 : ℝ) ≥ 0) _
+
 /-- Standard data for the heat kernel on ℝ^d -/
 noncomputable def heatKernel : CanonicalModelData d params where
-  mollified_noise := fun _ε _x => 0  -- Placeholder
-  kernel := fun x y => Real.exp (-(∑ i, (x i - y i)^2) / 4)  -- Heat kernel at t=1
-  kernel_singular := trivial
+  mollified_noise := fun _ε _x => 0  -- Placeholder: actual mollified noise requires stochastic analysis
+  singular_kernel := heatKernelSingular d
   noise_variance := fun ε => ε ^ (-(d : ℝ))  -- Roughly
   variance_grows := by
     intro ε₁ ε₂ hε₁ hε₁ε₂
@@ -107,12 +119,12 @@ noncomputable def canonical_model {d : ℕ} {params : ModelParameters d}
       | .Poly _k => sorry  -- ∫ φ^scale_x(y) (y - x)^k dy
       | .Integ _k _τ' => sorry  -- Recursive involving kernel
       | .Prod _τ₁ _τ₂ => sorry  -- Product of distributions
-    linear := trivial
+    unit_property := fun _x _φ _scale _hs_pos _hs_le => rfl
   }
   Gamma := {
-    Gamma := fun _x _y τ => τ  -- Simplified
+    Gamma := fun _x _y τ => FormalSum.single τ  -- Simplified: identity recentering
     self_eq_id := fun _x _τ => rfl
-    cocycle := fun _x _y _z _τ => rfl
+    cocycle := fun _x _y _z τ => FormalSum.bind_single τ (fun σ => FormalSum.single σ)
   }
   bound_const := sorry  -- Depends on ε
   bound_pos := sorry
@@ -146,7 +158,14 @@ noncomputable def renormalized_canonical_model {d : ℕ} {params : ModelParamete
   { Pi := {
       pairing := fun τ x φ scale =>
         base.Pi.pairing τ x φ scale - renorm.constant τ ε
-      linear := trivial
+      unit_property := fun x φ scale hs_pos hs_le => by
+        -- base.Pi.pairing .one x φ scale - renorm.constant .one ε
+        -- = 1 - 0 = 1 (since homogeneity(.one) = 0 ≥ 0)
+        have h_hom : homogeneity params.noiseRegularity params.kernelOrder (TreeSymbol.one : TreeSymbol d) ≥ 0 := by
+          simp only [homogeneity_one, ge_iff_le, le_refl]
+        rw [renorm.support TreeSymbol.one h_hom ε hε]
+        simp only [sub_zero]
+        exact base.Pi.unit_property x φ scale hs_pos hs_le
     }
     Gamma := base.Gamma
     bound_const := base.bound_const

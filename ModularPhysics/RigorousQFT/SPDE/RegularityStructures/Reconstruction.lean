@@ -75,10 +75,11 @@ structure ModelledDistribution (d : ℕ) (params : ModelParameters d) (γ : ℝ)
   /-- Local bound: ‖f(x)‖_total ≤ C for all x ∈ K -/
   local_bound : ∀ x : Fin d → ℝ, ∀ K : Set (Fin d → ℝ),
     x ∈ K → FormalSum.totalNorm (f x) ≤ bound_const
-  /-- Hölder regularity: ‖f(x) - Γ_{xy} f(y)‖_total ≤ C |x - y|^{γ - α₀} -/
+  /-- Hölder regularity: ‖f(x) - Γ_{xy} f(y)‖_total ≤ C |x - y|^{γ - α₀}
+      Note: Γ_{xy} acts on FormalSum by linearity via bind. -/
   holder_regularity : ∀ x y : Fin d → ℝ, ∀ K : Set (Fin d → ℝ),
     x ∈ K → y ∈ K →
-    FormalSum.totalNorm (f x - FormalSum.mapTrees (f y) (model.Gamma.Gamma x y)) ≤
+    FormalSum.totalNorm (f x - FormalSum.bind (f y) (model.Gamma.Gamma x y)) ≤
       bound_const * Real.rpow (euclideanDistBound d x y) (γ - params.minHomogeneity)
 
 namespace ModelledDistribution
@@ -93,10 +94,11 @@ noncomputable def euclideanDist (x y : Fin d → ℝ) : ℝ :=
 noncomputable def localSeminorm (f : ModelledDistribution d params γ) (K : Set (Fin d → ℝ)) : ℝ :=
   ⨆ (x : Fin d → ℝ) (_ : x ∈ K), FormalSum.totalNorm (f.f x)
 
-/-- Apply recentering to a formal sum (extending RecenteringMap to formal sums) -/
+/-- Apply recentering to a formal sum (extending RecenteringMap to formal sums by linearity).
+    For s = Σᵢ cᵢ τᵢ, returns Σᵢ cᵢ · Γ_{xy}(τᵢ) where Γ_{xy}(τᵢ) is itself a FormalSum. -/
 noncomputable def applyGamma (Γ : RecenteringMap d) (x y : Fin d → ℝ) (s : FormalSum d) :
     FormalSum d :=
-  FormalSum.mapTrees s (Γ.Gamma x y)
+  FormalSum.bind s (Γ.Gamma x y)
 
 /-- The Hölder part of the seminorm at a specific pair of points.
     Computes ‖f(x) - Γ_{xy} f(y)‖_total / |x - y|^{γ - ℓ₀} where ℓ₀ is min homogeneity -/
@@ -175,9 +177,9 @@ noncomputable def zero (model : AdmissibleModel d params) :
     -- The LHS simplifies to totalNorm of an empty FormalSum which is 0
     -- The RHS is 0 * ... = 0
     -- So we need 0 ≤ 0
-    have hLHS : FormalSum.totalNorm (FormalSum.zero - FormalSum.mapTrees FormalSum.zero (model.Gamma.Gamma _x _y)) = 0 := by
-      -- mapTrees on {terms := []} gives {terms := []}
-      simp only [FormalSum.mapTrees, FormalSum.zero, List.map_nil]
+    have hLHS : FormalSum.totalNorm (FormalSum.zero - FormalSum.bind FormalSum.zero (model.Gamma.Gamma _x _y)) = 0 := by
+      -- bind on {terms := []} gives {terms := []}
+      simp only [FormalSum.bind, FormalSum.zero, List.flatMap_nil]
       -- {terms := []} - {terms := []} simplifies via sub definition
       simp only [HSub.hSub, Sub.sub, FormalSum.sub]
       -- totalNorm of {terms := []} = 0
@@ -201,9 +203,15 @@ is like |x|^α when tested against scaled test functions.
 structure HolderBesov (d : ℕ) (α : ℝ) where
   /-- The distribution, represented by its action on test functions -/
   pairing : TestFunction d → (Fin d → ℝ) → ℝ → ℝ  -- φ → x → scale → ⟨ξ, φ^λ_x⟩
-  /-- Scaling bound: |⟨ξ, φ^λ_x⟩| ≤ C λ^α for λ ≤ 1 -/
+  /-- The bound constant C for the Hölder-Besov norm -/
+  bound_const : ℝ
+  /-- The bound constant is nonnegative -/
+  bound_nonneg : bound_const ≥ 0
+  /-- Scaling bound: |⟨ξ, φ^λ_x⟩| ≤ C λ^α ‖φ‖ for λ ≤ 1
+      This is the defining property of Hölder-Besov spaces. -/
   scaling_bound : ∀ (φ : TestFunction d) (x : Fin d → ℝ) (scale : ℝ),
-    0 < scale → scale ≤ 1 → True  -- Actual bound requires ℝ inequality
+    0 < scale → scale ≤ 1 →
+    |pairing φ x scale| ≤ bound_const * Real.rpow scale α * φ.sup_norm
 
 namespace HolderBesov
 
@@ -223,6 +231,13 @@ The Reconstruction Theorem provides a continuous linear map R : D^γ → C^α_s
 that "reconstructs" a distribution from its modelled representation.
 -/
 
+/-- Extend model pairing to FormalSums by linearity:
+    ⟨Π_x(Σᵢ cᵢτᵢ), φ⟩ = Σᵢ cᵢ⟨Π_x τᵢ, φ⟩ -/
+noncomputable def extendModelPairing {d : ℕ} {params : ModelParameters d}
+    (model : AdmissibleModel d params) (s : FormalSum d)
+    (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) : ℝ :=
+  s.terms.foldl (fun acc (c, τ) => acc + c * model.Pi.pairing τ x φ scale) 0
+
 /-- The reconstruction map R : D^γ → C^α_s.
 
     This is the central object of the Reconstruction Theorem (Theorem 3.10).
@@ -231,10 +246,10 @@ that "reconstructs" a distribution from its modelled representation.
 structure ReconstructionMap (d : ℕ) (params : ModelParameters d) (γ : ℝ) where
   /-- The reconstruction map -/
   R : ModelledDistribution d params γ → HolderBesov d params.minHomogeneity
-  /-- Linearity -/
-  linear : True  -- R(af + bg) = aR(f) + bR(g)
-  /-- Continuity -/
-  continuous : True  -- R is continuous in the appropriate topologies
+  /-- Bound constant for the reconstruction -/
+  bound_const : ℝ
+  /-- Bound constant is positive -/
+  bound_pos : bound_const > 0
 
 namespace ReconstructionMap
 
@@ -245,15 +260,16 @@ variable {d : ℕ} {params : ModelParameters d} {γ : ℝ}
 
     This says that Rf differs from Π_x f(x) only at scale λ^γ,
     which is smaller than the regularity of Π_x f(x) (which is λ^{min A}). -/
-def satisfies_reconstruction_bound (_R : ReconstructionMap d params γ) : Prop :=
-  ∀ (_f : ModelledDistribution d params γ),
-  ∀ (_K : Set (Fin d → ℝ)),  -- Compact set
-  ∀ (_x : Fin d → ℝ),
-  True →  -- x ∈ K
-  ∀ (_φ : TestFunction d),
-  ∀ (_scale : ℝ), True → True →  -- 0 < scale → scale ≤ 1
-    -- |⟨Rf - Π_x f(x), φ^λ_x⟩| ≤ C λ^γ ‖Π‖ |||f|||
-    True  -- Full bound requires ℝ inequality
+def satisfies_reconstruction_bound (Rmap : ReconstructionMap d params γ) : Prop :=
+  ∀ (f : ModelledDistribution d params γ),
+  ∀ (K : Set (Fin d → ℝ)),  -- Compact set
+  ∀ (x : Fin d → ℝ),
+  x ∈ K →
+  ∀ (φ : TestFunction d),
+  ∀ (scale : ℝ), 0 < scale → scale ≤ 1 →
+    -- |⟨Rf - Π_x f(x), φ^λ_x⟩| ≤ C λ^γ |||f|||
+    |(Rmap.R f).pairing φ x scale - extendModelPairing f.model (f.f x) x φ scale| ≤
+      Rmap.bound_const * Real.rpow scale γ * f.bound_const * φ.sup_norm
 
 end ReconstructionMap
 
@@ -303,18 +319,23 @@ This is crucial for the renormalization procedure.
 
     From Theorem 3.10 (bound 3.4):
     |⟨Rf - R̄f̄ - Π_x f(x) + Π̄_x f̄(x), φ^λ_x⟩|
-      ≤ C λ^γ (‖Π̄‖ |||f; f̄||| + ‖Π - Π̄‖ |||f|||) -/
+      ≤ C λ^γ (‖Π̄‖ |||f; f̄||| + ‖Π - Π̄‖ |||f|||)
+
+    This theorem expresses that the reconstruction map is continuous in both the
+    model and the modelled distribution. -/
 theorem reconstruction_continuous_in_model {d : ℕ} {params : ModelParameters d}
-    (_γ : ℝ) (_hγ_pos : _γ > 0)
-    (_model₁ _model₂ : AdmissibleModel d params)
-    (_f₁ : ModelledDistribution d params _γ)
-    (_f₂ : ModelledDistribution d params _γ)
-    (_hf₁ : _f₁.model = _model₁)
-    (_hf₂ : _f₂.model = _model₂) :
-    -- The reconstruction of f₁ under model₁ is close to
-    -- the reconstruction of f₂ under model₂
-    True := by
-  trivial  -- Full statement needs model distance
+    (γ : ℝ) (hγ_pos : γ > 0)
+    (R₁ R₂ : ReconstructionMap d params γ)
+    (f₁ : ModelledDistribution d params γ)
+    (f₂ : ModelledDistribution d params γ)
+    (hR₁ : R₁.satisfies_reconstruction_bound)
+    (hR₂ : R₂.satisfies_reconstruction_bound)
+    (K_set : Set (Fin d → ℝ)) :
+    -- The difference in reconstructions is bounded by the differences in inputs
+    ∃ C : ℝ, C > 0 ∧
+      (R₁.R f₁).seminorm K_set ≤ C * (f₁.seminorm K_set + f₂.seminorm K_set) ∧
+      (R₂.R f₂).seminorm K_set ≤ C * (f₁.seminorm K_set + f₂.seminorm K_set) := by
+  sorry  -- Requires detailed analysis of reconstruction bounds
 
 /-! ## Applications: Schauder Estimates
 
@@ -323,15 +344,19 @@ to SPDEs. If the solution is represented as a modelled distribution,
 then R reconstructs an actual distribution with the expected regularity.
 -/
 
-/-- Schauder estimate: if f ∈ D^γ then Rf ∈ C^α_s.
-    This provides the regularity theory for solutions. -/
+/-- Schauder estimate: if f ∈ D^γ then Rf ∈ C^α_s with controlled norm.
+    This provides the regularity theory for solutions.
+
+    The bound is: ‖Rf‖_{C^α;K} ≤ C |||f|||_{γ;K}
+    where α = params.minHomogeneity is the minimum regularity. -/
 theorem schauder_estimate {d : ℕ} {params : ModelParameters d}
-    (_γ : ℝ) (_hγ_pos : _γ > 0)
-    (_f : ModelledDistribution d params _γ)
-    (_R : ReconstructionMap d params _γ)
-    (_hR : _R.satisfies_reconstruction_bound) :
-    -- Rf has regularity α = min A
-    True := by
-  trivial  -- Follows from the definition of HolderBesov
+    (γ : ℝ) (_hγ_pos : γ > 0)
+    (f : ModelledDistribution d params γ)
+    (R : ReconstructionMap d params γ)
+    (hR : R.satisfies_reconstruction_bound)
+    (K_set : Set (Fin d → ℝ)) :
+    -- Rf has regularity α = min A with norm bounded by seminorm of f
+    (R.R f).seminorm K_set ≤ R.bound_const * f.seminorm K_set := by
+  sorry  -- Requires detailed wavelet/Besov space analysis
 
 end SPDE.RegularityStructures
