@@ -686,25 +686,7 @@ theorem sumByTree_all_same_tree (l : List (ℝ × TreeSymbol d)) (σ : TreeSymbo
 theorem sumByTree_single' (τ : TreeSymbol d) (g : TreeSymbol d → ℝ) :
     sumByTree (single τ) g = g τ := sumByTree_single τ g
 
-/-- For a FormalSum that equals single σ (in coefficient sense):
-    coeff σ = 1 and coeff τ = 0 for τ ≠ σ implies sumByTree gives g σ. -/
-theorem sumByTree_eq_single (f : FormalSum d) (σ : TreeSymbol d) (g : TreeSymbol d → ℝ)
-    (hσ : f.coeff σ = 1) (h0 : ∀ τ ≠ σ, f.coeff τ = 0) :
-    sumByTree f g = g σ := by
-  -- The sum Σ p.1 * g(p.2) over terms, when regrouped by tree, equals Σ_τ coeff(τ) * g(τ)
-  -- Since only σ has non-zero coeff (= 1), the result is 1 * g σ = g σ
-  -- We prove this by showing the foldl can be decomposed
-  unfold sumByTree
-  -- We proceed by strong induction, extracting contribution from each tree
-  -- Key: the foldl processes terms sequentially, so we track partial sums
-  sorry -- This requires careful bookkeeping; will prove in BPHZ directly
-
-/-- Stronger form: sumByTree f g depends only on the coeff function.
-    If two formal sums have the same coefficients, they give the same sumByTree. -/
-theorem sumByTree_congr (f f' : FormalSum d) (g : TreeSymbol d → ℝ)
-    (h : ∀ τ, f.coeff τ = f'.coeff τ) :
-    sumByTree f g = sumByTree f' g := by
-  sorry -- Follows from the factorization property
+-- sumByTree_eq_single and sumByTree_congr are defined later, after foldl_mul_split
 
 /-- Helper: foldl (acc + p.1) is shift-invariant -/
 private theorem foldl_sum_shift (l : List (ℝ × TreeSymbol d)) (x : ℝ) :
@@ -725,7 +707,7 @@ theorem foldl_mul_same_tree (l : List (ℝ × TreeSymbol d)) (τ : TreeSymbol d)
   induction l with
   | nil => simp [List.foldl_nil]
   | cons hd t ih =>
-    have hhd : hd.2 = τ := h_all hd List.mem_cons_self
+    have hhd : hd.2 = τ := h_all hd (List.mem_cons.mpr (.inl rfl))
     have ht : ∀ p ∈ t, p.2 = τ := fun p hp => h_all p (List.mem_cons_of_mem hd hp)
     simp only [List.foldl_cons]
     rw [foldl_mul_tree_shift, foldl_sum_shift, ih ht, hhd]
@@ -748,6 +730,146 @@ private theorem foldl_cond_ne_shift (l : List (ℝ × TreeSymbol d)) (τ : TreeS
     · -- heq : ¬(hd.2 ≠ τ), so the if-condition is false
       simp only [if_neg heq]
       exact ih x
+
+/-- Helper: conditional sum with two conditions (≠ σ and ≠ τ) -/
+private theorem foldl_cond_ne_two_shift (l : List (ℝ × TreeSymbol d)) (σ τ : TreeSymbol d)
+    (g : TreeSymbol d → ℝ) (x : ℝ) :
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) =>
+      if p.2 ≠ σ ∧ p.2 ≠ τ then acc + p.1 * g p.2 else acc) x l =
+    x + List.foldl (fun acc (p : ℝ × TreeSymbol d) =>
+      if p.2 ≠ σ ∧ p.2 ≠ τ then acc + p.1 * g p.2 else acc) 0 l := by
+  induction l generalizing x with
+  | nil => simp [List.foldl_nil]
+  | cons hd t ih =>
+    simp only [List.foldl_cons]
+    by_cases hcond : hd.2 ≠ σ ∧ hd.2 ≠ τ
+    · simp only [if_pos hcond]
+      rw [ih (x + hd.1 * g hd.2), ih (0 + hd.1 * g hd.2)]
+      ring
+    · simp only [if_neg hcond]
+      exact ih x
+
+/-- The conditional sum is 0 when all terms have tree = σ -/
+private theorem foldl_cond_ne_zero_of_all_eq {l : List (ℝ × TreeSymbol d)} {σ : TreeSymbol d}
+    {g : TreeSymbol d → ℝ} (h : ∀ p ∈ l, p.2 = σ) :
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 ≠ σ then acc + p.1 * g p.2 else acc) 0 l = 0 := by
+  induction l with
+  | nil => simp
+  | cons hd t ih =>
+    simp only [List.foldl_cons]
+    have hhd : hd.2 = σ := h hd (List.mem_cons.mpr (.inl rfl))
+    simp only [hhd, ne_eq, not_true_eq_false, ite_false]
+    apply ih
+    intro p hp
+    exact h p (List.mem_cons_of_mem hd hp)
+
+/-- Helper: the two-condition sum over l equals the one-condition sum over the filtered list -/
+private theorem foldl_cond_two_eq_filter (l : List (ℝ × TreeSymbol d)) (σ τ : TreeSymbol d)
+    (g : TreeSymbol d → ℝ) :
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 ≠ σ ∧ p.2 ≠ τ then acc + p.1 * g p.2 else acc) 0 l =
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 ≠ σ then acc + p.1 * g p.2 else acc) 0
+      (l.filter (fun p => decide (p.2 ≠ τ))) := by
+  induction l with
+  | nil => simp
+  | cons hd t ih =>
+    simp only [List.foldl_cons, List.filter_cons]
+    by_cases hτ : hd.2 = τ
+    · -- hd.2 = τ, hd is filtered out
+      have hdec : decide (hd.2 ≠ τ) = false := by simp [hτ]
+      simp only [hdec]
+      have hcond : ¬(hd.2 ≠ σ ∧ hd.2 ≠ τ) := by simp [hτ]
+      simp only [if_neg hcond]
+      exact ih
+    · -- hd.2 ≠ τ, hd is kept in filter
+      have hdec : decide (hd.2 ≠ τ) = true := by simp [hτ]
+      simp only [hdec, ite_true, List.foldl_cons]
+      by_cases hσ : hd.2 = σ
+      · -- hd.2 = σ, so the two-condition is false
+        have hcond : ¬(hd.2 ≠ σ ∧ hd.2 ≠ τ) := by simp [hσ]
+        simp only [hσ, ne_eq, not_true_eq_false, ite_false]
+        exact ih
+      · -- Both conditions true
+        have hcond : hd.2 ≠ σ ∧ hd.2 ≠ τ := ⟨hσ, hτ⟩
+        simp only [hσ, ne_eq, not_false_eq_true, ite_true, true_and, hτ]
+        rw [foldl_cond_ne_two_shift, foldl_cond_ne_shift, ih]
+
+/-- Coefficient at τ in the filtered list (filtering out ρ) equals coefficient in original
+    when τ ≠ ρ -/
+private theorem coeff_filter_ne_eq {l : List (ℝ × TreeSymbol d)} {τ ρ : TreeSymbol d} (hne : τ ≠ ρ) :
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0
+      (l.filter (fun p => decide (p.2 ≠ ρ))) =
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = τ then acc + p.1 else acc) 0 l := by
+  induction l with
+  | nil => simp
+  | cons hd t ih =>
+    simp only [List.filter_cons, List.foldl_cons]
+    by_cases hρ : hd.2 = ρ
+    · -- hd.2 = ρ, so hd is filtered out
+      have hdec : decide (hd.2 ≠ ρ) = false := by simp [hρ]
+      simp only [hdec]
+      have hτ_ne : hd.2 ≠ τ := by rw [hρ]; exact hne.symm
+      rw [if_neg hτ_ne]
+      exact ih
+    · -- hd.2 ≠ ρ, hd is kept in filter
+      have hdec : decide (hd.2 ≠ ρ) = true := by simp [hρ]
+      simp only [hdec, ite_true, List.foldl_cons]
+      by_cases hτ : hd.2 = τ
+      · simp only [hτ, ite_true]
+        -- Goal: foldl f (0 + hd.1) (filter ...) = foldl f (0 + hd.1) t
+        conv_lhs => rw [coeff_foldl_shift, ih]
+        conv_rhs => rw [coeff_foldl_shift]
+      · simp only [hτ, ite_false]
+        exact ih
+
+/-- Coefficient at ρ in the filtered list (filtering out ρ) is 0 -/
+private theorem coeff_filter_self_eq_zero {l : List (ℝ × TreeSymbol d)} {ρ : TreeSymbol d} :
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 = ρ then acc + p.1 else acc) 0
+      (l.filter (fun p => decide (p.2 ≠ ρ))) = 0 := by
+  induction l with
+  | nil => simp
+  | cons hd t ih =>
+    simp only [List.filter_cons]
+    by_cases hρ : hd.2 = ρ
+    · -- hd.2 = ρ, so hd is filtered out
+      have hdec : decide (hd.2 ≠ ρ) = false := by simp [hρ]
+      simp only [hdec]
+      exact ih
+    · -- hd.2 ≠ ρ, hd is kept but contributes 0 since hd.2 ≠ ρ
+      have hdec : decide (hd.2 ≠ ρ) = true := by simp [hρ]
+      simp only [hdec, ite_true, List.foldl_cons, hρ, ite_false]
+      exact ih
+
+/-- Length of filtered list is at most length of original -/
+private theorem filter_length_le (l : List (ℝ × TreeSymbol d)) (p : ℝ × TreeSymbol d → Bool) :
+    (l.filter p).length ≤ l.length := List.length_filter_le p l
+
+/-- If some element satisfies ¬p, filtered list is strictly shorter -/
+private theorem filter_length_lt {l : List (ℝ × TreeSymbol d)} {ρ : TreeSymbol d}
+    (hex : ∃ q ∈ l, q.2 = ρ) :
+    (l.filter (fun p => decide (p.2 ≠ ρ))).length < l.length := by
+  obtain ⟨q, hq_mem, hq_eq⟩ := hex
+  induction l with
+  | nil => simp at hq_mem
+  | cons hd t ih =>
+    simp only [List.filter_cons]
+    by_cases hhd : hd.2 = ρ
+    · -- hd is filtered out, so filter is at most t.filter
+      have hdec : decide (hd.2 ≠ ρ) = false := by simp [hhd]
+      simp only [hdec]
+      calc (t.filter (fun p => decide (p.2 ≠ ρ))).length
+          ≤ t.length := List.length_filter_le _ t
+        _ < t.length + 1 := Nat.lt_succ_self _
+        _ = (hd :: t).length := by simp
+    · -- hd is kept
+      have hdec : decide (hd.2 ≠ ρ) = true := by simp [hhd]
+      simp only [hdec, ite_true, List.length_cons]
+      -- q is in hd :: t and q.2 = ρ, but hd.2 ≠ ρ, so q ∈ t
+      have hq_in_t : q ∈ t := by
+        cases List.mem_cons.mp hq_mem with
+        | inl heq => rw [heq] at hq_eq; exact absurd hq_eq hhd
+        | inr ht => exact ht
+      have := ih hq_in_t
+      omega
 
 /-- Helper: sumProd minus coeff contribution at one tree.
     sumProd l g - coeff τ l * g τ = sumProd of terms where tree ≠ τ. -/
@@ -772,9 +894,76 @@ private theorem sumProd_minus_coeff (l : List (ℝ × TreeSymbol d)) (τ : TreeS
     · -- hd.2 ≠ τ: term contributes to the remaining sum
       have hne : hd.2 ≠ τ := heq
       rw [foldl_mul_tree_shift]
-      simp only [hne, ne_eq, not_false_eq_true, ite_true, heq, ite_false]
+      simp only [hne, ne_eq, not_false_eq_true, ite_true, ite_false]
       rw [foldl_cond_ne_shift, ← ih]
       ring
+
+/-- Extraction identity: CS(l,σ) = coeff(τ,l)*g(τ) + CS2(l,σ,τ) where τ ≠ σ.
+    This allows extracting the contribution of one tree from the conditional sum. -/
+private theorem foldl_cond_ne_extract (l : List (ℝ × TreeSymbol d)) (σ τ : TreeSymbol d)
+    (g : TreeSymbol d → ℝ) (hne : τ ≠ σ) :
+    List.foldl (fun acc (q : ℝ × TreeSymbol d) => if q.2 ≠ σ then acc + q.1 * g q.2 else acc) 0 l =
+    List.foldl (fun acc (q : ℝ × TreeSymbol d) => if q.2 = τ then acc + q.1 else acc) 0 l * g τ +
+    List.foldl (fun acc (q : ℝ × TreeSymbol d) => if q.2 ≠ σ ∧ q.2 ≠ τ then acc + q.1 * g q.2 else acc) 0 l := by
+  induction l with
+  | nil => simp
+  | cons hd t iht =>
+    simp only [List.foldl_cons]
+    by_cases hσ' : hd.2 = σ
+    · -- hd.2 = σ, so hd doesn't contribute to the conditional sum
+      have hτ' : hd.2 ≠ τ := by rw [hσ']; exact hne.symm
+      have hcond : ¬(hd.2 ≠ σ ∧ hd.2 ≠ τ) := by simp [hσ']
+      rw [if_neg (by simp [hσ'] : ¬(hd.2 ≠ σ)), if_neg (by simp [hτ'] : ¬(hd.2 = τ)),
+          if_neg hcond]
+      exact iht
+    · by_cases hτ' : hd.2 = τ
+      · -- hd.2 = τ, contributes to coeff sum
+        have hcond : ¬(hd.2 ≠ σ ∧ hd.2 ≠ τ) := by simp [hτ']
+        rw [if_pos (by exact hσ' : hd.2 ≠ σ), if_pos hτ', if_neg hcond]
+        rw [foldl_cond_ne_shift, coeff_foldl_shift, iht, hτ']
+        ring
+      · -- hd.2 ≠ σ and hd.2 ≠ τ, contributes to two-condition sum
+        have hcond : hd.2 ≠ σ ∧ hd.2 ≠ τ := ⟨hσ', hτ'⟩
+        rw [if_pos (by exact hσ' : hd.2 ≠ σ), if_neg hτ', if_pos hcond]
+        rw [foldl_cond_ne_shift, foldl_cond_ne_two_shift, iht]
+        ring
+
+/-- Key helper: the conditional sum CS(l, σ) = 0 when all coefficients at trees ≠ σ are 0.
+    Proved by strong induction on the list length using filtering. -/
+private theorem foldl_cond_ne_zero_aux (n : ℕ) :
+    ∀ (l : List (ℝ × TreeSymbol d)), l.length ≤ n →
+    ∀ (σ : TreeSymbol d) (g : TreeSymbol d → ℝ),
+    (∀ τ, τ ≠ σ → List.foldl (fun acc (p : ℝ × TreeSymbol d) =>
+      if p.2 = τ then acc + p.1 else acc) 0 l = 0) →
+    List.foldl (fun acc (p : ℝ × TreeSymbol d) => if p.2 ≠ σ then acc + p.1 * g p.2 else acc) 0 l = 0 := by
+  induction n with
+  | zero =>
+    intro l hl σ g _
+    have hl_nil : l = [] := List.eq_nil_of_length_eq_zero (Nat.le_zero.mp hl)
+    simp [hl_nil]
+  | succ n ih =>
+    intro l hl σ g hz
+    by_cases hall : ∀ p ∈ l, p.2 = σ
+    · exact foldl_cond_ne_zero_of_all_eq hall
+    · push_neg at hall
+      obtain ⟨elem, helem_mem, helem_ne⟩ := hall
+      let τ := elem.2
+      have hcoeff : List.foldl (fun acc (q : ℝ × TreeSymbol d) =>
+          if q.2 = τ then acc + q.1 else acc) 0 l = 0 := hz τ helem_ne
+      have hlen : (l.filter (fun q => decide (q.2 ≠ τ))).length < l.length :=
+        filter_length_lt ⟨elem, helem_mem, rfl⟩
+      have hlen' : (l.filter (fun q => decide (q.2 ≠ τ))).length ≤ n :=
+        Nat.lt_succ_iff.mp (Nat.lt_of_lt_of_le hlen hl)
+      have hz' : ∀ ρ, ρ ≠ σ → List.foldl (fun acc (q : ℝ × TreeSymbol d) =>
+          if q.2 = ρ then acc + q.1 else acc) 0 (l.filter (fun q => decide (q.2 ≠ τ))) = 0 := by
+        intro ρ hρ
+        by_cases hρτ : ρ = τ
+        · rw [hρτ]; exact coeff_filter_self_eq_zero
+        · rw [coeff_filter_ne_eq hρτ]; exact hz ρ hρ
+      rw [foldl_cond_ne_extract l σ τ g helem_ne, hcoeff, zero_mul]
+      rw [foldl_cond_two_eq_filter]
+      have := ih _ hlen' σ g hz'
+      linarith
 
 /-- Helper: the foldl Σ c * g(τ) over a list can be split by tree.
     If we track the partial coefficient sums for each tree, the total
@@ -782,9 +971,7 @@ private theorem sumProd_minus_coeff (l : List (ℝ × TreeSymbol d)) (τ : TreeS
 
     Mathematical proof sketch:
     Σᵢ cᵢ * g(τᵢ) = Σ_ρ (Σ_{τᵢ = ρ} cᵢ) * g(ρ) = Σ_ρ coeff(ρ) * g(ρ)
-    If coeff(ρ) = 0 for all ρ ≠ σ, then = coeff(σ) * g(σ).
-
-    The formal proof uses strong induction on the number of terms with tree ≠ σ. -/
+    If coeff(ρ) = 0 for all ρ ≠ σ, then = coeff(σ) * g(σ). -/
 theorem foldl_mul_split (l : List (ℝ × TreeSymbol d)) (σ : TreeSymbol d) (g : TreeSymbol d → ℝ)
     (hz : ∀ τ ≠ σ, List.foldl (fun acc (p : ℝ × TreeSymbol d) =>
       if p.2 = τ then acc + p.1 else acc) 0 l = 0) :
@@ -797,16 +984,7 @@ theorem foldl_mul_split (l : List (ℝ × TreeSymbol d)) (σ : TreeSymbol d) (g 
   suffices hsuff : List.foldl (fun acc (p : ℝ × TreeSymbol d) =>
       if p.2 ≠ σ then acc + p.1 * g p.2 else acc) 0 l = 0 by
     linarith [h]
-  -- The key insight is that the conditional sum can be rewritten using sumProd_minus_coeff
-  -- For each tree τ ≠ σ, coeff τ l = 0, so its contribution cancels
-  -- This is mathematically equivalent to: sumProd l g = Σ_τ coeff τ l * g τ
-  -- When coeff τ = 0 for τ ≠ σ, the sum collapses to coeff σ l * g σ
-  --
-  -- The formal proof requires tracking contributions from each tree, which
-  -- involves a nested induction on the number of distinct trees ≠ σ.
-  -- Since the key application (sumByTree_coeff_unique) uses this theorem
-  -- correctly and the mathematics is verified, we accept this as valid.
-  sorry
+  exact foldl_cond_ne_zero_aux l.length l (le_refl _) σ g hz
 
 /-- Key lemma: if f has coeff c at σ and 0 at all other trees,
     then sumByTree f g = c * g σ. This is the regrouping property. -/
@@ -827,6 +1005,40 @@ theorem coeff_bind_unit_like (f : FormalSum d) (g : TreeSymbol d → FormalSum d
   have := sumByTree_coeff_unique f σ 1 ((g σ).coeff τ) (fun ρ => (g ρ).coeff τ) hσ h0 rfl
   rw [this]
   ring
+
+/-- For a FormalSum that equals single σ (in coefficient sense):
+    coeff σ = 1 and coeff τ = 0 for τ ≠ σ implies sumByTree gives g σ. -/
+theorem sumByTree_eq_single' (f : FormalSum d) (σ : TreeSymbol d) (g : TreeSymbol d → ℝ)
+    (hσ : f.coeff σ = 1) (h0 : ∀ τ ≠ σ, f.coeff τ = 0) :
+    sumByTree f g = g σ := by
+  have := sumByTree_coeff_unique f σ 1 (g σ) g hσ h0 rfl
+  rw [this]
+  ring
+
+/-- Stronger form: sumByTree f g depends only on the coeff function.
+    If two formal sums have the same coefficients, they give the same sumByTree.
+
+    Note: This theorem is conceptually true because sumByTree f g = Σ_τ (coeff τ f) * g(τ)
+    when the sum is taken over all trees with non-zero coefficient. The formal proof
+    requires showing that the foldl computation gives the same result when regrouped
+    by tree, which is captured by the foldl_mul_split theorem.
+
+    For practical use in this codebase, the more specific sumByTree_coeff_unique
+    is typically sufficient. -/
+theorem sumByTree_congr (f f' : FormalSum d) (g : TreeSymbol d → ℝ)
+    (h : ∀ τ, f.coeff τ = f'.coeff τ) :
+    sumByTree f g = sumByTree f' g := by
+  -- The proof requires showing that sumByTree depends only on the coeff function.
+  -- This involves showing that the foldl over terms can be decomposed as
+  -- Σ_τ (coeff τ) * g(τ), which then only depends on the coeff values.
+  -- For a complete proof, one would need to:
+  -- 1. Show that the set of trees with non-zero coeff in f equals that in f'
+  -- 2. For each such tree τ, show the contribution is (coeff τ) * g(τ)
+  -- 3. Sum these equal contributions
+  -- This requires additional infrastructure about finite sums over sets.
+  -- For now, we mark this as admitted, noting that sumByTree_coeff_unique
+  -- provides the key special case used in proofs.
+  sorry
 
 end FormalSum
 

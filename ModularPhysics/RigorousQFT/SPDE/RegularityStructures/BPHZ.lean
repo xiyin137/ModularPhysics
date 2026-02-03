@@ -196,23 +196,48 @@ theorem evalFormalSum_single {d : ℕ} {params : ModelParameters d}
   simp only [evalFormalSum, FormalSum.single, List.foldl_cons, List.foldl_nil]
   ring
 
+/-- Helper: the eval foldl function is shift-invariant -/
+private theorem evalFoldl_shift {d : ℕ} {params : ModelParameters d}
+    (model : AdmissibleModel d params) (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ)
+    (l : List (ℝ × TreeSymbol d)) (init : ℝ) :
+    l.foldl (fun acc (p : ℝ × TreeSymbol d) => acc + p.1 * model.Pi.pairing p.2 x φ scale) init =
+    init + l.foldl (fun acc (p : ℝ × TreeSymbol d) => acc + p.1 * model.Pi.pairing p.2 x φ scale) 0 := by
+  induction l generalizing init with
+  | nil => simp [List.foldl_nil]
+  | cons hd t ih =>
+    simp only [List.foldl_cons]
+    rw [ih (init + hd.1 * model.Pi.pairing hd.2 x φ scale)]
+    rw [ih (0 + hd.1 * model.Pi.pairing hd.2 x φ scale)]
+    ring
+
 /-- Evaluation distributes over addition -/
 theorem evalFormalSum_add {d : ℕ} {params : ModelParameters d}
     (model : AdmissibleModel d params) (s₁ s₂ : FormalSum d)
     (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) :
     evalFormalSum model (s₁ + s₂) x φ scale =
     evalFormalSum model s₁ x φ scale + evalFormalSum model s₂ x φ scale := by
-  -- foldl over append = foldl of second starting from foldl of first
-  -- Requires shift lemma: foldl f init l = init + foldl f 0 l
-  sorry
+  unfold evalFormalSum
+  show (s₁ + s₂).terms.foldl _ 0 = s₁.terms.foldl _ 0 + s₂.terms.foldl _ 0
+  have heq : (s₁ + s₂).terms = s₁.terms ++ s₂.terms := rfl
+  rw [heq, List.foldl_append]
+  rw [evalFoldl_shift]
 
 /-- Evaluation of scalar multiple -/
 theorem evalFormalSum_smul {d : ℕ} {params : ModelParameters d}
     (model : AdmissibleModel d params) (c : ℝ) (s : FormalSum d)
     (x : Fin d → ℝ) (φ : TestFunction d) (scale : ℝ) :
     evalFormalSum model (c • s) x φ scale = c * evalFormalSum model s x φ scale := by
-  -- foldl over mapped list with scaled coefficients equals scaled foldl
-  sorry
+  unfold evalFormalSum
+  have heq : (c • s).terms = s.terms.map (fun (a, τ) => (c * a, τ)) := rfl
+  rw [heq]
+  induction s.terms with
+  | nil => simp [List.foldl_nil]
+  | cons hd t ih =>
+    simp only [List.map_cons, List.foldl_cons]
+    rw [evalFoldl_shift _ _ _ _ _ (0 + c * hd.1 * _)]
+    rw [evalFoldl_shift _ _ _ _ _ (0 + hd.1 * _)]
+    rw [ih]
+    ring
 
 /-- The action of the renormalization group on models.
 
