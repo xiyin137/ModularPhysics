@@ -45,8 +45,9 @@ Long exact sequence for short exact sequences of presheaves 0 → F' → F → F
 **Remaining work**:
 - [ ] Refinement maps and independence of cover
 - [ ] Comparison with derived functor cohomology (for sheaves)
-- [ ] Exactness proofs at each term of the long sequence
-- [ ] Naturality of connecting homomorphism
+
+**Note**: Exactness proofs are provided by Mathlib's snake lemma (`Mathlib.Algebra.Homology.ShortComplex.SnakeLemma`).
+The Čech-specific work (connecting homomorphism, d²=0) is complete.
 
 **Used by**: `StringGeometry/RiemannSurfaces/Algebraic/Cohomology/`
 

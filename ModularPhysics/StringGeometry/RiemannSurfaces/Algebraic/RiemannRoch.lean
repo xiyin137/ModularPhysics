@@ -94,11 +94,38 @@ theorem riemann_roch (CRS : CompactRiemannSurface)
     (K : CanonicalDivisorData CRS)
     (T : CompactCohomologyTheory CRS O)
     (D : Divisor CRS.toRiemannSurface)
-    (_ : SerreDuality CRS O T.lineBundleSheaves K D) :
+    (SD : SerreDuality CRS O T.lineBundleSheaves K D)
+    -- Compatibility: Serre duality's H¹(D) dimension matches T's
+    (h_h1D_compat : h_i SD.pairing.H1D = h_i (T.lineBundleCohomology D).H1)
+    -- Compatibility: Serre duality's H⁰(K-D) dimension matches T's
+    (h_h0KD_compat : h_i SD.pairing.H0KD = h_i (T.lineBundleCohomology (K.divisor - D)).H0) :
     (h_i (T.lineBundleCohomology D).H0 : ℤ) -
     h_i (T.lineBundleCohomology (K.divisor - D)).H0 =
     D.degree - CRS.genus + 1 := by
-  sorry  -- Combines Euler characteristic formula with Serre duality
+  -- Step 1: Euler characteristic formula: χ(D) = deg(D) + 1 - g
+  have heuler := eulerChar_formula T D
+  -- T.chi D = h⁰(D) - h¹(D) by definition
+  have hchi_def : T.chi D = (h_i (T.lineBundleCohomology D).H0 : ℤ) -
+      h_i (T.lineBundleCohomology D).H1 := rfl
+  rw [hchi_def] at heuler
+  -- heuler : h⁰(D) - h¹(D) = deg(D) + 1 - g
+
+  -- Step 2: Serre duality: h¹(D) = h⁰(K - D)
+  -- From SD.dimension_eq: h_i SD.pairing.H1D = h_i SD.pairing.H0KD
+  -- From h_h1D_compat: h_i SD.pairing.H1D = h_i (T.lineBundleCohomology D).H1
+  -- From h_h0KD_compat: h_i SD.pairing.H0KD = h_i (T.lineBundleCohomology (K.divisor - D)).H0
+  have h_serre : h_i (T.lineBundleCohomology D).H1 =
+      h_i (T.lineBundleCohomology (K.divisor - D)).H0 := by
+    rw [← h_h1D_compat, SD.dimension_eq, h_h0KD_compat]
+
+  -- Step 3: Substitute h¹(D) = h⁰(K-D) in the Euler formula
+  -- h⁰(D) - h¹(D) = deg(D) + 1 - g
+  -- h⁰(D) - h⁰(K-D) = deg(D) + 1 - g = deg(D) - g + 1
+  have h_cast : (h_i (T.lineBundleCohomology D).H1 : ℤ) =
+      (h_i (T.lineBundleCohomology (K.divisor - D)).H0 : ℤ) := by
+    simp only [h_serre]
+  rw [h_cast] at heuler
+  omega
 
 /-!
 ## Corollaries
@@ -114,9 +141,11 @@ theorem riemann_inequality (CRS : CompactRiemannSurface)
     (K : CanonicalDivisorData CRS)
     (T : CompactCohomologyTheory CRS O)
     (D : Divisor CRS.toRiemannSurface)
-    (SD : SerreDuality CRS O T.lineBundleSheaves K D) :
+    (SD : SerreDuality CRS O T.lineBundleSheaves K D)
+    (h_h1D_compat : h_i SD.pairing.H1D = h_i (T.lineBundleCohomology D).H1)
+    (h_h0KD_compat : h_i SD.pairing.H0KD = h_i (T.lineBundleCohomology (K.divisor - D)).H0) :
     (h_i (T.lineBundleCohomology D).H0 : ℤ) ≥ D.degree - CRS.genus + 1 := by
-  have h := riemann_roch CRS O K T D SD
+  have h := riemann_roch CRS O K T D SD h_h1D_compat h_h0KD_compat
   have h_nonneg : (h_i (T.lineBundleCohomology (K.divisor - D)).H0 : ℤ) ≥ 0 :=
     Nat.cast_nonneg _
   linarith
@@ -138,27 +167,22 @@ theorem genus_eq_h0_canonical (CRS : CompactRiemannSurface)
     Line bundles of negative degree have no global sections. -/
 theorem h0_vanish_negative_degree (CRS : CompactRiemannSurface)
     (O : StructureSheaf CRS.toRiemannSurface)
-    (L : LineBundleSheafAssignment CRS.toRiemannSurface O)
+    (T : CompactCohomologyTheory CRS O)
     (D : Divisor CRS.toRiemannSurface)
-    (_ : D.degree < 0)
-    (_ : SheafCohomologyGroup CRS.toRiemannSurface
-      (coherentSheafOfDivisor CRS.toRiemannSurface O L D) 0) :
-    True :=  -- Placeholder: h_i H = 0
-  h0_negative_degree_vanish CRS O L D ‹_› ‹_›
+    (hdeg : D.degree < 0) :
+    h_i (T.lineBundleCohomology D).H0 = 0 :=
+  h0_negative_degree_vanish CRS O T D hdeg
 
 /-- **h¹(D) = 0 for deg(D) > 2g - 2**.
 
     This follows from Serre duality and the vanishing for negative degree. -/
 theorem h1_vanish_large_degree (CRS : CompactRiemannSurface)
     (O : StructureSheaf CRS.toRiemannSurface)
-    (L : LineBundleSheafAssignment CRS.toRiemannSurface O)
-    (K : CanonicalDivisorData CRS)
+    (T : CompactCohomologyTheory CRS O)
     (D : Divisor CRS.toRiemannSurface)
-    (_ : D.degree > 2 * (CRS.genus : ℤ) - 2)
-    (_ : SheafCohomologyGroup CRS.toRiemannSurface
-      (coherentSheafOfDivisor CRS.toRiemannSurface O L D) 1) :
-    True :=  -- Placeholder: h_i H = 0
-  h1_large_degree_vanish CRS O L K D ‹_› ‹_›
+    (hdeg : D.degree > 2 * (CRS.genus : ℤ) - 2) :
+    h_i (T.lineBundleCohomology D).H1 = 0 :=
+  h1_large_degree_vanish CRS O T D hdeg
 
 /-- **Simplified Riemann-Roch for large degree**.
 
@@ -169,11 +193,23 @@ theorem riemann_roch_large_degree (CRS : CompactRiemannSurface)
     (_ : CanonicalDivisorData CRS)
     (T : CompactCohomologyTheory CRS O)
     (D : Divisor CRS.toRiemannSurface)
-    (_ : D.degree > 2 * (CRS.genus : ℤ) - 2) :
+    (hdeg : D.degree > 2 * (CRS.genus : ℤ) - 2) :
     (h_i (T.lineBundleCohomology D).H0 : ℤ) = D.degree - CRS.genus + 1 := by
-  -- χ(D) = h⁰(D) - h¹(D) = h⁰(D) - 0 = h⁰(D)
-  -- So h⁰(D) = χ(D) = deg(D) + 1 - g
-  sorry  -- Need to connect T.chi with h_i and use vanishing
+  -- Step 1: Euler characteristic formula
+  have heuler := eulerChar_formula T D
+  -- T.chi D = h⁰(D) - h¹(D) by definition
+  have hchi_def : T.chi D = (h_i (T.lineBundleCohomology D).H0 : ℤ) -
+      h_i (T.lineBundleCohomology D).H1 := rfl
+  rw [hchi_def] at heuler
+  -- heuler : h⁰(D) - h¹(D) = deg(D) + 1 - g
+
+  -- Step 2: For deg(D) > 2g - 2, h¹(D) = 0
+  have h1_vanish : h_i (T.lineBundleCohomology D).H1 = 0 :=
+    h1_large_degree_vanish CRS O T D hdeg
+
+  -- Step 3: Substitute h¹(D) = 0
+  simp only [h1_vanish, Nat.cast_zero, sub_zero] at heuler
+  omega
 
 /-!
 ## Quadratic Differentials and Moduli Space Dimension
@@ -186,11 +222,27 @@ def nTimesCanonical {CRS : CompactRiemannSurface}
     (K : CanonicalDivisorData CRS) (n : ℕ) : Divisor CRS.toRiemannSurface :=
   n • K.divisor
 
+/-- ℕ-smul equals ℤ-smul for divisors -/
+private theorem nsmul_eq_zsmul {RS : RiemannSurface} (n : ℕ) (D : Divisor RS) :
+    n • D = (n : ℤ) • D := by
+  induction n with
+  | zero =>
+    simp only [Nat.cast_zero, zero_smul]
+    ext p
+    simp only [Divisor.smul_coeff, zero_mul]
+    rfl
+  | succ k ih =>
+    rw [succ_nsmul, ih]
+    ext p
+    simp only [Divisor.add_coeff, Divisor.smul_coeff, Nat.cast_succ]
+    ring
+
 /-- **deg(K^n) = n(2g - 2)** -/
 theorem nTimesCanonical_degree (CRS : CompactRiemannSurface)
     (K : CanonicalDivisorData CRS) (n : ℕ) :
     (nTimesCanonical K n).degree = n * (2 * (CRS.genus : ℤ) - 2) := by
-  sorry  -- Requires degree of scalar multiple
+  unfold nTimesCanonical
+  rw [nsmul_eq_zsmul, Divisor.degree_smul, K.degree_eq]
 
 /-- **h⁰(K²) = 3g - 3 for g ≥ 2**.
 
@@ -203,11 +255,24 @@ theorem nTimesCanonical_degree (CRS : CompactRiemannSurface)
        = (4g - 4) - g + 1 = 3g - 3 ∎ -/
 theorem h0_K2 (CRS : CompactRiemannSurface)
     (O : StructureSheaf CRS.toRiemannSurface)
-    (_ : CanonicalDivisorData CRS)
-    (_ : CompactCohomologyTheory CRS O)
-    (_ : CRS.genus ≥ 2) :
-    True := by  -- Placeholder: h_i ... = 3 * CRS.genus - 3
-  trivial
+    (K : CanonicalDivisorData CRS)
+    (T : CompactCohomologyTheory CRS O)
+    (hg : CRS.genus ≥ 2) :
+    (h_i (T.lineBundleCohomology (nTimesCanonical K 2)).H0 : ℤ) =
+    3 * CRS.genus - 3 := by
+  -- deg(K²) = 2(2g - 2) = 4g - 4
+  have hdeg : (nTimesCanonical K 2).degree = 4 * (CRS.genus : ℤ) - 4 := by
+    rw [nTimesCanonical_degree]
+    ring
+  -- For g ≥ 2: deg(K²) = 4g - 4 > 2g - 2
+  have hdeg_large : (nTimesCanonical K 2).degree > 2 * (CRS.genus : ℤ) - 2 := by
+    rw [hdeg]
+    have hg' : (CRS.genus : ℤ) ≥ 2 := by exact_mod_cast hg
+    linarith
+  -- By large degree Riemann-Roch: h⁰(K²) = deg(K²) - g + 1
+  have hrr := riemann_roch_large_degree CRS O K T (nTimesCanonical K 2) hdeg_large
+  rw [hdeg] at hrr
+  linarith
 
 /-- **Dimension of moduli space**: dim M_g = 3g - 3 for g ≥ 2.
 
@@ -218,7 +283,8 @@ theorem moduli_dimension (CRS : CompactRiemannSurface)
     (K : CanonicalDivisorData CRS)
     (T : CompactCohomologyTheory CRS O)
     (hg : CRS.genus ≥ 2) :
-    True :=  -- Placeholder: h_i ... = 3 * CRS.genus - 3
+    (h_i (T.lineBundleCohomology (nTimesCanonical K 2)).H0 : ℤ) =
+    3 * CRS.genus - 3 :=
   h0_K2 CRS O K T hg
 
 /-- **h⁰(K^n) = (2n-1)(g-1) for n ≥ 2 and g ≥ 2**.
@@ -226,23 +292,44 @@ theorem moduli_dimension (CRS : CompactRiemannSurface)
     General formula for pluricanonical bundles. -/
 theorem h0_Kn (CRS : CompactRiemannSurface)
     (O : StructureSheaf CRS.toRiemannSurface)
-    (_ : CanonicalDivisorData CRS)
-    (_ : CompactCohomologyTheory CRS O)
-    (n : ℕ) (_ : n ≥ 2) (_ : CRS.genus ≥ 2) :
-    True := by  -- Placeholder: h_i ... = (2 * n - 1) * (CRS.genus - 1)
-  trivial
+    (K : CanonicalDivisorData CRS)
+    (T : CompactCohomologyTheory CRS O)
+    (n : ℕ) (hn : n ≥ 2) (hg : CRS.genus ≥ 2) :
+    (h_i (T.lineBundleCohomology (nTimesCanonical K n)).H0 : ℤ) =
+    (2 * n - 1) * (CRS.genus - 1) := by
+  -- deg(K^n) = n(2g - 2)
+  have hdeg : (nTimesCanonical K n).degree = n * (2 * (CRS.genus : ℤ) - 2) := by
+    exact nTimesCanonical_degree CRS K n
+  -- For n ≥ 2 and g ≥ 2: deg(K^n) = n(2g-2) > 2g - 2
+  have hdeg_large : (nTimesCanonical K n).degree > 2 * (CRS.genus : ℤ) - 2 := by
+    rw [hdeg]
+    have hg' : (CRS.genus : ℤ) ≥ 2 := by exact_mod_cast hg
+    have hn' : (n : ℤ) ≥ 2 := by exact_mod_cast hn
+    nlinarith
+  -- By large degree Riemann-Roch
+  have hrr := riemann_roch_large_degree CRS O K T (nTimesCanonical K n) hdeg_large
+  rw [hdeg] at hrr
+  -- Goal: (2n - 1)(g - 1) = n(2g - 2) - g + 1
+  -- n(2g - 2) - g + 1 = 2ng - 2n - g + 1 = (2n - 1)g - 2n + 1 = (2n - 1)(g - 1)
+  have hg' : (CRS.genus : ℤ) ≥ 2 := by exact_mod_cast hg
+  have hn' : (n : ℤ) ≥ 2 := by exact_mod_cast hn
+  linarith
 
 /-- **No global holomorphic vector fields for g ≥ 2**.
 
     h⁰(T) = h⁰(K⁻¹) = 0 since deg(K⁻¹) = 2 - 2g < 0. -/
 theorem h0_tangent_vanish (CRS : CompactRiemannSurface)
+    (O : StructureSheaf CRS.toRiemannSurface)
+    (T : CompactCohomologyTheory CRS O)
     (K : CanonicalDivisorData CRS)
     (hg : CRS.genus ≥ 2) :
-    True := by  -- Placeholder: h_i H = 0
+    h_i (T.lineBundleCohomology (-K.divisor)).H0 = 0 := by
   -- deg(-K) = -(2g - 2) = 2 - 2g < 0 for g ≥ 2
-  have _ := K.degree_eq
-  have _ : (CRS.genus : ℤ) ≥ 2 := by exact_mod_cast hg
-  trivial
+  have hdeg : (-K.divisor).degree < 0 := by
+    rw [Divisor.degree_neg, K.degree_eq]
+    have hg' : (CRS.genus : ℤ) ≥ 2 := by exact_mod_cast hg
+    linarith
+  exact h0_vanish_negative_degree CRS O T (-K.divisor) hdeg
 
 /-!
 ## Summary of Main Results

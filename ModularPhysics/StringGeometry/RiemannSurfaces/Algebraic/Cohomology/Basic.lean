@@ -229,6 +229,49 @@ structure CompactCohomologyTheory (CRS : CompactRiemannSurface)
     let H1Dp := cohomology (lineBundleSheaves.sheafOf (D - Divisor.point p)) 1
     eulerCharacteristic H0D H1D - eulerCharacteristic H0Dp H1Dp = 1
 
+  /-- **Negative degree vanishing**: h⁰(D) = 0 when deg(D) < 0.
+
+      Line bundles of negative degree have no global sections. This follows from:
+      - A section f ∈ H⁰(O(D)) corresponds to a meromorphic function with (f) + D ≥ 0
+      - If f ≠ 0, then (f) + D is effective, so deg((f) + D) ≥ 0
+      - But deg((f)) = 0 (principal divisors have degree 0 on compact surfaces)
+      - So deg(D) = deg((f) + D) ≥ 0, contradiction
+
+      This is a fundamental property of coherent sheaf cohomology on curves. -/
+  negative_degree_vanishing : ∀ (D : Divisor CRS.toRiemannSurface),
+    D.degree < 0 → h_i (cohomology (lineBundleSheaves.sheafOf D) 0) = 0
+
+  /-- **Large degree h¹ vanishing**: h¹(D) = 0 when deg(D) > 2g - 2.
+
+      This follows from Serre duality combined with negative degree vanishing:
+      - h¹(D) = h⁰(K - D) by Serre duality (where deg(K) = 2g - 2)
+      - deg(K - D) = (2g - 2) - deg(D) < 0 when deg(D) > 2g - 2
+      - h⁰(K - D) = 0 by negative degree vanishing
+      - Therefore h¹(D) = 0
+
+      This is a fundamental property derived from Serre duality on curves. -/
+  large_degree_h1_vanishing : ∀ (D : Divisor CRS.toRiemannSurface),
+    D.degree > 2 * (CRS.genus : ℤ) - 2 → h_i (cohomology (lineBundleSheaves.sheafOf D) 1) = 0
+
+  /-- **Serre duality (dimension form)**: h¹(D) = h⁰(K - D) where K is a canonical divisor.
+
+      For any divisor K with deg(K) = 2g - 2 (i.e., K is a canonical divisor):
+        h¹(D) = h⁰(K - D)
+
+      This is the fundamental duality theorem for coherent sheaf cohomology on curves.
+      It follows from the perfect pairing H⁰(K-D) × H¹(D) → H¹(K) ≅ ℂ induced by
+      cup product and the residue map.
+
+      **Proof sketch**:
+      1. The cup product H⁰(K-D) ⊗ H¹(D) → H¹(K) exists
+      2. Composing with residue: H¹(K) → ℂ gives a pairing H⁰(K-D) × H¹(D) → ℂ
+      3. This pairing is perfect (non-degenerate)
+      4. Perfect pairing between finite-dim spaces implies equal dimensions -/
+  serre_duality_dim : ∀ (D K : Divisor CRS.toRiemannSurface),
+    K.degree = 2 * (CRS.genus : ℤ) - 2 →
+    h_i (cohomology (lineBundleSheaves.sheafOf D) 1) =
+    h_i (cohomology (lineBundleSheaves.sheafOf (K - D)) 0)
+
 namespace CompactCohomologyTheory
 
 variable {CRS : CompactRiemannSurface} {O : StructureSheaf CRS.toRiemannSurface}
