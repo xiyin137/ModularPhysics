@@ -70,6 +70,7 @@ ModularPhysics/
 │   ├── RiemannSurfaces/
 │   │   ├── Algebraic/
 │   │   │   ├── Cohomology/
+│   │   │   ├── Core/
 │   │   │   ├── Helpers/
 │   │   │   └── Moduli/
 │   │   ├── Analytic/
@@ -78,6 +79,10 @@ ModularPhysics/
 │   │   ├── Combinatorial/
 │   │   │   └── Helpers/
 │   │   ├── GAGA/
+│   │   │   └── Cohomology/
+│   │   ├── Helpers/
+│   │   ├── SchemeTheoretic/
+│   │   │   └── Helpers/
 │   │   └── Topology/
 │   ├── Supermanifolds/
 │   │   ├── FPS/

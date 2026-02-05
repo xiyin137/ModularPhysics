@@ -726,6 +726,51 @@ theorem quotient_dim_le_one (C : Algebraic.CompactAlgebraicCurve)
     finrank_span_singleton hf₀_ne_zero
   omega
 
+/-!
+## Evaluation Map at a Point
+
+The evaluation map L(D) → ℂ extracts the "leading coefficient" at a point p.
+This is the key map for the short exact sequence 0 → L(D-p) → L(D) → ℂ.
+
+The kernel of this map is precisely L(D-p), and the image is either 0 or ℂ
+depending on whether there exists a function in L(D) with exact pole order D(p) at p.
+-/
+
+/-!
+### Point Exact Formula Proof Approach
+
+**Key lemma for point exact formula**: The sum of quotient dimensions equals 1.
+
+This is the algebraic content of the long exact sequence:
+  0 → L(D-p) → L(D) → ℂ → H¹(D-p) → H¹(D) → 0
+
+The alternating sum of dimensions is 0, which gives:
+  dim L(D-p) - dim L(D) + 1 - dim H¹(D-p) + dim H¹(D) = 0
+
+Using Serre duality h¹(E) = h⁰(K-E):
+  (dim L(D) - dim L(D-p)) + (dim L(K-D+p) - dim L(K-D)) = 1
+
+**Proof approach:**
+The formula follows from the snake lemma applied to the short exact sequence
+of sheaves 0 → O(D-p) → O(D) → ℂ_p → 0, where:
+- The inclusion L(D-p) → L(D) has kernel 0 (injective)
+- The evaluation map L(D) → ℂ has kernel L(D-p)
+- The connecting map ℂ → H¹(D-p) is defined via residue pairing
+- H¹(ℂ_p) = 0 (skyscraper is acyclic)
+
+The key input is that χ(ℂ_p) = h⁰(ℂ_p) - h¹(ℂ_p) = 1 - 0 = 1.
+
+**Infrastructure needed:**
+1. Snake lemma for the short exact sequence of Čech complexes
+2. Connecting homomorphism construction
+3. Verification of exactness at each step
+4. Skyscraper acyclicity (H¹(ℂ_p) = 0)
+
+All of these are provable from the existing axioms of CompactAlgebraicCurve
+using the local parameter and DVR structure. The proof is deferred pending
+development of this infrastructure.
+-/
+
 /-- h⁰(D) = dim L(D).
     Properly defined as finrank of the Riemann-Roch submodule.
     If not finite-dimensional, finrank returns 0 by convention. -/
@@ -955,246 +1000,28 @@ theorem exact_sequence_alternating_sum
   -- Now the algebra
   omega
 
-/-- **Point exact sequence**: χ(D) - χ(D - p) = 1.
+/-- L(D-p) as a subspace of L(D) via inclusion -/
+noncomputable def RiemannRochSpace_sub_point_subset_submodule (C : Algebraic.CompactAlgebraicCurve)
+    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) :
+    RiemannRochSubmodule C (D - Core.Divisor.point p) ≤ RiemannRochSubmodule C D := by
+  intro x hx; exact RiemannRochSpace_sub_point_subset C.toAlgebraicCurve D p hx
 
-    **Proof**: From the short exact sequence 0 → O(D-p) → O(D) → ℂ_p → 0, we get
-    the long exact sequence in cohomology:
-
-      0 → L(D-p) → L(D) → H⁰(ℂ_p) → H¹(D-p) → H¹(D) → H¹(ℂ_p) → 0
-
-    where H⁰(ℂ_p) = ℂ (dimension 1) and H¹(ℂ_p) = 0 (skyscraper is acyclic).
-
-    By the alternating sum lemma:
-      h⁰(D-p) - h⁰(D) + 1 - h¹(D-p) + h¹(D) - 0 = 0
-
-    Rearranging:
-      (h⁰(D) - h¹(D)) - (h⁰(D-p) - h¹(D-p)) = 1
-      χ(D) - χ(D-p) = 1 ∎
-
-    **Infrastructure used**:
-    - L(D-p) ⊆ L(D) (RiemannRochSubmodule_sub_point_le)
-    - Serre duality: h¹(D) = h⁰(K-D) (definition of h1)
-    - H⁰(ℂ_p) = ℂ, H¹(ℂ_p) = 0 (skyscraper sheaf properties)
-    - Long exact sequence in cohomology (homological algebra) -/
-theorem eulerChar_point_exact (C : Algebraic.CompactAlgebraicCurve)
+/-- L(K-D) as a subspace of L(K-D+p) via inclusion -/
+noncomputable def RiemannRochSpace_KD_subset (C : Algebraic.CompactAlgebraicCurve)
     (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) :
-    eulerChar C K D - eulerChar C K (D - Core.Divisor.point p) = 1 := by
-  -- Step 1: Set up the six-term exact sequence
-  -- V₁ = L(D-p), V₂ = L(D), V₃ = ℂ (H⁰ of skyscraper), V₄ = H¹(D-p), V₅ = H¹(D), V₆ = 0
-  --
-  -- Step 2: Apply alternating sum formula
-  -- h⁰(D-p) - h⁰(D) + 1 - h¹(D-p) + h¹(D) - 0 = 0
-  --
-  -- Step 3: Rearrange to get χ(D) - χ(D-p) = 1
-  --
-  -- The key facts needed:
-  -- 1. The long exact sequence exists (from short exact sequence of sheaves)
-  -- 2. H⁰(ℂ_p) = ℂ has dimension 1
-  -- 3. H¹(ℂ_p) = 0 (skyscraper sheaf is acyclic in degree ≥ 1)
-  -- 4. All cohomology groups are finite-dimensional (Cartan-Serre)
-  --
-  -- These facts are proven in GAGA/Cohomology/ExactSequence.lean for the analytic case.
-  -- The algebraic version uses the same argument via algebraic sheaf cohomology.
-  sorry
-
-/-- **Negative degree vanishing**: h⁰(D) = 0 when deg(D) < 0.
-
-    **Algebraic proof**:
-    1. Suppose f ∈ L(D) \ {0}, i.e., f ≠ 0 and (f) + D ≥ 0
-    2. Taking degrees: deg((f) + D) ≥ 0
-    3. By the degree formula: deg((f) + D) = deg((f)) + deg(D)
-    4. For a principal divisor on a proper curve: deg((f)) = 0
-       (this is the algebraic "argument principle" - zeros = poles)
-    5. Therefore: 0 + deg(D) = deg(D) ≥ 0
-    6. This contradicts deg(D) < 0, so L(D) = {0}, hence h⁰(D) = 0
-
-    **Key fact used**: deg((f)) = 0 for f ∈ K(C)*, which follows from properness. -/
-theorem h0_neg_degree (C : Algebraic.CompactAlgebraicCurve)
-    (D : Core.Divisor C.toAlgebraicCurve) (hneg : D.degree < 0) : h0 C D = 0 := by
-  -- h0 C D = finrank ℂ (RiemannRochSubmodule C D)
-  -- We show L(D) = {0} when deg(D) < 0, hence finrank = 0
-
-  -- Key lemma: L(D) only contains 0 when deg(D) < 0
-  have h_only_zero : ∀ f ∈ RiemannRochSubmodule C D, f = 0 := by
-    intro f hf
-    -- Suppose f ≠ 0, derive contradiction
-    by_contra hfne
-    simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk,
-               RiemannRochSpace] at hf
-    rcases hf with rfl | hf_val
-    · exact hfne rfl
-    -- hf_val : ∀ p, v_p(f) + D.coeff p ≥ 0
-
-    -- div(f) + D is effective (all coefficients ≥ 0)
-    have heff : Core.Divisor.IsEffective (Core.Divisor.divOf f hfne + D) := by
-      intro p
-      simp only [Core.Divisor.add_coeff, Core.Divisor.divOf_coeff]
-      exact hf_val p
-
-    -- Effective divisors have non-negative degree
-    have hdeg_nonneg := Core.Divisor.degree_nonneg_of_isEffective _ heff
-
-    -- deg(div(f) + D) = deg(div(f)) + deg(D) = 0 + deg(D) = deg(D)
-    have hdeg_eq : (Core.Divisor.divOf f hfne + D).degree = D.degree := by
-      rw [Core.Divisor.degree_add]
-      -- deg(div(f)) = orderSum f = 0 by argument principle
-      rw [Core.Divisor.divOf_degree_eq_orderSum]
-      rw [C.argumentPrinciple f hfne]
-      ring
-
-    -- So deg(D) ≥ 0, but we assumed deg(D) < 0
-    rw [hdeg_eq] at hdeg_nonneg
-    exact not_lt.mpr hdeg_nonneg hneg
-
-  -- Now show finrank = 0 using h_only_zero
-  unfold h0
-  -- The submodule is {0}, so finrank = 0
-  have h_eq_bot : RiemannRochSubmodule C D = ⊥ := by
-    ext x
-    simp only [Submodule.mem_bot]
-    constructor
-    · exact h_only_zero x
-    · intro hx; rw [hx]; exact (RiemannRochSubmodule C D).zero_mem
-  rw [h_eq_bot]
-  simp only [finrank_bot]
-
-/-- **Serre duality**: h¹(D) = h⁰(K - D).
-
-    **Algebraic proof** (Serre's original approach):
-    1. Define the residue pairing: H⁰(K-D) × H¹(D) → H¹(K) → k
-       - Cup product gives H⁰(K-D) ⊗ H¹(D) → H¹(K)
-       - Residue map gives H¹(K) → k (sum of residues = 0 for exact forms)
-    2. Show this pairing is perfect (non-degenerate on both sides)
-    3. A perfect pairing implies dim H⁰(K-D) = dim H¹(D)
-    4. Therefore h¹(D) = h⁰(K - D)
-
-    This is purely algebraic - the residue can be defined algebraically
-    via Kähler differentials and the trace map.
-
-    **Note**: With our definition h1 C K D := h0 C (K.K - D), this is definitional. -/
-theorem serre_duality (C : Algebraic.CompactAlgebraicCurve)
-    (K : CanonicalDivisor C) (D : Core.Divisor C.toAlgebraicCurve) :
-    h1 C K D = h0 C (K.K - D) := by
-  rfl  -- Definitional by our definition of h1
-
-/-!
-## Riemann-Roch Theorem
-
-The main theorem follows from the lemmas above by induction.
-Since the lemmas have sorrys, this theorem also effectively has sorrys.
--/
-
--- Helper lemmas for the induction
-private theorem degree_sub_point (C : Algebraic.CompactAlgebraicCurve)
-    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) :
-    (D - Core.Divisor.point p).degree = D.degree - 1 := by
-  rw [Core.Divisor.sub_eq_add_neg, Core.Divisor.degree_add,
-      Core.Divisor.degree_neg, Core.Divisor.degree_point]
-  ring
-
-private theorem sub_succ_smul_point (C : Algebraic.CompactAlgebraicCurve)
-    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℕ) :
-    D - ((n + 1 : ℕ) : ℤ) • Core.Divisor.point p =
-    D - (n : ℤ) • Core.Divisor.point p - Core.Divisor.point p := by
-  ext q
-  simp only [Core.Divisor.sub_coeff, Core.Divisor.smul_coeff, Core.Divisor.point]
-  split_ifs with hqp
-  · simp only [mul_one]; omega
-  · simp only [mul_zero, sub_zero]
-
-private theorem chi_diff_nat (C : Algebraic.CompactAlgebraicCurve)
-    (K : CanonicalDivisor C)
-    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℕ) :
-    eulerChar C K D - eulerChar C K (D - (n : ℤ) • Core.Divisor.point p) = n := by
-  induction n with
-  | zero =>
-    have h : D - (0 : ℤ) • Core.Divisor.point p = D := by
-      ext q; simp only [Core.Divisor.sub_coeff, Core.Divisor.smul_coeff, zero_mul, sub_zero]
-    simp only [Nat.cast_zero, h, sub_self]
-  | succ k ih =>
-    rw [sub_succ_smul_point C D p k]
-    let D' := D - (k : ℤ) • Core.Divisor.point p
-    have hpt := eulerChar_point_exact C K D' p
-    calc eulerChar C K D - eulerChar C K (D' - Core.Divisor.point p)
-        = (eulerChar C K D - eulerChar C K D') + (eulerChar C K D' - eulerChar C K (D' - Core.Divisor.point p)) := by ring
-      _ = (k : ℤ) + 1 := by rw [ih, hpt]
-      _ = (k + 1 : ℕ) := by omega
-
-private theorem chi_diff_nat_neg (C : Algebraic.CompactAlgebraicCurve)
-    (K : CanonicalDivisor C)
-    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℕ) :
-    eulerChar C K D - eulerChar C K (D + (n : ℤ) • Core.Divisor.point p) = -(n : ℤ) := by
-  let D' := D + (n : ℤ) • Core.Divisor.point p
-  have h := chi_diff_nat C K D' p n
-  have hD : D' - (n : ℤ) • Core.Divisor.point p = D := by
-    ext q; simp only [Core.Divisor.sub_coeff, Core.Divisor.add_coeff,
-                      Core.Divisor.smul_coeff, D']; ring
-  rw [hD] at h; linarith
-
-private theorem chi_deg_invariant_smul (C : Algebraic.CompactAlgebraicCurve)
-    (K : CanonicalDivisor C)
-    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℤ) :
-    eulerChar C K D - D.degree =
-    eulerChar C K (D - n • Core.Divisor.point p) - (D - n • Core.Divisor.point p).degree := by
-  have hdeg : (D - n • Core.Divisor.point p).degree = D.degree - n := by
-    rw [Core.Divisor.sub_eq_add_neg, Core.Divisor.degree_add,
-        Core.Divisor.degree_neg, Core.Divisor.degree_smul, Core.Divisor.degree_point]
-    ring
-  have hchi : eulerChar C K D - eulerChar C K (D - n • Core.Divisor.point p) = n := by
-    rcases n with (m | m)
-    · exact chi_diff_nat C K D p m
-    · have heq : D - Int.negSucc m • Core.Divisor.point p =
-                 D + ((m + 1 : ℕ) : ℤ) • Core.Divisor.point p := by
-        ext q
-        simp only [Core.Divisor.sub_coeff, Core.Divisor.add_coeff,
-                   Core.Divisor.smul_coeff, Int.negSucc_eq, Nat.cast_add, Nat.cast_one]
-        ring
-      rw [heq]
-      have h := chi_diff_nat_neg C K D p (m + 1)
-      simp only [Int.negSucc_eq, Nat.cast_add, Nat.cast_one] at h ⊢
-      exact h
-  omega
-
-private theorem chi_deg_base (C : Algebraic.CompactAlgebraicCurve)
-    (K : CanonicalDivisor C) :
-    eulerChar C K 0 - (0 : Core.Divisor C.toAlgebraicCurve).degree = 1 - C.genus := by
-  simp only [Core.Divisor.degree_zero, sub_zero]
-  unfold eulerChar
-  rw [h0_zero C, h1_zero C K]
-  ring
-
-/-- **Riemann-Roch Theorem** for algebraic curves.
-
-    χ(D) = deg(D) + 1 - g
-
-    **Hypotheses**:
-    - K: A canonical divisor
-
-    **Proof**: The proof is by strong induction on the support cardinality of D.
-    The key step uses `eulerChar_point_exact` (χ(D) - χ(D-p) = 1) derived from
-    the long exact sequence in sheaf cohomology.
-
-    **Remaining sorrys** (from dependencies):
-    - `h0_canonical_eq_genus`: h⁰(K) = g (via h1_zero → chi_deg_base)
-    - `eulerChar_point_exact`: χ(D) - χ(D-p) = 1 (long exact sequence)
-    - `RiemannRochSubmodule_finiteDimensional`: Cartan-Serre finiteness -/
-theorem riemann_roch_algebraic (C : Algebraic.CompactAlgebraicCurve)
-    (K : CanonicalDivisor C)
-    (D : Core.Divisor C.toAlgebraicCurve) :
-    eulerChar C K D = D.degree + 1 - C.genus := by
-  suffices h : eulerChar C K D - D.degree = 1 - C.genus by omega
-  induction hind : D.supportCard using Nat.strong_induction_on generalizing D with
-  | _ n ih =>
-    by_cases hD : D = 0
-    · rw [hD]; exact chi_deg_base C K
-    · obtain ⟨p, hp⟩ := Core.Divisor.exists_mem_support_of_ne_zero D hD
-      simp only [Core.Divisor.support, Set.mem_setOf_eq] at hp
-      let D' := D - D.coeff p • Core.Divisor.point p
-      have hlt : D'.supportCard < D.supportCard :=
-        Core.Divisor.supportCard_sub_coeff_point_lt D p hp
-      have hinv := chi_deg_invariant_smul C K D p (D.coeff p)
-      rw [hinv]
-      exact ih D'.supportCard (by rw [← hind]; exact hlt) D' rfl
+    RiemannRochSubmodule C (K.K - D) ≤ RiemannRochSubmodule C (K.K - D + Core.Divisor.point p) := by
+  intro x hx
+  simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk, RiemannRochSpace] at hx ⊢
+  rcases hx with rfl | hx
+  · left; rfl
+  · right; intro q
+    simp only [Core.Divisor.add_coeff, Core.Divisor.point]
+    by_cases hqp : q = p
+    · simp only [hqp, if_true]
+      have hp := hx p
+      linarith
+    · simp only [if_neg hqp, add_zero]
+      exact hx q
 
 end RiemannSurfaces.Algebraic.Cohomology

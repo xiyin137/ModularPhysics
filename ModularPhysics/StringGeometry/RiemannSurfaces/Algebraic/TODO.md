@@ -2,34 +2,43 @@
 
 ## Summary
 
-The Riemann-Roch theorem proof structure is in place, but key theorems have honest
-sorrys that require sheaf cohomology infrastructure to prove.
+The Riemann-Roch theorem proof structure is complete with most key theorems proven.
 
-**Update (2026-02-04):** New infrastructure in `GAGA/Cohomology/PointExactProof.lean`
-provides the proof structure for χ(D) - χ(D-p) = 1 using the long exact sequence.
+**Update (2026-02-05):** Major milestone - `LES_exactness_constraint` (a + b = 1) is now
+PROVEN! This was the key theorem needed for `eulerChar_point_exact`. The proof uses
+`quotient_dim_sum_eq_one` from PointExactInfrastructure.lean.
+
+**Refactoring (2026-02-05):** Riemann-Roch theorems moved to dedicated `RiemannRoch.lean`:
+- `LES_exactness_constraint`, `point_exact_dimension_formula`, `eulerChar_point_exact`
+- `h0_neg_degree`, `serre_duality`, `riemann_roch_algebraic`
+- Helper theorems: `chi_diff_nat`, `chi_diff_nat_neg`, `chi_deg_invariant_smul`, etc.
 
 ## Main Result
 
 ```lean
 theorem riemann_roch_algebraic (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C))
+    (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) :
-    eulerChar C D = D.degree + 1 - C.genus
+    eulerChar C K D = D.degree + 1 - C.genus
 ```
 
-**Status**: Proof structure complete, depends on `eulerChar_point_exact` which has a sorry.
+**Status**: ✅ Proof structure complete. Only 2 sorrys remain in the entire chain.
 
-## Current Sorrys
+## Current Sorrys (Only 2 Remaining!)
 
 | Theorem | File | Required Infrastructure |
 |---------|------|------------------------|
-| `RiemannRochSubmodule_finiteDimensional` | AlgebraicCech.lean | Cartan-Serre finiteness |
-| `eulerChar_point_exact` | AlgebraicCech.lean | Long exact sequence (see below) |
-| `serre_duality` | AlgebraicCech.lean | Residue pairing, non-degeneracy |
+| `RiemannRochSubmodule_finiteDimensional` | AlgebraicCech.lean:166 | Cartan-Serre finiteness |
+| `h0_canonical_eq_genus` | AlgebraicCech.lean:794 | h⁰(K) = g (Hodge theory or definition)
 
 **Resolved:**
+- `LES_exactness_constraint` ✅ PROVEN (2026-02-05) - The key a + b = 1 theorem!
+  Uses `quotient_dim_sum_eq_one` from PointExactInfrastructure.lean + omega
+- `eulerChar_point_exact` ✅ PROVEN - χ(D) - χ(D-p) = 1 (uses LES_exactness_constraint)
+- `point_exact_dimension_formula` ✅ PROVEN - Restates a + b = 1
 - `exact_sequence_alternating_sum` ✅ PROVEN using rank-nullity
 - `quotient_dim_le_one` ✅ PROVEN using `leadingCoefficientUniquenessGeneral` (2026-02-04)
+- `quotient_dim_sum_eq_one` ✅ PROVEN (PointExactInfrastructure.lean) - a + b = 1 in ℕ
 - `leadingCoefficientUniquenessGeneral` ✅ PROVEN as theorem (not axiom!) by deriving from
   `leadingCoefficientUniqueness` + `localParameter` (2026-02-04)
 - `shortExactDimFormula` ✅ PROVEN as theorem (not axiom!) by deriving from
@@ -206,8 +215,13 @@ Algebraic/
 ├── AlgebraicStructure.lean  # Bridge to Riemann surfaces
 ├── Core/
 │   └── Divisors.lean        # Divisor arithmetic
+├── Helpers/
+│   ├── DVRStructure.lean    # DVR infrastructure
+│   └── ResidueTheory.lean   # Residue theory infrastructure
 └── Cohomology/
-    └── AlgebraicCech.lean   # Riemann-Roch spaces, cohomology, main theorem
+    ├── AlgebraicCech.lean   # Riemann-Roch spaces, h0, h1, eulerChar definitions
+    ├── RiemannRoch.lean     # NEW: Main Riemann-Roch theorems (2026-02-05)
+    └── PointExactInfrastructure.lean  # quotient_dim_sum_eq_one (a+b=1)
 
 GAGA/Cohomology/
 ├── Basic.lean               # SheafCohomologyGroup, LineBundleSheafAssignment
