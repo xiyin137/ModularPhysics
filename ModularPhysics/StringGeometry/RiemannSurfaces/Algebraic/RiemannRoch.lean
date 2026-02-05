@@ -222,7 +222,7 @@ theorem nTimesCanonical_degree (CRS : CompactRiemannSurface)
     (K : CanonicalDivisorData CRS) (n : ℕ) :
     (nTimesCanonical K n).degree = n * (2 * (CRS.genus : ℤ) - 2) := by
   unfold nTimesCanonical
-  rw [nsmul_eq_zsmul, Divisor.degree_smul, K.degree_eq]
+  rw [nsmul_eq_zsmul, Divisor.degree_smul, canonical_divisor_degree CRS K]
 
 /-- **h⁰(K²) = 3g - 3 for g ≥ 2**.
 
@@ -310,7 +310,7 @@ theorem h0_tangent_vanish (CRS : CompactRiemannSurface)
     h_i (cechToSheafCohomologyGroup (L.sheafOf (-K.divisor)) gc 0) = 0 := by
   -- deg(-K) = -(2g - 2) = 2 - 2g < 0 for g ≥ 2
   have hdeg : (-K.divisor).degree < 0 := by
-    rw [Divisor.degree_neg, K.degree_eq]
+    rw [Divisor.degree_neg, canonical_divisor_degree CRS K]
     have hg' : (CRS.genus : ℤ) ≥ 2 := by exact_mod_cast hg
     linarith
   exact negative_degree_vanishing_cech L (-K.divisor) gc hdeg

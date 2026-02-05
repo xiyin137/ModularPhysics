@@ -244,16 +244,36 @@ theorem jacobian_dimension (CRS : RiemannSurfaces.CompactRiemannSurface)
     (_ : Jacobian' CRS) :
     CRS.genus = CRS.genus := rfl
 
-/-- J(Σ) is principally polarized.
+/-- A principal polarization on the Jacobian.
 
     A principal polarization on an abelian variety is an ample divisor
-    of self-intersection 1. For Jacobians, this is the theta divisor. -/
+    of self-intersection 1. For Jacobians, this is the theta divisor.
+
+    **Note:** The degree property (degree = g!) is NOT a structure field because
+    it is a computational result from theta divisor intersection theory that
+    must be PROVED. See `principal_polarization_degree` theorem below. -/
 structure PrincipalPolarization (CRS : RiemannSurfaces.CompactRiemannSurface)
     (J : Jacobian' CRS) where
-  /-- The degree of the polarization (= g! for the theta divisor) -/
+  /-- The degree of the polarization -/
   degree : ℕ
-  /-- The polarization is principal: degree = g! -/
-  is_principal : degree = Nat.factorial CRS.genus
+
+/-- The degree of the principal polarization (theta divisor) equals g!.
+
+    **Mathematical background:**
+    For a Jacobian J(Σ) of a genus g curve, the theta divisor Θ defines
+    a principal polarization. The self-intersection number Θ^g = g!,
+    which equals the degree of the polarization.
+
+    **Proof approaches:**
+    1. Intersection theory: Compute Θ^g using Poincaré formula
+    2. Theta functions: Use the heat equation and Riemann theta formula
+    3. Algebraic: Use Riemann-Roch on the abelian variety J(Σ)
+
+    This requires substantial infrastructure not yet available. -/
+theorem principal_polarization_degree (CRS : RiemannSurfaces.CompactRiemannSurface)
+    (J : Jacobian' CRS) (P : PrincipalPolarization CRS J) :
+    P.degree = Nat.factorial CRS.genus := by
+  sorry  -- Requires theta divisor intersection theory
 
 /-!
 ## The Abel-Jacobi Map

@@ -145,10 +145,28 @@ theorem RiemannRochSpace_sub_point_subset (D : Core.Divisor C) (p : C.Point) :
     · simp only [if_neg hqp] at hf_val ⊢
       omega
 
-/-- The canonical divisor K with deg(K) = 2g - 2. -/
+/-- The canonical divisor K on an algebraic curve.
+
+    This is just a divisor claimed to be canonical (div(ω) for some meromorphic 1-form ω).
+    The degree property deg(K) = 2g - 2 must be proved via Riemann-Hurwitz (see
+    `canonical_divisor_degree_algebraic`), NOT assumed as a structure field.
+
+    Similarly, h⁰(K) = g must be proved (see `h0_canonical_eq_genus`), not assumed. -/
 structure CanonicalDivisor (C : Algebraic.CompactAlgebraicCurve) where
   K : Core.Divisor C.toAlgebraicCurve
-  degree_eq : K.degree = (2 : ℤ) * C.genus - 2
+
+/-- Riemann-Hurwitz theorem (algebraic): deg(K) = 2g - 2 for the canonical divisor.
+
+    **Proof approaches:**
+    1. Kähler differentials: K = div(Ω¹_{C/k}), compute degree via local generators
+    2. Branched covering: Consider π : C → P¹ and use Riemann-Hurwitz ramification formula
+    3. Algebraic Euler characteristic: χ(C) = 2 - 2g and deg(K) = -χ(C)
+
+    This requires substantial infrastructure not yet available. -/
+theorem canonical_divisor_degree_algebraic (C : Algebraic.CompactAlgebraicCurve)
+    (K : CanonicalDivisor C) :
+    K.K.degree = (2 : ℤ) * C.genus - 2 := by
+  sorry
 
 /-!
 ## Cohomology Dimensions
@@ -175,6 +193,204 @@ noncomputable def RiemannRochSubmodule (C : Algebraic.CompactAlgebraicCurve)
   zero_mem' := zero_mem_RiemannRochSpace C.toAlgebraicCurve D
   smul_mem' := fun _ {_} hf => smul_mem_RiemannRochSpace C.toAlgebraicCurve D hf
 
+/-- **Key lemma for finiteness**: If L(D-p) is finite-dimensional, then L(D) is finite-dimensional.
+
+    The proof uses leading coefficient uniqueness to show that L(D) is spanned by
+    L(D-p) together with at most one additional element.
+
+    This does NOT assume L(D) is finite-dimensional upfront. -/
+theorem RiemannRochSubmodule_finiteDimensional_step (C : Algebraic.CompactAlgebraicCurve)
+    (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point)
+    (hFD : FiniteDimensional ℂ (RiemannRochSubmodule C (D - Core.Divisor.point p))) :
+    FiniteDimensional ℂ (RiemannRochSubmodule C D) := by
+  -- Key observation: every f ∈ L(D) is either in L(D-p) or can be written as
+  -- c * f₀ + g where f₀ ∈ L(D) \ L(D-p) and g ∈ L(D-p).
+
+  -- Helper: L(D-p) ⊆ L(D)
+  have hge : RiemannRochSubmodule C (D - Core.Divisor.point p) ≤ RiemannRochSubmodule C D := by
+    intro f hf
+    exact RiemannRochSpace_sub_point_subset C.toAlgebraicCurve D p hf
+
+  -- Case 1: L(D) = L(D-p) (no new elements)
+  by_cases hEq : ∀ f ∈ RiemannRochSubmodule C D, f ∈ RiemannRochSubmodule C (D - Core.Divisor.point p)
+  · -- L(D) ⊆ L(D-p), combined with the reverse inclusion gives equality
+    have hle : RiemannRochSubmodule C D ≤ RiemannRochSubmodule C (D - Core.Divisor.point p) := hEq
+    have heq : RiemannRochSubmodule C D = RiemannRochSubmodule C (D - Core.Divisor.point p) :=
+      le_antisymm hle hge
+    rw [heq]
+    exact hFD
+
+  -- Case 2: There exists f₀ ∈ L(D) \ L(D-p)
+  push_neg at hEq
+  obtain ⟨f₀, hf₀_D, hf₀_not⟩ := hEq
+
+  -- f₀ has valuation exactly -D(p) at p
+  have hf₀_val : C.valuation p f₀ = -D.coeff p := by
+    have hf₀_D' : f₀ ∈ RiemannRochSpace C.toAlgebraicCurve D := hf₀_D
+    have hf₀_not' : f₀ ∉ RiemannRochSpace C.toAlgebraicCurve (D - Core.Divisor.point p) := hf₀_not
+    simp only [RiemannRochSpace, Set.mem_setOf_eq] at hf₀_D' hf₀_not'
+    rw [not_or] at hf₀_not'
+    obtain ⟨hf₀_ne, hf₀_bad⟩ := hf₀_not'
+    rw [not_forall] at hf₀_bad
+    obtain ⟨q, hq⟩ := hf₀_bad
+    rw [not_le] at hq
+    simp only [Core.Divisor.sub_coeff, Core.Divisor.point] at hq
+    rcases hf₀_D' with rfl | hf₀_D''
+    · exact absurd rfl hf₀_ne
+    · by_cases hqp : q = p
+      · simp only [hqp, if_true] at hq; have := hf₀_D'' p; omega
+      · simp only [if_neg hqp, sub_zero] at hq; have := hf₀_D'' q; omega
+
+  have hf₀_ne : f₀ ≠ 0 := by
+    intro heq; apply hf₀_not; rw [heq]
+    exact zero_mem_RiemannRochSpace C.toAlgebraicCurve _
+
+  -- Define a linear map from ℂ × L(D-p) to L(D)
+  -- (c, g) ↦ c • f₀ + g (where g is lifted to L(D))
+  let LDp := RiemannRochSubmodule C (D - Core.Divisor.point p)
+  let LD := RiemannRochSubmodule C D
+
+  -- The inclusion L(D-p) → L(D)
+  let incl : LDp →ₗ[ℂ] LD := Submodule.inclusion hge
+
+  -- The map c ↦ c • f₀ as a linear map ℂ → L(D)
+  let f₀_map : ℂ →ₗ[ℂ] LD := {
+    toFun := fun c => ⟨c • f₀, smul_mem_RiemannRochSpace C.toAlgebraicCurve D hf₀_D⟩
+    map_add' := by
+      intros x y
+      simp only [add_smul]
+      rfl
+    map_smul' := by
+      intros m x
+      ext
+      simp only [smul_eq_mul, mul_smul, RingHom.id_apply, SetLike.val_smul]
+  }
+
+  -- The combined map (c, g) ↦ c • f₀ + g
+  let combined : (ℂ × LDp) →ₗ[ℂ] LD := f₀_map.comp (LinearMap.fst ℂ ℂ LDp) +
+                                         incl.comp (LinearMap.snd ℂ ℂ LDp)
+
+  -- This map is surjective
+  have hsurj : Function.Surjective combined := by
+    intro ⟨f, hf⟩
+    by_cases hfLDp : f ∈ LDp
+    · -- f ∈ L(D-p), so (0, f) maps to f
+      use (0, ⟨f, hfLDp⟩)
+      apply Subtype.ext
+      show (0 : ℂ) • f₀ + f = f
+      simp only [zero_smul, zero_add]
+    · -- f ∉ L(D-p), so v_p(f) = -D(p)
+      have hf_val : C.valuation p f = -D.coeff p := by
+        have hf' : f ∈ RiemannRochSpace C.toAlgebraicCurve D := hf
+        have hf_not' : f ∉ RiemannRochSpace C.toAlgebraicCurve (D - Core.Divisor.point p) := hfLDp
+        simp only [RiemannRochSpace, Set.mem_setOf_eq] at hf' hf_not'
+        rw [not_or] at hf_not'
+        obtain ⟨hf_ne, hf_bad⟩ := hf_not'
+        rw [not_forall] at hf_bad
+        obtain ⟨q, hq⟩ := hf_bad
+        rw [not_le] at hq
+        simp only [Core.Divisor.sub_coeff, Core.Divisor.point] at hq
+        rcases hf' with rfl | hf''
+        · exact absurd rfl hf_ne
+        · by_cases hqp : q = p
+          · simp only [hqp, if_true] at hq; have := hf'' p; omega
+          · simp only [if_neg hqp, sub_zero] at hq; have := hf'' q; omega
+
+      have hf_ne : f ≠ 0 := by
+        intro heq; apply hfLDp; rw [heq]
+        exact zero_mem_RiemannRochSpace C.toAlgebraicCurve _
+
+      -- v_p(f) = v_p(f₀), apply leading coefficient uniqueness
+      have heq_val : C.toAlgebraicCurve.valuation p f₀ = C.toAlgebraicCurve.valuation p f := by
+        rw [hf_val, hf₀_val]
+
+      obtain ⟨c, hc_ne, hcases⟩ := C.leadingCoefficientUniquenessGeneral p f₀ f hf₀_ne hf_ne heq_val
+
+      -- f - c * f₀ ∈ L(D-p)
+      have h_diff_mem : f - algebraMap ℂ C.FunctionField c * f₀ ∈ LDp := by
+        simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk, RiemannRochSpace,
+                   LDp]
+        by_cases hdiff : f - algebraMap ℂ C.FunctionField c * f₀ = 0
+        · left; exact hdiff
+        · right
+          intro q
+          simp only [Core.Divisor.sub_coeff, Core.Divisor.point]
+          by_cases hqp : q = p
+          · -- At p: need v_p(f - c*f₀) ≥ -D(p) + 1 = -(D-point(p))(p)
+            simp only [hqp, if_true]
+            rcases hcases with heq0 | hgt
+            · -- f - c*f₀ = 0, contradiction with hdiff
+              exfalso
+              apply hdiff
+              have : f = algebraMap ℂ C.FunctionField c * f₀ := by
+                rw [sub_eq_zero] at heq0; exact heq0
+              rw [this]; ring
+            · -- v_p(f - c*f₀) > v_p(f) = -D(p)
+              have hval_gt : C.valuation p (f - algebraMap ℂ C.FunctionField c * f₀) >
+                             C.valuation p f := hgt
+              rw [hf_val] at hval_gt
+              omega
+          · -- At q ≠ p: need v_q(f - c*f₀) ≥ -D(q)
+            simp only [if_neg hqp, sub_zero]
+            -- Get bounds for f and f₀ at q
+            have hf_q : C.valuation q f + D.coeff q ≥ 0 := by
+              have hf_D : f ∈ RiemannRochSubmodule C D := hf
+              simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk,
+                         RiemannRochSpace] at hf_D
+              rcases hf_D with hfz | hfD
+              · exact absurd hfz hf_ne
+              · exact hfD q
+            have hf₀_q : C.valuation q f₀ + D.coeff q ≥ 0 := by
+              have hf₀_D' : f₀ ∈ RiemannRochSubmodule C D := hf₀_D
+              simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk,
+                         RiemannRochSpace] at hf₀_D'
+              rcases hf₀_D' with hf₀z | hf₀D
+              · exact absurd hf₀z hf₀_ne
+              · exact hf₀D q
+            -- v(c * f₀) = v(f₀) since c is a nonzero constant
+            have hcf₀_ne : algebraMap ℂ C.FunctionField c * f₀ ≠ 0 :=
+              mul_ne_zero (by simp [hc_ne]) hf₀_ne
+            have h_cf₀ : C.valuation q (algebraMap ℂ C.FunctionField c * f₀) =
+                         C.valuation q f₀ := by
+              rw [C.toAlgebraicCurve.valuation_mul q _ _ (by simp [hc_ne]) hf₀_ne,
+                  C.algebraInst.valuation_algebraMap q c hc_ne]
+              ring
+            -- Use ultrametric inequality
+            have hneg_val : C.valuation q (-(algebraMap ℂ C.FunctionField c * f₀)) =
+                            C.valuation q (algebraMap ℂ C.FunctionField c * f₀) := by
+              have h1 : -(algebraMap ℂ C.FunctionField c * f₀) =
+                        algebraMap ℂ C.FunctionField (-1 : ℂ) * (algebraMap ℂ C.FunctionField c * f₀) := by
+                simp only [map_neg, map_one, neg_mul, one_mul]
+              have hm1_ne : algebraMap ℂ C.FunctionField (-1 : ℂ) ≠ 0 := by simp
+              rw [h1, C.toAlgebraicCurve.valuation_mul q _ _ hm1_ne hcf₀_ne,
+                  C.algebraInst.valuation_algebraMap q (-1) (by norm_num : (-1 : ℂ) ≠ 0)]
+              ring
+            by_cases hdiff' : f + (-(algebraMap ℂ C.FunctionField c * f₀)) = 0
+            · exfalso
+              simp only [← sub_eq_add_neg] at hdiff'
+              exact hdiff hdiff'
+            have hmin := C.toAlgebraicCurve.valuation_add_min q f
+              (-(algebraMap ℂ C.FunctionField c * f₀)) hdiff'
+            simp only [sub_eq_add_neg]
+            rw [hneg_val, h_cf₀] at hmin
+            omega
+
+      -- Rewrite: f = c • f₀ + (f - c * f₀)
+      -- Note: c • f₀ = algebraMap c * f₀ by Algebra.smul_def
+      use (c, ⟨f - algebraMap ℂ C.FunctionField c * f₀, h_diff_mem⟩)
+      apply Subtype.ext
+      simp only [combined, LinearMap.add_apply, LinearMap.coe_comp, Function.comp_apply,
+                 LinearMap.fst_apply, LinearMap.snd_apply, incl,
+                 Submodule.inclusion_apply, Submodule.coe_add]
+      -- The f₀_map term evaluates to ⟨c • f₀, _⟩
+      show c • f₀ + (f - algebraMap ℂ C.FunctionField c * f₀) = f
+      rw [Algebra.smul_def]
+      ring
+
+  -- Since ℂ × L(D-p) is finite-dimensional and combined is surjective, L(D) is finite-dimensional
+  haveI : FiniteDimensional ℂ (ℂ × LDp) := inferInstance
+  exact Module.Finite.of_surjective combined hsurj
+
 /-- L(D) is finite-dimensional (finiteness for coherent sheaves on proper curves).
 
     **Algebraic proof outline:**
@@ -187,7 +403,74 @@ noncomputable def RiemannRochSubmodule (C : Algebraic.CompactAlgebraicCurve)
 theorem RiemannRochSubmodule_finiteDimensional (C : Algebraic.CompactAlgebraicCurve)
     (D : Core.Divisor C.toAlgebraicCurve) :
     FiniteDimensional ℂ (RiemannRochSubmodule C D) := by
-  sorry
+  -- Induction on coeffNorm (sum of |D.coeff p| over support)
+  induction hind : D.coeffNorm using Nat.strong_induction_on generalizing D with
+  | _ n ih =>
+    by_cases hD : D = 0
+    · -- Base case: D = 0
+      rw [hD]
+      -- L(0) ≅ ℂ (constant functions), hence finite-dimensional
+      -- Inline the proof from h0_zero: L(0) = {constants}
+      have h_const : ∀ f ∈ RiemannRochSubmodule C 0, ∃ c : ℂ, f = algebraMap ℂ C.FunctionField c := by
+        intro f hf
+        simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk,
+                   RiemannRochSpace] at hf
+        rcases hf with rfl | hf_val
+        · use 0; simp only [map_zero]
+        · have hf_reg : ∀ p, 0 ≤ C.valuation p f := by
+            intro p; have := hf_val p; simp only [Core.Divisor.zero_coeff, add_zero] at this; exact this
+          exact Algebraic.CompactAlgebraicCurve.regularIsConstant C f hf_reg
+      have h_const_mem : ∀ c : ℂ, algebraMap ℂ C.FunctionField c ∈ RiemannRochSubmodule C 0 := by
+        intro c
+        simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk, RiemannRochSpace]
+        by_cases hc : c = 0
+        · left; simp only [hc, map_zero]
+        · right; intro p; simp only [Core.Divisor.zero_coeff, add_zero]
+          exact le_of_eq (C.algebraInst.valuation_algebraMap p c hc).symm
+      -- Construct equivalence L(0) ≃ₗ ℂ
+      let toL0 : ℂ →ₗ[ℂ] (RiemannRochSubmodule C 0) := {
+        toFun := fun c => ⟨algebraMap ℂ C.FunctionField c, h_const_mem c⟩
+        map_add' := by intros; apply Subtype.ext; simp only [AddMemClass.mk_add_mk, map_add]
+        map_smul' := by intros; apply Subtype.ext; simp only [RingHom.id_apply, SetLike.val_smul,
+          Algebra.smul_def, map_mul, Algebra.algebraMap_self]
+      }
+      have h_surj : Function.Surjective toL0 := by
+        intro ⟨f, hf⟩; obtain ⟨c, hc⟩ := h_const f hf; use c; apply Subtype.ext; exact hc.symm
+      have h_inj : Function.Injective toL0 := by
+        intro c₁ c₂ heq; have : (toL0 c₁).val = (toL0 c₂).val := congrArg Subtype.val heq
+        exact (algebraMap ℂ C.FunctionField).injective this
+      let equiv : ℂ ≃ₗ[ℂ] (RiemannRochSubmodule C 0) := LinearEquiv.ofBijective toL0 ⟨h_inj, h_surj⟩
+      exact Module.Finite.of_surjective equiv.toLinearMap equiv.surjective
+    · -- Inductive case: D ≠ 0
+      obtain ⟨p, hp⟩ := Core.Divisor.exists_mem_support_of_ne_zero D hD
+      simp only [Core.Divisor.support, Set.mem_setOf_eq] at hp
+      by_cases hpos : D.coeff p > 0
+      · -- D.coeff(p) > 0: Use the step theorem with L(D-p)
+        let D' := D - Core.Divisor.point p
+        have hlt : D'.coeffNorm < D.coeffNorm := Core.Divisor.coeffNorm_sub_point_lt D p hpos
+        haveI : FiniteDimensional ℂ (RiemannRochSubmodule C D') :=
+          ih D'.coeffNorm (by rw [← hind]; exact hlt) D' rfl
+        exact RiemannRochSubmodule_finiteDimensional_step C D p this
+      · -- D.coeff(p) < 0: L(D) ⊆ L(D + point(p))
+        have hneg : D.coeff p < 0 := by omega
+        let D' := D + Core.Divisor.point p
+        have hlt : D'.coeffNorm < D.coeffNorm := Core.Divisor.coeffNorm_add_point_lt D p hneg
+        haveI hFD' : FiniteDimensional ℂ (RiemannRochSubmodule C D') :=
+          ih D'.coeffNorm (by rw [← hind]; exact hlt) D' rfl
+        -- L(D) ⊆ L(D'), so L(D) is finite-dimensional
+        have hle : RiemannRochSubmodule C D ≤ RiemannRochSubmodule C D' := by
+          intro f hf
+          simp only [RiemannRochSubmodule, Submodule.mem_mk, AddSubmonoid.mem_mk,
+                     RiemannRochSpace, D'] at hf ⊢
+          rcases hf with rfl | hf_val
+          · left; rfl
+          · right
+            intro q
+            simp only [Core.Divisor.add_coeff, Core.Divisor.point]
+            by_cases hqp : q = p
+            · simp only [hqp, if_true]; have := hf_val p; omega
+            · simp only [if_neg hqp, add_zero]; exact hf_val q
+        exact Module.Finite.of_injective (Submodule.inclusion hle) (Submodule.inclusion_injective hle)
 
 /-- L(D-p) as a submodule of L(D).
     This is the submodule inclusion used in the point exact sequence. -/
@@ -450,18 +733,23 @@ noncomputable def h0 (C : Algebraic.CompactAlgebraicCurve)
     (D : Core.Divisor C.toAlgebraicCurve) : ℕ :=
   Module.finrank ℂ (RiemannRochSubmodule C D)
 
-/-- A proper canonical divisor with all the required properties.
-    This extends CanonicalDivisor with the h⁰(K) = g property.
+/-- h⁰(K) = g: The dimension of holomorphic 1-forms equals genus.
 
-    **Note**: This structure only includes properties that can be proven
-    from the definition of the canonical divisor. The point exact sequence
-    formula (which requires Serre duality and sheaf cohomology) is stated
-    as a separate theorem with a sorry. -/
-structure ProperCanonicalDivisor (C : Algebraic.CompactAlgebraicCurve) extends CanonicalDivisor C where
-  /-- The dimension of global sections of K equals the genus.
-      This is a non-trivial theorem that requires the construction of K
-      from Kähler differentials and a dimension counting argument. -/
-  h0_eq_genus : h0 C K = C.genus
+    This is a deep theorem connecting:
+    - Algebraic h⁰(K) = dim L(K) (dimension of space of meromorphic functions with poles ≤ K)
+    - Topological genus g (from CompactAlgebraicCurve structure)
+
+    **Proof approaches:**
+    1. Hodge theory: H⁰(K) ≅ H⁰'¹(Σ) has dimension = g
+    2. Algebraic: Construct K from Kähler differentials, count dimensions using
+       regularity of differentials on smooth curves
+    3. GAGA: Analytic h⁰(K) = g transfers to algebraic via comparison theorem
+
+    This requires substantial infrastructure not yet available. -/
+theorem h0_canonical_eq_genus (C : Algebraic.CompactAlgebraicCurve)
+    (K : CanonicalDivisor C) :
+    h0 C K.K = C.genus := by
+  sorry
 
 /-- h¹(D) = dim H¹(C, O(D)).
     Defined via Serre duality: h¹(D) = h⁰(K - D) where K is the canonical divisor.
@@ -469,22 +757,18 @@ structure ProperCanonicalDivisor (C : Algebraic.CompactAlgebraicCurve) extends C
     **Mathematical note**: The canonical divisor K is unique up to linear equivalence
     and has degree 2g - 2. The Serre duality theorem states h¹(D) = h⁰(K - D).
 
-    For the definition, we use Classical.choice to pick a proper canonical divisor.
-    The actual value is independent of the choice (up to linear equivalence). -/
+    This definition takes the canonical divisor K as an explicit parameter.
+    The value is independent of the choice of K (up to linear equivalence). -/
 noncomputable def h1 (C : Algebraic.CompactAlgebraicCurve)
-    (D : Core.Divisor C.toAlgebraicCurve) : ℕ :=
+    (K : CanonicalDivisor C) (D : Core.Divisor C.toAlgebraicCurve) : ℕ :=
   -- Use Serre duality: h¹(D) = h⁰(K - D)
-  -- This requires a proper canonical divisor to exist.
-  -- In a complete formalization, we would construct K from Kähler differentials.
-  if h : Nonempty (ProperCanonicalDivisor C) then
-    h0 C ((Classical.choice h).K - D)
-  else
-    0  -- Degenerate case (shouldn't happen for proper algebraic curves)
+  h0 C (K.K - D)
 
-/-- Euler characteristic χ(D) = h⁰(D) - h¹(D) -/
+/-- Euler characteristic χ(D) = h⁰(D) - h¹(D).
+    Takes the canonical divisor K as a parameter (needed for h¹ via Serre duality). -/
 noncomputable def eulerChar (C : Algebraic.CompactAlgebraicCurve)
-    (D : Core.Divisor C.toAlgebraicCurve) : ℤ :=
-  (h0 C D : ℤ) - (h1 C D : ℤ)
+    (K : CanonicalDivisor C) (D : Core.Divisor C.toAlgebraicCurve) : ℤ :=
+  (h0 C D : ℤ) - (h1 C K D : ℤ)
 
 /-!
 ## Key Lemmas for Riemann-Roch
@@ -590,16 +874,15 @@ theorem h0_zero (C : Algebraic.CompactAlgebraicCurve) : h0 C 0 = 1 := by
     If genus is defined as h¹(O), this theorem is definitional.
 
     **Current status**: Uses `C.genus` from CompactAlgebraicCurve structure.
-    This should be defined as h¹(O) for the pure algebraic path. -/
+    This requires `h0_canonical_eq_genus` theorem (currently with sorry). -/
 theorem h1_zero (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C)) : h1 C 0 = C.genus := by
-  -- h1 C 0 = h0 C (K - 0) = h0 C K = C.genus
+    (K : CanonicalDivisor C) : h1 C K 0 = C.genus := by
+  -- h1 C K 0 = h0 C (K.K - 0) = h0 C K.K = C.genus
   unfold h1
-  simp only [dif_pos hK]
-  -- K - 0 = K
-  have hK0 : (Classical.choice hK).K - 0 = (Classical.choice hK).K := sub_zero _
+  -- K.K - 0 = K.K
+  have hK0 : K.K - 0 = K.K := sub_zero _
   rw [hK0]
-  exact (Classical.choice hK).h0_eq_genus
+  exact h0_canonical_eq_genus C K
 
 /-- **Alternating sum lemma for exact sequences**.
 
@@ -694,9 +977,9 @@ theorem exact_sequence_alternating_sum
     - H⁰(ℂ_p) = ℂ, H¹(ℂ_p) = 0 (skyscraper sheaf properties)
     - Long exact sequence in cohomology (homological algebra) -/
 theorem eulerChar_point_exact (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C))
+    (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) :
-    eulerChar C D - eulerChar C (D - Core.Divisor.point p) = 1 := by
+    eulerChar C K D - eulerChar C K (D - Core.Divisor.point p) = 1 := by
   -- Step 1: Set up the six-term exact sequence
   -- V₁ = L(D-p), V₂ = L(D), V₃ = ℂ (H⁰ of skyscraper), V₄ = H¹(D-p), V₅ = H¹(D), V₆ = 0
   --
@@ -787,11 +1070,13 @@ theorem h0_neg_degree (C : Algebraic.CompactAlgebraicCurve)
     4. Therefore h¹(D) = h⁰(K - D)
 
     This is purely algebraic - the residue can be defined algebraically
-    via Kähler differentials and the trace map. -/
+    via Kähler differentials and the trace map.
+
+    **Note**: With our definition h1 C K D := h0 C (K.K - D), this is definitional. -/
 theorem serre_duality (C : Algebraic.CompactAlgebraicCurve)
     (K : CanonicalDivisor C) (D : Core.Divisor C.toAlgebraicCurve) :
-    h1 C D = h0 C (K.K - D) := by
-  sorry
+    h1 C K D = h0 C (K.K - D) := by
+  rfl  -- Definitional by our definition of h1
 
 /-!
 ## Riemann-Roch Theorem
@@ -819,9 +1104,9 @@ private theorem sub_succ_smul_point (C : Algebraic.CompactAlgebraicCurve)
   · simp only [mul_zero, sub_zero]
 
 private theorem chi_diff_nat (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C))
+    (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℕ) :
-    eulerChar C D - eulerChar C (D - (n : ℤ) • Core.Divisor.point p) = n := by
+    eulerChar C K D - eulerChar C K (D - (n : ℤ) • Core.Divisor.point p) = n := by
   induction n with
   | zero =>
     have h : D - (0 : ℤ) • Core.Divisor.point p = D := by
@@ -830,35 +1115,35 @@ private theorem chi_diff_nat (C : Algebraic.CompactAlgebraicCurve)
   | succ k ih =>
     rw [sub_succ_smul_point C D p k]
     let D' := D - (k : ℤ) • Core.Divisor.point p
-    have hpt := eulerChar_point_exact C hK D' p
-    calc eulerChar C D - eulerChar C (D' - Core.Divisor.point p)
-        = (eulerChar C D - eulerChar C D') + (eulerChar C D' - eulerChar C (D' - Core.Divisor.point p)) := by ring
+    have hpt := eulerChar_point_exact C K D' p
+    calc eulerChar C K D - eulerChar C K (D' - Core.Divisor.point p)
+        = (eulerChar C K D - eulerChar C K D') + (eulerChar C K D' - eulerChar C K (D' - Core.Divisor.point p)) := by ring
       _ = (k : ℤ) + 1 := by rw [ih, hpt]
       _ = (k + 1 : ℕ) := by omega
 
 private theorem chi_diff_nat_neg (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C))
+    (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℕ) :
-    eulerChar C D - eulerChar C (D + (n : ℤ) • Core.Divisor.point p) = -(n : ℤ) := by
+    eulerChar C K D - eulerChar C K (D + (n : ℤ) • Core.Divisor.point p) = -(n : ℤ) := by
   let D' := D + (n : ℤ) • Core.Divisor.point p
-  have h := chi_diff_nat C hK D' p n
+  have h := chi_diff_nat C K D' p n
   have hD : D' - (n : ℤ) • Core.Divisor.point p = D := by
     ext q; simp only [Core.Divisor.sub_coeff, Core.Divisor.add_coeff,
                       Core.Divisor.smul_coeff, D']; ring
   rw [hD] at h; linarith
 
 private theorem chi_deg_invariant_smul (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C))
+    (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) (p : C.toAlgebraicCurve.Point) (n : ℤ) :
-    eulerChar C D - D.degree =
-    eulerChar C (D - n • Core.Divisor.point p) - (D - n • Core.Divisor.point p).degree := by
+    eulerChar C K D - D.degree =
+    eulerChar C K (D - n • Core.Divisor.point p) - (D - n • Core.Divisor.point p).degree := by
   have hdeg : (D - n • Core.Divisor.point p).degree = D.degree - n := by
     rw [Core.Divisor.sub_eq_add_neg, Core.Divisor.degree_add,
         Core.Divisor.degree_neg, Core.Divisor.degree_smul, Core.Divisor.degree_point]
     ring
-  have hchi : eulerChar C D - eulerChar C (D - n • Core.Divisor.point p) = n := by
+  have hchi : eulerChar C K D - eulerChar C K (D - n • Core.Divisor.point p) = n := by
     rcases n with (m | m)
-    · exact chi_diff_nat C hK D p m
+    · exact chi_diff_nat C K D p m
     · have heq : D - Int.negSucc m • Core.Divisor.point p =
                  D + ((m + 1 : ℕ) : ℤ) • Core.Divisor.point p := by
         ext q
@@ -866,17 +1151,17 @@ private theorem chi_deg_invariant_smul (C : Algebraic.CompactAlgebraicCurve)
                    Core.Divisor.smul_coeff, Int.negSucc_eq, Nat.cast_add, Nat.cast_one]
         ring
       rw [heq]
-      have h := chi_diff_nat_neg C hK D p (m + 1)
+      have h := chi_diff_nat_neg C K D p (m + 1)
       simp only [Int.negSucc_eq, Nat.cast_add, Nat.cast_one] at h ⊢
       exact h
   omega
 
 private theorem chi_deg_base (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C)) :
-    eulerChar C 0 - (0 : Core.Divisor C.toAlgebraicCurve).degree = 1 - C.genus := by
+    (K : CanonicalDivisor C) :
+    eulerChar C K 0 - (0 : Core.Divisor C.toAlgebraicCurve).degree = 1 - C.genus := by
   simp only [Core.Divisor.degree_zero, sub_zero]
   unfold eulerChar
-  rw [h0_zero C, h1_zero C hK]
+  rw [h0_zero C, h1_zero C K]
   ring
 
 /-- **Riemann-Roch Theorem** for algebraic curves.
@@ -884,30 +1169,31 @@ private theorem chi_deg_base (C : Algebraic.CompactAlgebraicCurve)
     χ(D) = deg(D) + 1 - g
 
     **Hypotheses**:
-    - hK: A proper canonical divisor exists (with h⁰(K) = g and the pointExactFormula)
+    - K: A canonical divisor
 
     **Proof**: The proof is by strong induction on the support cardinality of D.
     The key step uses `eulerChar_point_exact` (χ(D) - χ(D-p) = 1) derived from
     the long exact sequence in sheaf cohomology.
 
-    **Remaining sorrys** (not used in this proof):
-    - `RiemannRochSubmodule_finiteDimensional`: Cartan-Serre finiteness
-    - `serre_duality`: h¹(D) = h⁰(K - D) -/
+    **Remaining sorrys** (from dependencies):
+    - `h0_canonical_eq_genus`: h⁰(K) = g (via h1_zero → chi_deg_base)
+    - `eulerChar_point_exact`: χ(D) - χ(D-p) = 1 (long exact sequence)
+    - `RiemannRochSubmodule_finiteDimensional`: Cartan-Serre finiteness -/
 theorem riemann_roch_algebraic (C : Algebraic.CompactAlgebraicCurve)
-    (hK : Nonempty (ProperCanonicalDivisor C))
+    (K : CanonicalDivisor C)
     (D : Core.Divisor C.toAlgebraicCurve) :
-    eulerChar C D = D.degree + 1 - C.genus := by
-  suffices h : eulerChar C D - D.degree = 1 - C.genus by omega
+    eulerChar C K D = D.degree + 1 - C.genus := by
+  suffices h : eulerChar C K D - D.degree = 1 - C.genus by omega
   induction hind : D.supportCard using Nat.strong_induction_on generalizing D with
   | _ n ih =>
     by_cases hD : D = 0
-    · rw [hD]; exact chi_deg_base C hK
+    · rw [hD]; exact chi_deg_base C K
     · obtain ⟨p, hp⟩ := Core.Divisor.exists_mem_support_of_ne_zero D hD
       simp only [Core.Divisor.support, Set.mem_setOf_eq] at hp
       let D' := D - D.coeff p • Core.Divisor.point p
       have hlt : D'.supportCard < D.supportCard :=
         Core.Divisor.supportCard_sub_coeff_point_lt D p hp
-      have hinv := chi_deg_invariant_smul C hK D p (D.coeff p)
+      have hinv := chi_deg_invariant_smul C K D p (D.coeff p)
       rw [hinv]
       exact ih D'.supportCard (by rw [← hind]; exact hlt) D' rfl
 

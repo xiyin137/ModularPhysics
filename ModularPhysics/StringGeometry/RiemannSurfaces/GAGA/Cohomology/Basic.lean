@@ -219,20 +219,34 @@ def coherentSheafOfDivisor (RS : RiemannSurface) (O : StructureSheaf RS)
 The canonical divisor K is fundamental for Serre duality and Riemann-Roch.
 -/
 
-/-- The canonical divisor K with deg(K) = 2g - 2.
+/-- A canonical divisor K on a compact Riemann surface.
 
-    This is the divisor of any meromorphic 1-form.
-    For Serre duality, K determines the dualizing sheaf.
+    This is the divisor of any meromorphic 1-form: K = div(ω) for some ω.
+    Different choices of ω give linearly equivalent divisors.
 
-    **Properties**:
-    - deg(K) = 2g - 2 (Riemann-Hurwitz)
-    - O(K) = Ω¹ (sheaf of holomorphic 1-forms)
-    - H¹(O) ≅ H⁰(K) (Serre duality for structure sheaf) -/
+    **Key property (THEOREM, not assumed):**
+    - deg(K) = 2g - 2 (Riemann-Hurwitz) - see `canonical_divisor_degree`
+
+    **Note:** The degree property is NOT a structure field because it is a
+    computational result (Riemann-Hurwitz theorem) that must be PROVED.
+    We do not smuggle theorems as structure fields. -/
 structure CanonicalDivisorData (CRS : CompactRiemannSurface) where
-  /-- The canonical divisor -/
+  /-- The canonical divisor K = div(ω) for some meromorphic 1-form ω -/
   divisor : Divisor CRS.toRiemannSurface
-  /-- deg(K) = 2g - 2 -/
-  degree_eq : divisor.degree = 2 * (CRS.genus : ℤ) - 2
+
+/-- Riemann-Hurwitz theorem: deg(K) = 2g - 2 for the canonical divisor.
+
+    **Proof approaches:**
+    1. Branched covering: Consider π : Σ → ℂP¹ and count ramification
+    2. Residue calculus: Use ∮ d(log ω) = 2πi · deg(div ω)
+    3. Euler characteristic: χ(Σ) = 2 - 2g and deg(K) = -χ(Σ)
+
+    This requires substantial infrastructure (branched coverings, residue theorem,
+    or Euler characteristic computations) which is not yet available. -/
+theorem canonical_divisor_degree (CRS : CompactRiemannSurface)
+    (K : CanonicalDivisorData CRS) :
+    K.divisor.degree = 2 * (CRS.genus : ℤ) - 2 := by
+  sorry
 
 /-!
 ## Notes on Čech Cohomology

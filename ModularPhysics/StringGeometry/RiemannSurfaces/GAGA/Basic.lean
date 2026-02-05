@@ -141,28 +141,37 @@ The key application: algebraic and analytic cohomology agree.
 
     **Note**: In our unified representation where algebraic and analytic
     coherent sheaves use the same type, the GAGA isomorphism is the identity.
-    This structure records that the cohomology theory is compatible with GAGA. -/
+    This structure records that the cohomology theory is compatible with GAGA.
+
+    **Riemann-Roch**: The Euler characteristic formula χ(D) = deg(D) + 1 - g
+    is a THEOREM, proved as `gaga_euler_char_formula` below using
+    `CechTheory.eulerChar_formula_cech`. It is NOT bundled as a structure field
+    to avoid axiom smuggling. -/
 structure GAGACohomology (S : AlgebraicAnalyticSurface)
     (O : StructureSheaf S.toRiemannSurface)
     (L : LineBundleSheafAssignment S.toRiemannSurface O)
     (gaga : GAGAEquivalence S O)
     (gc : ∀ D : Algebraic.Divisor S.toRiemannSurface, CechTheory.FiniteGoodCover (L.sheafOf D)) where
-  /-- The Euler characteristic computed via Čech cohomology equals deg + 1 - g.
-
-      This is the key computational result: the Čech-computed Euler characteristic
-      matches the algebraic Riemann-Roch formula. In our unified representation,
-      this follows from the algebraic Riemann-Roch theorem.
-
-      **Mathematical content:** For the analytified sheaf O(D)^an = O(D) (by GAGA),
-      χ(O(D)) = h⁰(O(D)) - h¹(O(D)) = deg(D) + 1 - g. -/
-  euler_char_formula : ∀ (D : Algebraic.Divisor S.toRiemannSurface),
-    CechTheory.cech_chi L gc D = D.degree + 1 - S.genus
   /-- Cohomology vanishes in high degrees (curves are 1-dimensional).
 
       For i ≥ 2, H^i(S, O(D)) = 0. This is a topological consequence of
       the curve being 1-dimensional. -/
   cohom_vanishing_high : ∀ (D : Algebraic.Divisor S.toRiemannSurface) (i : ℕ),
     i ≥ 2 → h_i (CechTheory.cechToSheafCohomologyGroup (L.sheafOf D) (gc D) i) = 0
+
+/-- **GAGA Riemann-Roch**: The Euler characteristic formula.
+
+    χ(O(D)) = h⁰(O(D)) - h¹(O(D)) = deg(D) + 1 - g
+
+    This is a THEOREM using the proper proof from `CechTheory.eulerChar_formula_cech`,
+    NOT a smuggled assumption in a structure field. -/
+theorem gaga_euler_char_formula (S : AlgebraicAnalyticSurface)
+    (O : StructureSheaf S.toRiemannSurface)
+    (L : LineBundleSheafAssignment S.toRiemannSurface O)
+    (gc : ∀ D : Algebraic.Divisor S.toRiemannSurface, CechTheory.FiniteGoodCover (L.sheafOf D))
+    (D : Algebraic.Divisor S.toRiemannSurface) :
+    CechTheory.cech_chi L gc D = D.degree + 1 - S.genus :=
+  CechTheory.eulerChar_formula_cech L gc D
 
 /-!
 ## GAGA for Line Bundles

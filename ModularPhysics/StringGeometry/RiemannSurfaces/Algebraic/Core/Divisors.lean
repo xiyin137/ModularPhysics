@@ -420,6 +420,202 @@ theorem supportCard_sub_coeff_point_lt (D : Divisor C) (p : C.Point) (hp : D.coe
                  ne_eq, not_true_eq_false, not_false_eq_true]
     exact hp_not (h hp_mem)
 
+/-- The coefficient norm: sum of |D.coeff p| over all p in support.
+    This is a measure for induction that decreases when adding or subtracting points. -/
+noncomputable def coeffNorm (D : Divisor C) : ℕ :=
+  D.finiteSupport.toFinset.sum (fun p => (D.coeff p).natAbs)
+
+theorem coeffNorm_zero : (0 : Divisor C).coeffNorm = 0 := by
+  unfold coeffNorm
+  simp only [zero_coeff, Int.natAbs_zero, Finset.sum_const_zero]
+
+theorem coeffNorm_eq_zero_iff (D : Divisor C) : D.coeffNorm = 0 ↔ D = 0 := by
+  constructor
+  · intro h
+    unfold coeffNorm at h
+    ext p
+    by_cases hp : p ∈ D.finiteSupport.toFinset
+    · have hsup := Finset.sum_eq_zero_iff.mp h p hp
+      simp only [Int.natAbs_eq_zero] at hsup
+      simp only [hsup, zero_coeff]
+    · rw [Set.Finite.mem_toFinset] at hp
+      simp only [Set.mem_setOf_eq, not_not] at hp
+      simp only [hp, zero_coeff]
+  · intro h; rw [h]; exact coeffNorm_zero
+
+/-- Subtracting point(p) decreases coeffNorm when D.coeff(p) > 0 -/
+theorem coeffNorm_sub_point_lt (D : Divisor C) (p : C.Point) (hpos : D.coeff p > 0) :
+    (D - point p).coeffNorm < D.coeffNorm := by
+  -- Key: |D.coeff(p) - 1| = |D.coeff(p)| - 1 when D.coeff(p) > 0
+  -- And for q ≠ p: |(D - point(p)).coeff(q)| = |D.coeff(q)|
+  -- So coeffNorm decreases by 1
+  have hp_in : p ∈ D.finiteSupport.toFinset := by
+    rw [Set.Finite.mem_toFinset]; simp only [Set.mem_setOf_eq]; omega
+  have habs_decrease : (D.coeff p - 1).natAbs = (D.coeff p).natAbs - 1 := by
+    have h1 : (D.coeff p).natAbs = D.coeff p := Int.natAbs_of_nonneg (le_of_lt hpos)
+    have h2 : (D.coeff p - 1).natAbs = D.coeff p - 1 := by
+      apply Int.natAbs_of_nonneg; omega
+    omega
+  -- Use the fact that the support either stays the same or shrinks by p
+  by_cases h1 : D.coeff p = 1
+  · -- p leaves the support: coeffNorm decreases by |D.coeff p| = 1
+    have hp_not : p ∉ (D - point p).finiteSupport.toFinset := by
+      rw [Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, sub_coeff, point, h1]
+      decide
+    have hsub : (D - point p).finiteSupport.toFinset ⊆ D.finiteSupport.toFinset.erase p := by
+      intro q hq
+      rw [Set.Finite.mem_toFinset] at hq
+      rw [Finset.mem_erase, Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, sub_coeff, point] at hq ⊢
+      constructor
+      · intro hqp
+        rw [hqp, h1] at hq
+        simp at hq
+      · by_cases hqp : q = p
+        · rw [hqp, h1] at hq; simp at hq
+        · simp [hqp] at hq; exact hq
+    unfold coeffNorm
+    -- Show that sum over (D - point p).support ≤ sum over D.support.erase p < sum over D.support
+    calc (D - point p).finiteSupport.toFinset.sum (fun q => ((D - point p).coeff q).natAbs)
+        ≤ (D.finiteSupport.toFinset.erase p).sum (fun q => ((D - point p).coeff q).natAbs) :=
+            Finset.sum_le_sum_of_subset hsub
+      _ = (D.finiteSupport.toFinset.erase p).sum (fun q => (D.coeff q).natAbs) := by
+            apply Finset.sum_congr rfl; intro q hq
+            simp only [Finset.mem_erase] at hq
+            simp only [sub_coeff, point, if_neg hq.1, sub_zero]
+      _ < D.finiteSupport.toFinset.sum (fun q => (D.coeff q).natAbs) := by
+            -- Sum over erase p < sum over full when f(p) > 0
+            have hp_pos : 0 < (D.coeff p).natAbs := by simp [h1]
+            have hsub' : D.finiteSupport.toFinset.erase p ⊂ D.finiteSupport.toFinset :=
+              Finset.erase_ssubset hp_in
+            apply Finset.sum_lt_sum_of_subset hsub'.subset
+            · exact hp_in
+            · simp [Finset.mem_erase]
+            · exact hp_pos
+            · intro q _ _; exact Nat.zero_le _
+  · -- p stays in support with smaller coefficient
+    have hp_in' : p ∈ (D - point p).finiteSupport.toFinset := by
+      rw [Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, sub_coeff, point, ite_true]
+      omega
+    have hsup_eq : (D - point p).finiteSupport.toFinset = D.finiteSupport.toFinset := by
+      ext q; rw [Set.Finite.mem_toFinset, Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, sub_coeff, point]
+      by_cases hqp : q = p
+      · simp only [hqp, ite_true]; omega
+      · simp only [if_neg hqp, sub_zero]
+    unfold coeffNorm
+    rw [hsup_eq]
+    -- Use sum_lt_sum with: all ≤ and one strict at p
+    apply Finset.sum_lt_sum
+    · -- Show all ≤
+      intro q _
+      simp only [sub_coeff, point]
+      by_cases hqp : q = p
+      · simp only [hqp, ite_true, habs_decrease]; omega
+      · simp only [if_neg hqp, sub_zero]; exact le_refl _
+    · -- Show exists strict
+      refine ⟨p, hp_in, ?_⟩
+      simp only [sub_coeff, point, ite_true]
+      rw [habs_decrease]
+      have hpos' : 0 < (D.coeff p).natAbs := Int.natAbs_pos.mpr (by omega)
+      omega
+
+/-- Adding point(p) decreases coeffNorm when D.coeff(p) < 0 -/
+theorem coeffNorm_add_point_lt (D : Divisor C) (p : C.Point) (hneg : D.coeff p < 0) :
+    (D + point p).coeffNorm < D.coeffNorm := by
+  have hp_in : p ∈ D.finiteSupport.toFinset := by
+    rw [Set.Finite.mem_toFinset]; simp only [Set.mem_setOf_eq]; omega
+  have habs_decrease : (D.coeff p + 1).natAbs = (D.coeff p).natAbs - 1 := by
+    -- For n < 0: n.natAbs = -n (as ℤ cast to ℕ)
+    rcases (Int.lt_or_eq_of_le (Int.add_one_le_iff.mpr hneg)) with h | h
+    · -- Case D.coeff p + 1 < 0
+      have h1 : ((D.coeff p).natAbs : ℤ) = -D.coeff p := by
+        rw [← Int.natAbs_neg]
+        exact Int.natAbs_of_nonneg (by omega)
+      have h2 : (((D.coeff p + 1).natAbs : ℤ)) = -(D.coeff p + 1) := by
+        rw [← Int.natAbs_neg]
+        exact Int.natAbs_of_nonneg (by omega)
+      -- Need 1 ≤ (D.coeff p).natAbs
+      have hle : 1 ≤ (D.coeff p).natAbs := by
+        have : (D.coeff p).natAbs ≠ 0 := Int.natAbs_ne_zero.mpr (by omega)
+        omega
+      -- Cast to ℤ and compare
+      have goal_cast : (((D.coeff p + 1).natAbs : ℤ)) = (((D.coeff p).natAbs - 1 : ℕ) : ℤ) := by
+        rw [h2, Int.ofNat_sub hle, h1]
+        ring
+      exact Int.ofNat_injective goal_cast
+    · -- Case D.coeff p + 1 = 0, so D.coeff p = -1
+      have heq : D.coeff p = -1 := by omega
+      simp [heq]
+  by_cases h1 : D.coeff p = -1
+  · -- p leaves the support
+    have hp_not : p ∉ (D + point p).finiteSupport.toFinset := by
+      rw [Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, add_coeff, point, h1]
+      decide
+    have hsub : (D + point p).finiteSupport.toFinset ⊆ D.finiteSupport.toFinset.erase p := by
+      intro q hq
+      rw [Set.Finite.mem_toFinset] at hq
+      rw [Finset.mem_erase, Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, add_coeff, point] at hq ⊢
+      constructor
+      · intro hqp
+        rw [hqp, h1] at hq
+        simp at hq
+      · by_cases hqp : q = p
+        · rw [hqp, h1] at hq; simp at hq
+        · simp [hqp] at hq; exact hq
+    unfold coeffNorm
+    calc (D + point p).finiteSupport.toFinset.sum (fun q => ((D + point p).coeff q).natAbs)
+        ≤ (D.finiteSupport.toFinset.erase p).sum (fun q => ((D + point p).coeff q).natAbs) :=
+            Finset.sum_le_sum_of_subset hsub
+      _ = (D.finiteSupport.toFinset.erase p).sum (fun q => (D.coeff q).natAbs) := by
+            apply Finset.sum_congr rfl; intro q hq
+            simp only [Finset.mem_erase] at hq
+            simp only [add_coeff, point, if_neg hq.1, add_zero]
+      _ < D.finiteSupport.toFinset.sum (fun q => (D.coeff q).natAbs) := by
+            -- Sum over erase p < sum over full when f(p) > 0
+            have hp_pos : 0 < (D.coeff p).natAbs := by simp [h1]
+            have hsub' : D.finiteSupport.toFinset.erase p ⊂ D.finiteSupport.toFinset :=
+              Finset.erase_ssubset hp_in
+            apply Finset.sum_lt_sum_of_subset hsub'.subset
+            · exact hp_in
+            · simp [Finset.mem_erase]
+            · exact hp_pos
+            · intro q _ _; exact Nat.zero_le _
+  · -- p stays in support with smaller absolute value
+    have hp_in' : p ∈ (D + point p).finiteSupport.toFinset := by
+      rw [Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, add_coeff, point]
+      simp only [ite_true]
+      omega
+    have hsup_eq : (D + point p).finiteSupport.toFinset = D.finiteSupport.toFinset := by
+      ext q; rw [Set.Finite.mem_toFinset, Set.Finite.mem_toFinset]
+      simp only [Set.mem_setOf_eq, add_coeff, point]
+      by_cases hqp : q = p
+      · simp only [hqp, ite_true]; omega
+      · simp only [if_neg hqp, add_zero]
+    unfold coeffNorm
+    rw [hsup_eq]
+    -- Use sum_lt_sum with: all ≤ and one strict at p
+    apply Finset.sum_lt_sum
+    · -- Show all ≤
+      intro q _
+      simp only [add_coeff, point]
+      by_cases hqp : q = p
+      · simp only [hqp, ite_true, habs_decrease]; omega
+      · simp only [if_neg hqp, add_zero]; exact le_refl _
+    · -- Show exists strict
+      refine ⟨p, hp_in, ?_⟩
+      simp only [add_coeff, point, ite_true]
+      -- Goal: (D.coeff p + 1).natAbs < (D.coeff p).natAbs
+      rw [habs_decrease]
+      -- Goal: (D.coeff p).natAbs - 1 < (D.coeff p).natAbs
+      have hpos : 0 < (D.coeff p).natAbs := Int.natAbs_pos.mpr (by omega)
+      omega
+
 end Divisor
 
 end RiemannSurfaces.Algebraic.Core

@@ -97,8 +97,15 @@ structure HolomorphicLineBundle (RS : RiemannSurface) where
   covers : ∀ p : RS.carrier, ∃ φ ∈ trivializations, p ∈ φ.domain
   /-- Transition functions between overlapping trivializations are holomorphic.
       This is the key condition making the bundle "holomorphic".
-      Transition function g_{ij} : U_i ∩ U_j → ℂ* is holomorphic and nonvanishing. -/
-  transitionsHolomorphic : Prop  -- Full formalization requires complex analysis on RS
+      Transition function g_{ij} : U_i ∩ U_j → ℂ* is holomorphic and nonvanishing.
+
+      **Infrastructure placeholder**: This field is `Prop` because the full formalization
+      requires atlas infrastructure and complex analysis theorems on Riemann surfaces.
+      When available, this should become:
+        `∀ φ ψ ∈ trivializations, MeromorphicOn (transitionFn φ ψ) (φ.domain ∩ ψ.domain)`
+      This is NOT axiom smuggling - it's a characterizing property that will be refined
+      when the necessary infrastructure is developed. Currently unused in proofs. -/
+  transitionsHolomorphic : Prop
   /-- Degree of the line bundle (first Chern number).
       On a compact surface, this is c₁(L) = ∫_Σ c₁(L).
       For divisor bundles O(D), this equals deg(D). -/
@@ -118,8 +125,15 @@ structure HolomorphicLineBundle (RS : RiemannSurface) where
 structure CanonicalBundle (RS : RiemannSurface) extends HolomorphicLineBundle RS where
   /-- The canonical bundle has specific transition functions determined by the atlas.
       For charts (U_i, z_i) and (U_j, z_j), the transition function is g_{ij} = dz_j/dz_i.
-      This encodes that sections transform as 1-forms: f(z)dz → f(z(w))(dz/dw)dw. -/
-  transitionsAreCotangent : Prop  -- g_{ij} = dz_j/dz_i (derivative of coordinate change)
+      This encodes that sections transform as 1-forms: f(z)dz → f(z(w))(dz/dw)dw.
+
+      **Infrastructure placeholder**: This field is `Prop` because expressing g_{ij} = dz_j/dz_i
+      requires atlas infrastructure and the derivative of coordinate transition maps.
+      When available, this should become:
+        `∀ φ ψ ∈ trivializations, transitionFn φ ψ = deriv (ψ.chart ∘ φ.chart⁻¹)`
+      This is NOT axiom smuggling - it's a characterizing property of the canonical bundle
+      that will be refined when atlas/derivative infrastructure is developed. Currently unused. -/
+  transitionsAreCotangent : Prop
 
 /-- Degree of canonical bundle is 2g - 2 (Riemann-Hurwitz formula).
 

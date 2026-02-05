@@ -327,16 +327,34 @@ The canonical sheaf K = Ω¹ is the sheaf of holomorphic 1-forms.
 
     Key properties:
     - K is a line bundle (locally free of rank 1)
-    - deg(K) = 2g - 2 (for a compact surface of genus g)
-    - H⁰(K) = g (dimension of holomorphic 1-forms = genus) -/
+    - deg(K) = 2g - 2 (THEOREM: Riemann-Hurwitz, see `canonical_sheaf_degree`)
+    - H⁰(K) = g (THEOREM: dimension of holomorphic 1-forms = genus)
+
+    **Note**: The degree property deg(K) = 2g - 2 is NOT a structure field because
+    it is a computational result (Riemann-Hurwitz theorem) that must be PROVED.
+    See `canonical_sheaf_degree` theorem below. -/
 structure CanonicalSheaf (RS : RiemannSurface) (O : StructureSheaf RS) where
   /-- The canonical divisor K -/
   canonicalDivisor : Divisor RS
   /-- The underlying line bundle sheaf O(K) -/
   toLineBundleSheaf : LineBundleSheaf RS O canonicalDivisor
-  /-- The degree of K is 2g - 2 (for compact surfaces) -/
-  degree_eq : ∀ (CRS : CompactRiemannSurface), RS = CRS.toRiemannSurface →
-    canonicalDivisor.degree = 2 * (CRS.genus : ℤ) - 2
+
+/-- Riemann-Hurwitz theorem for canonical sheaf: deg(K) = 2g - 2.
+
+    For a canonical sheaf on a compact Riemann surface of genus g,
+    the degree of the canonical divisor is 2g - 2.
+
+    **Proof approaches:**
+    1. Branched covering: Consider π : Σ → ℂP¹ and count ramification
+    2. Residue calculus: Use ∮ d(log ω) = 2πi · deg(div ω)
+    3. Euler characteristic: χ(Σ) = 2 - 2g and deg(K) = -χ(Σ)
+
+    This requires substantial infrastructure (branched coverings, residue theorem,
+    or Euler characteristic computations) which is not yet available. -/
+theorem canonical_sheaf_degree (CRS : CompactRiemannSurface)
+    (O : StructureSheaf CRS.toRiemannSurface) (K : CanonicalSheaf CRS.toRiemannSurface O) :
+    K.canonicalDivisor.degree = 2 * (CRS.genus : ℤ) - 2 := by
+  sorry
 
 /-!
 ## Category of Coherent Sheaves

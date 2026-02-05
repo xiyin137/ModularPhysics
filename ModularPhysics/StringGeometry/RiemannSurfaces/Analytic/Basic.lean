@@ -1,5 +1,6 @@
 import Mathlib.Geometry.Manifold.IsManifold.Basic
 import Mathlib.Geometry.Manifold.ChartedSpace
+import Mathlib.Geometry.Manifold.Complex
 import Mathlib.Analysis.Complex.Basic
 import Mathlib.Analysis.Complex.Conformal
 import Mathlib.Analysis.Calculus.Conformal.NormedSpace
@@ -652,6 +653,32 @@ structure CompactRiemannSurface extends RiemannSurface where
   compact : @CompactSpace carrier topology
   /-- The topological genus -/
   genus : ℕ
+
+/-- A function f : RS → ℂ is holomorphic if it is complex-differentiable as a map of manifolds. -/
+def RiemannSurface.IsHolomorphic (RS : RiemannSurface) (f : RS.carrier → ℂ) : Prop :=
+  @MDifferentiable ℂ _ ℂ _ _ ℂ _ 𝓘(ℂ, ℂ) RS.carrier RS.topology RS.chartedSpace
+    ℂ _ _ ℂ _ 𝓘(ℂ, ℂ) ℂ _ _ f
+
+/-- On a compact connected Riemann surface, every holomorphic function is constant.
+
+    This is the analytic analogue of `regularIsConstant` in the algebraic approach.
+    Uses Mathlib's maximum modulus principle: `MDifferentiable.exists_eq_const_of_compactSpace`
+
+    **Proof**: A compact Riemann surface is a compact connected complex manifold.
+    By the maximum modulus principle, any holomorphic function attains its maximum,
+    and by connectedness, this forces the function to be constant. -/
+theorem CompactRiemannSurface.holomorphicIsConstant (CRS : CompactRiemannSurface)
+    (f : CRS.carrier → ℂ) (hf : CRS.toRiemannSurface.IsHolomorphic f) :
+    ∃ c : ℂ, ∀ x, f x = c := by
+  letI := CRS.topology
+  letI := CRS.chartedSpace
+  letI := CRS.isManifold
+  haveI : CompactSpace CRS.carrier := CRS.compact
+  haveI : PreconnectedSpace CRS.carrier := CRS.connected.toPreconnectedSpace
+  -- Use Mathlib's theorem for compact connected complex manifolds
+  have hconst := hf.exists_eq_const_of_compactSpace
+  obtain ⟨v, hv⟩ := hconst
+  exact ⟨v, fun x => congrFun hv x⟩
 
 /-- Genus 0: the Riemann sphere -/
 noncomputable def genus0Surface : CompactRiemannSurface where

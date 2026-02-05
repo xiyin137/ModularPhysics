@@ -149,8 +149,58 @@ instance : AddCommGroup (Divisor RS) where
 /-- Degree is additive -/
 theorem degree_add (D₁ D₂ : Divisor RS) :
     (D₁ + D₂).degree = D₁.degree + D₂.degree := by
-  -- The support of D₁ + D₂ is contained in support(D₁) ∪ support(D₂)
-  sorry
+  classical
+  unfold degree
+  -- Let S = supp(D₁ + D₂), S₁ = supp(D₁), S₂ = supp(D₂), U = S₁ ∪ S₂
+  let S := (D₁ + D₂).finiteSupport.toFinset
+  let S₁ := D₁.finiteSupport.toFinset
+  let S₂ := D₂.finiteSupport.toFinset
+  let U := S₁ ∪ S₂
+
+  -- S ⊆ U
+  have hS_sub : S ⊆ U := by
+    intro p hp
+    rw [Set.Finite.mem_toFinset] at hp
+    rw [Finset.mem_union, Set.Finite.mem_toFinset, Set.Finite.mem_toFinset]
+    simp only [Set.mem_setOf_eq] at hp ⊢
+    by_contra h
+    push_neg at h
+    have hcoeff : (D₁ + D₂).coeff p = D₁.coeff p + D₂.coeff p := rfl
+    rw [hcoeff, h.1, h.2, add_zero] at hp
+    exact hp rfl
+
+  -- Sum over S = Sum over U for D₁ + D₂
+  have hsum_eq : S.sum (fun p => (D₁ + D₂).coeff p) =
+                  U.sum (fun p => (D₁ + D₂).coeff p) := by
+    apply Finset.sum_subset hS_sub
+    intro p _ hpS
+    rw [Set.Finite.mem_toFinset, Set.mem_setOf_eq, not_not] at hpS
+    exact hpS
+
+  -- Sum over U splits
+  have hsplit : U.sum (fun p => (D₁ + D₂).coeff p) =
+                U.sum (fun p => D₁.coeff p) + U.sum (fun p => D₂.coeff p) := by
+    rw [← Finset.sum_add_distrib]
+    apply Finset.sum_congr rfl
+    intro p _; rfl
+
+  -- Sum of D₁ over U = sum over S₁
+  have hD₁_eq : U.sum (fun p => D₁.coeff p) = S₁.sum (fun p => D₁.coeff p) := by
+    symm
+    apply Finset.sum_subset Finset.subset_union_left
+    intro p _ hp
+    rw [Set.Finite.mem_toFinset, Set.mem_setOf_eq, not_not] at hp
+    exact hp
+
+  -- Sum of D₂ over U = sum over S₂
+  have hD₂_eq : U.sum (fun p => D₂.coeff p) = S₂.sum (fun p => D₂.coeff p) := by
+    symm
+    apply Finset.sum_subset Finset.subset_union_right
+    intro p _ hp
+    rw [Set.Finite.mem_toFinset, Set.mem_setOf_eq, not_not] at hp
+    exact hp
+
+  rw [hsum_eq, hsplit, hD₁_eq, hD₂_eq]
 
 /-- Degree of zero divisor is 0 -/
 theorem degree_zero : (0 : Divisor RS).degree = 0 := by
@@ -161,9 +211,49 @@ theorem degree_zero : (0 : Divisor RS).degree = 0 := by
     rfl
   simp only [h, Set.Finite.toFinset_empty, Finset.sum_empty]
 
+/-- Degree of negation: deg(-D) = -deg(D) -/
+theorem degree_neg (D : Divisor RS) : (-D).degree = -D.degree := by
+  classical
+  unfold degree
+  -- The support of -D is the same as D
+  have hfin_eq : (-D).finiteSupport.toFinset = D.finiteSupport.toFinset := by
+    ext p
+    rw [Set.Finite.mem_toFinset, Set.Finite.mem_toFinset]
+    show -D.coeff p ≠ 0 ↔ D.coeff p ≠ 0
+    simp only [neg_ne_zero]
+  rw [hfin_eq]
+  -- Sum of (-D).coeff = sum of -D.coeff = -(sum of D.coeff)
+  have hcoeff : ∀ p, (-D).coeff p = -D.coeff p := fun _ => rfl
+  simp_rw [hcoeff, Finset.sum_neg_distrib]
+
 /-- Degree of point divisor is 1 -/
 theorem degree_point (p : RS.carrier) : (point p).degree = 1 := by
-  sorry
+  unfold degree
+  -- The support of (point p) is {p}
+  have hsup : { q | (point p).coeff q ≠ 0 } = {p} := by
+    ext q
+    simp only [Set.mem_setOf_eq, ne_eq, Set.mem_singleton_iff, point]
+    constructor
+    · intro h
+      by_contra hne
+      have : @ite ℤ (q = p) (Classical.propDecidable _) 1 0 = 0 := by
+        simp only [ite_eq_right_iff, one_ne_zero]
+        exact fun hp => (hne hp).elim
+      exact h this
+    · intro heq
+      subst heq
+      simp only [ite_true]
+      decide
+  -- The coefficient at p is 1
+  have hcoeff : (point p).coeff p = 1 := by
+    simp only [point, ite_true]
+  -- Compute the sum
+  have hfin_eq : (point p).finiteSupport.toFinset = {p} := by
+    ext q
+    simp only [Set.Finite.mem_toFinset, Set.mem_setOf_eq, Finset.mem_singleton]
+    rw [← Set.mem_singleton_iff, ← hsup]
+    simp only [Set.mem_setOf_eq]
+  rw [hfin_eq, Finset.sum_singleton, hcoeff]
 
 /-- A divisor is effective if all coefficients are non-negative -/
 def Effective (D : Divisor RS) : Prop :=
@@ -237,21 +327,63 @@ Pic(Σ) = Div(Σ) / Prin(Σ) classifies holomorphic line bundles.
 def Divisor.LinearEquiv (D₁ D₂ : Divisor RS) : Prop :=
   (D₁ + (-D₂)).IsPrincipal
 
+/-- The divisor of the constant function 1 is 0 -/
+theorem divisorOf_one : divisorOf (1 : AnalyticMeromorphicFunction RS) = 0 := by
+  ext p
+  simp only [divisorOf]
+  rfl
+
+/-- The divisor of a product is the sum of divisors: div(fg) = div(f) + div(g) -/
+theorem divisorOf_mul (f g : AnalyticMeromorphicFunction RS) :
+    divisorOf (f * g) = divisorOf f + divisorOf g := by
+  ext p
+  show (f * g).order p = (divisorOf f + divisorOf g).coeff p
+  simp only [AnalyticMeromorphicFunction.order_mul, divisorOf]
+  rfl
+
+/-- The divisor of an inverse negates the divisor: div(1/f) = -div(f) -/
+theorem divisorOf_inv (f : AnalyticMeromorphicFunction RS) :
+    divisorOf f⁻¹ = -divisorOf f := by
+  ext p
+  show f⁻¹.order p = (-divisorOf f).coeff p
+  simp only [AnalyticMeromorphicFunction.order_inv, divisorOf]
+  rfl
+
 /-- Linear equivalence is an equivalence relation -/
 theorem Divisor.linearEquiv_equivalence :
     Equivalence (@Divisor.LinearEquiv RS) where
   refl := fun D => by
     unfold LinearEquiv IsPrincipal
     -- D - D = 0 = div(1)
-    sorry
+    use 1
+    simp only [add_neg_cancel]
+    exact divisorOf_one
   symm := fun {D₁ D₂} h => by
     unfold LinearEquiv IsPrincipal at *
-    -- If D₁ - D₂ = div(f), then D₂ - D₁ = div(1/f)
-    sorry
+    -- If D₁ - D₂ = div(f), then D₂ - D₁ = -(D₁ - D₂) = div(1/f)
+    obtain ⟨f, hf⟩ := h
+    use f⁻¹
+    -- div(f⁻¹) = -div(f)
+    rw [divisorOf_inv]
+    -- Need: -(divisorOf f) = D₂ + -D₁
+    -- From hf: divisorOf f = D₁ + -D₂
+    rw [hf]
+    -- -(D₁ + -D₂) = D₂ + -D₁
+    ext p
+    show -(D₁.coeff p + -D₂.coeff p) = D₂.coeff p + -D₁.coeff p
+    ring
   trans := fun {D₁ D₂ D₃} h₁ h₂ => by
     unfold LinearEquiv IsPrincipal at *
     -- If D₁ - D₂ = div(f) and D₂ - D₃ = div(g), then D₁ - D₃ = div(fg)
-    sorry
+    obtain ⟨f, hf⟩ := h₁
+    obtain ⟨g, hg⟩ := h₂
+    use f * g
+    -- div(fg) = div(f) + div(g)
+    rw [divisorOf_mul, hf, hg]
+    -- (D₁ + -D₂) + (D₂ + -D₃) = D₁ + -D₃
+    ext p
+    show (D₁.coeff p + -D₂.coeff p) + (D₂.coeff p + -D₃.coeff p) = D₁.coeff p + -D₃.coeff p
+    ring
 
 /-- The Picard group Pic(Σ) = Div(Σ) / ~ -/
 def PicardGroup (RS : RiemannSurface) :=
