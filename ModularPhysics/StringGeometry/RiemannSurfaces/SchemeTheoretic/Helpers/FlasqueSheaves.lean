@@ -63,6 +63,14 @@ theorem OModule.map_comp_apply {X : Scheme} (F : OModule X) {U V W : Opens X.car
   rw [← F.val.presheaf.map_comp]
   exact congrArg (fun m => (F.val.presheaf.map m).hom s) (Subsingleton.elim _ _)
 
+/-- In a thin category (like Opens), any two parallel morphisms are equal,
+    so the resulting restriction maps agree on elements. -/
+theorem OModule.map_eq {X : Scheme} (F : OModule X) {U V : Opens X.carrier}
+    (f g : (Opposite.op V) ⟶ (Opposite.op U)) (s : F.val.obj (Opposite.op V)) :
+    F.val.map f s = F.val.map g s := by
+  show (F.val.presheaf.map f).hom s = (F.val.presheaf.map g).hom s
+  exact congrArg (fun m => (F.val.presheaf.map m).hom s) (Subsingleton.elim f g)
+
 /-!
 ## Flasque Sheaves
 
@@ -169,6 +177,31 @@ The proof of H¹ = 0 for flasque sheaves uses:
 5. The cocycle condition for compatibility verification
 -/
 
+/-- The cocycle condition at a 2-simplex σ implies the face sections are compatible.
+    Specifically: the restriction of c(face₁) equals the restriction of c(face₀)
+    on the intersection σ. This is the key fact for proving H⁰ = Γ. -/
+theorem cocycle_compat_on_intersection (F : OModule X) (𝒰 : OpenCover X)
+    (c : CechCochain F 𝒰 0) (hc : cechDifferential F 𝒰 0 c = 0)
+    (σ : Fin 2 → 𝒰.I) :
+    F.val.map (homOfLE (intersection_face_le 𝒰 σ 1)).op (c (faceMap 1 σ)) =
+    F.val.map (homOfLE (intersection_face_le 𝒰 σ 0)).op (c (faceMap 0 σ)) := by
+  have hcoc := congrFun hc σ
+  simp only [cechDifferential, Pi.zero_apply] at hcoc
+  rw [Fin.sum_univ_two] at hcoc
+  simp only [Fin.val_zero, pow_zero, one_smul, Fin.val_one, pow_one, neg_one_smul,
+    restrictionToFace] at hcoc
+  -- hcoc : face0 + (-face1) = 0, need face1 = face0
+  have h := hcoc
+  rw [← sub_eq_add_neg] at h
+  exact (sub_eq_zero.mp h).symm
+
+/-- For any section s ∈ F(V), restriction via any two morphisms from op V to op U
+    are equal (thin category). This packages map_eq to work with hypotheses. -/
+theorem OModule.map_eq_of_le {X : Scheme} (F : OModule X) {U V : Opens X.carrier}
+    (h₁ h₂ : U ≤ V) (s : F.val.obj (Opposite.op V)) :
+    F.val.map (homOfLE h₁).op s = F.val.map (homOfLE h₂).op s :=
+  OModule.map_eq F _ _ s
+
 /-- The intersection of a 1-simplex (single index) is just the single open set.
     This identifies F(𝒰.intersection σ) with F(𝒰.U (σ 0)) for σ : Fin 1 → 𝒰.I. -/
 theorem intersection_eq_single (𝒰 : OpenCover X) (σ : Fin 1 → 𝒰.I) :
@@ -209,59 +242,261 @@ theorem OModule.glue_sections {X : Scheme} (F : OModule X)
   obtain ⟨s, hs, _⟩ := F_sheaf.existsUnique_gluing V sf hcompat
   exact ⟨s, hs⟩
 
+/-- Presheaf maps compose: f.hom (g.hom x) = (g ≫ f).hom x at the AddCommGrpCat level. -/
+theorem OModule.presheaf_comp_apply {X : Scheme} (F : OModule X)
+    {A B C : (Opens X.carrier)ᵒᵖ} (f : A ⟶ B) (g : B ⟶ C)
+    (s : F.val.obj A) :
+    (F.val.presheaf.map g).hom ((F.val.presheaf.map f).hom s) =
+    (F.val.presheaf.map (f ≫ g)).hom s := by
+  show ((F.val.presheaf.map f ≫ F.val.presheaf.map g)).hom s = _
+  rw [← F.val.presheaf.map_comp]
+
+/-- Presheaf map equality: any two morphisms with same source and target give equal maps. -/
+theorem OModule.presheaf_map_eq {X : Scheme} (F : OModule X)
+    {A B : (Opens X.carrier)ᵒᵖ} (f g : A ⟶ B)
+    (s : F.val.obj A) :
+    (F.val.presheaf.map f).hom s = (F.val.presheaf.map g).hom s :=
+  congrArg (fun m => (F.val.presheaf.map m).hom s) (Subsingleton.elim f g)
+
+/-- Composed presheaf maps can be identified with any single morphism by thin category. -/
+theorem OModule.presheaf_comp_eq {X : Scheme} (F : OModule X)
+    {A B C : (Opens X.carrier)ᵒᵖ} (f : A ⟶ B) (g : B ⟶ C) (h : A ⟶ C)
+    (s : F.val.obj A) :
+    (F.val.presheaf.map g).hom ((F.val.presheaf.map f).hom s) =
+    (F.val.presheaf.map h).hom s := by
+  rw [OModule.presheaf_comp_apply]; exact OModule.presheaf_map_eq F _ h s
+
+/-- Glue sections and get result over ⊤ when ⨆ V = ⊤. -/
+theorem OModule.glue_sections_top {X : Scheme} (F : OModule X)
+    {ι : Type*} (V : ι → Opens X.carrier) (hV : ⨆ i, V i = ⊤)
+    (sf : ∀ i : ι, F.val.obj (Opposite.op (V i)))
+    (compat : ∀ i j : ι,
+      F.val.map (homOfLE (inf_le_left : V i ⊓ V j ≤ V i)).op (sf i) =
+      F.val.map (homOfLE (inf_le_right : V i ⊓ V j ≤ V j)).op (sf j)) :
+    ∃ s : F.val.obj (Opposite.op ⊤),
+      ∀ i : ι, F.val.map (homOfLE le_top).op s = sf i := by
+  obtain ⟨s₀, hs₀⟩ := OModule.glue_sections F V sf compat
+  refine ⟨F.val.map (eqToHom (congrArg Opposite.op hV)) s₀, fun i => ?_⟩
+  show (F.val.presheaf.map (eqToHom (congrArg Opposite.op hV)) ≫
+       F.val.presheaf.map (homOfLE (le_top : V i ≤ ⊤)).op).hom s₀ = sf i
+  rw [← F.val.presheaf.map_comp,
+      show (eqToHom (congrArg Opposite.op hV) ≫ (homOfLE (le_top : V i ≤ ⊤)).op) =
+          (homOfLE (le_iSup V i)).op from Subsingleton.elim _ _]
+  exact hs₀ i
+
+/-!
+### Clean Restriction Maps
+
+`OModule.res` provides restriction maps that return elements in `F.val.obj (op U)` directly,
+avoiding the `ModuleCat.restrictScalars` wrapping that makes arithmetic difficult.
+-/
+
+/-- Restriction of a section using presheaf-level maps.
+    Returns F.val.obj (op U) directly, avoiding ModuleCat.restrictScalars wrapping. -/
+noncomputable def OModule.res {X : Scheme} (F : OModule X) {U V : Opens X.carrier} (h : U ≤ V)
+    (s : F.val.obj (Opposite.op V)) : F.val.obj (Opposite.op U) :=
+  (F.val.presheaf.map (homOfLE h).op).hom s
+
+/-- res agrees with F.val.map on elements. -/
+theorem OModule.res_eq_map {X : Scheme} (F : OModule X) {U V : Opens X.carrier} (h : U ≤ V)
+    (s : F.val.obj (Opposite.op V)) :
+    F.res h s = F.val.map (homOfLE h).op s := rfl
+
+/-- Composition of res. -/
+theorem OModule.res_comp {X : Scheme} (F : OModule X) {U V W : Opens X.carrier}
+    (h₁ : U ≤ V) (h₂ : V ≤ W) (s : F.val.obj (Opposite.op W)) :
+    F.res h₁ (F.res h₂ s) = F.res (le_trans h₁ h₂) s :=
+  OModule.presheaf_comp_eq F _ _ _ s
+
+/-- res is independent of the proof of inclusion. -/
+theorem OModule.res_irrel {X : Scheme} (F : OModule X) {U V : Opens X.carrier}
+    (h₁ h₂ : U ≤ V) (s : F.val.obj (Opposite.op V)) :
+    F.res h₁ s = F.res h₂ s :=
+  OModule.presheaf_map_eq F _ _ s
+
+/-- res preserves addition. -/
+theorem OModule.res_add {X : Scheme} (F : OModule X) {U V : Opens X.carrier} (h : U ≤ V)
+    (s t : F.val.obj (Opposite.op V)) :
+    F.res h (s + t) = F.res h s + F.res h t :=
+  map_add _ s t
+
+/-- res preserves subtraction. -/
+theorem OModule.res_sub {X : Scheme} (F : OModule X) {U V : Opens X.carrier} (h : U ≤ V)
+    (s t : F.val.obj (Opposite.op V)) :
+    F.res h (s - t) = F.res h s - F.res h t :=
+  map_sub _ s t
+
+/-!
+### Infrastructure for flasque H¹ = 0
+
+The proof constructs a primitive by transfinite induction on a well-ordered index set.
+-/
+
+/-- The intersection of a 2-simplex ![i,j] equals U_i ⊓ U_j. -/
+theorem intersection_pair (𝒰 : OpenCover X) (i j : 𝒰.I) :
+    𝒰.intersection ![i, j] = 𝒰.U i ⊓ 𝒰.U j := by
+  unfold OpenCover.intersection
+  simp only [show (1 + 1 : ℕ) ≠ 0 from by omega, ↓reduceDIte]
+  apply le_antisymm
+  · exact le_inf (iInf_le _ 0) (iInf_le _ 1)
+  · apply le_iInf; intro k; fin_cases k
+    · exact inf_le_left
+    · exact inf_le_right
+
+/-- Transport a cocycle value from 𝒰.intersection ![i,j] to F(U_i ⊓ U_j). -/
+noncomputable def cocycleAtInf {X : Scheme} (F : OModule X) (𝒰 : OpenCover X)
+    (c : CechCocycles F 𝒰 1) (i j : 𝒰.I) :
+    F.val.obj (Opposite.op (𝒰.U i ⊓ 𝒰.U j)) :=
+  F.val.map (homOfLE (le_of_eq (intersection_pair 𝒰 i j).symm)).op (c.val ![i, j])
+
+/-- The 1-cocycle condition in terms of ⊓ and OModule.res.
+    For any i₀, i₁, i₂: c(i₁,i₂) - c(i₀,i₂) + c(i₀,i₁) = 0
+    all restricted to the triple intersection U_{i₀} ⊓ U_{i₁} ⊓ U_{i₂}. -/
+theorem cocycle_condition_inf {X : Scheme} (F : OModule X) (𝒰 : OpenCover X)
+    (c : CechCocycles F 𝒰 1) (i₀ i₁ i₂ : 𝒰.I) :
+    let T := 𝒰.U i₀ ⊓ 𝒰.U i₁ ⊓ 𝒰.U i₂
+    F.res (show T ≤ 𝒰.U i₁ ⊓ 𝒰.U i₂ from
+      le_inf (inf_le_left.trans inf_le_right) inf_le_right) (cocycleAtInf F 𝒰 c i₁ i₂) -
+    F.res (show T ≤ 𝒰.U i₀ ⊓ 𝒰.U i₂ from
+      le_inf (inf_le_left.trans inf_le_left) inf_le_right) (cocycleAtInf F 𝒰 c i₀ i₂) +
+    F.res (show T ≤ 𝒰.U i₀ ⊓ 𝒰.U i₁ from inf_le_left) (cocycleAtInf F 𝒰 c i₀ i₁) = 0 := by
+  intro T
+  -- Helper: restriction of c.val is independent of path (dependent subst + thin category)
+  have res_eq : ∀ (f₁ f₂ : Fin 2 → 𝒰.I) (hf : f₁ = f₂)
+      (h₁ : T ≤ 𝒰.intersection f₁) (h₂ : T ≤ 𝒰.intersection f₂),
+      (F.val.presheaf.map (homOfLE h₁).op).hom (c.val f₁) =
+      (F.val.presheaf.map (homOfLE h₂).op).hom (c.val f₂) := by
+    intro f₁ f₂ hf h₁ h₂; subst hf; exact OModule.presheaf_map_eq F _ _ _
+  -- Face map evaluations
+  have hf0 : faceMap (0 : Fin 3) (![i₀, i₁, i₂] : Fin 3 → 𝒰.I) = ![i₁, i₂] := by
+    funext k; fin_cases k <;> simp [faceMap]
+  have hf1 : faceMap (1 : Fin 3) (![i₀, i₁, i₂] : Fin 3 → 𝒰.I) = ![i₀, i₂] := by
+    funext k; fin_cases k <;> simp [faceMap]
+  have hf2 : faceMap (2 : Fin 3) (![i₀, i₁, i₂] : Fin 3 → 𝒰.I) = ![i₀, i₁] := by
+    funext k; fin_cases k <;> simp [faceMap]
+  -- T ≤ intersection σ
+  have hT : T ≤ 𝒰.intersection ![i₀, i₁, i₂] := by
+    simp only [T, OpenCover.intersection, show (1 + 1 + 1 : ℕ) ≠ 0 from by omega, ↓reduceDIte]
+    exact le_iInf fun j => by fin_cases j
+      <;> [exact inf_le_left.trans inf_le_left;
+           exact inf_le_left.trans inf_le_right;
+           exact inf_le_right]
+  -- Helper: res(cocycleAtInf i j) = single presheaf.map application from intersection ![i,j] to T
+  have term_eq : ∀ (i j : 𝒰.I) (hle : T ≤ 𝒰.U i ⊓ 𝒰.U j),
+      F.res hle (cocycleAtInf F 𝒰 c i j) =
+      (F.val.presheaf.map
+        (homOfLE (hle.trans (le_of_eq (intersection_pair 𝒰 i j).symm))).op).hom (c.val ![i, j]) := by
+    intro i j hle
+    simp only [cocycleAtInf, OModule.res]
+    exact OModule.presheaf_comp_eq F _ _ _ _
+  -- Helper: dependent subst for face map equality
+  have face_subst : ∀ (f₁ f₂ : Fin 2 → 𝒰.I) (hf : f₁ = f₂)
+      (h₁ : T ≤ 𝒰.intersection f₁) (h₂ : T ≤ 𝒰.intersection f₂),
+      (F.val.presheaf.map (homOfLE h₁).op).hom (c.val f₁) =
+      (F.val.presheaf.map (homOfLE h₂).op).hom (c.val f₂) := by
+    intro f₁ f₂ hf h₁ h₂; subst hf; exact OModule.presheaf_map_eq F _ _ _
+  -- Rewrite each goal term to single presheaf.map form
+  rw [term_eq i₁ i₂ _, term_eq i₀ i₂ _, term_eq i₀ i₁ _]
+  -- Get the cocycle condition restricted to T
+  have hcoc := cocycle_at_simplex F 𝒰 c ![i₀, i₁, i₂]
+  simp only [cechDifferential, restrictionToFace] at hcoc
+  rw [Fin.sum_univ_three] at hcoc
+  simp only [Fin.val_zero, pow_zero, one_smul, Fin.val_one, pow_one, neg_one_smul,
+    show (2 : Fin 3).val = 2 from rfl, show (-1 : ℤ) ^ 2 = 1 from by norm_num, one_smul] at hcoc
+  -- Restrict to T
+  have h0 := congr_arg (fun x => (F.val.presheaf.map (homOfLE hT).op).hom x) hcoc
+  simp only [map_zero, map_add, map_neg] at h0
+  -- Each term in h0 has form: (presheaf.map hT).hom (F.val.map (face_le).op (c.val (faceMap k σ)))
+  -- We need to compose and match with our single-step form
+  -- Compose using presheaf_comp_eq
+  have h0' : ∀ (k : Fin 3),
+      (F.val.presheaf.map (homOfLE hT).op).hom
+        (F.val.map (homOfLE (intersection_face_le 𝒰 ![i₀, i₁, i₂] k)).op
+          (c.val (faceMap k ![i₀, i₁, i₂]))) =
+      (F.val.presheaf.map (homOfLE (hT.trans (intersection_face_le 𝒰 ![i₀, i₁, i₂] k))).op).hom
+        (c.val (faceMap k ![i₀, i₁, i₂])) := by
+    intro k
+    show (F.val.presheaf.map (homOfLE hT).op).hom
+        ((F.val.presheaf.map (homOfLE (intersection_face_le 𝒰 ![i₀, i₁, i₂] k)).op).hom
+          (c.val (faceMap k ![i₀, i₁, i₂]))) = _
+    exact OModule.presheaf_comp_eq F _ _ _ _
+  -- Rewrite h0 using compositions
+  rw [h0' 0, h0' 1, h0' 2] at h0
+  -- Now match: goal terms use ![i₁,i₂] etc, h0 uses faceMap k σ
+  -- Use face_subst to bridge
+  rw [sub_eq_add_neg]
+  convert h0 using 3
+  · exact congr_arg Neg.neg (face_subst _ _ hf1.symm _ _)
+  · exact face_subst _ _ hf2.symm _ _
+
 /-- Flasque sheaves have H¹ = 0.
 
     **Proof by transfinite induction (Godement/Hartshorne):**
 
-    Well-order 𝒰.I. Construct b(α) ∈ F(U_α) by well-founded recursion:
+    Well-order 𝒰.I. Construct b(α) ∈ F(U_α) by well-founded recursion.
 
-    **Base:** b(min) = 0 ∈ F(U_min).
+    At step α, given b(β) for all β < α satisfying the IH:
+      ∀ β < α, b(α)|_{U_β∩U_α} - b(β)|_{U_β∩U_α} = c(β,α)
 
-    **Step α:** Given b(β) for all β < α with the induction hypothesis
-      ∀ β₁ β₂ < α, b(β₂)|_{U_{β₁} ∩ U_{β₂}} - b(β₁)|_{U_{β₁} ∩ U_{β₂}} = c(β₁, β₂),
-    define for each β < α:
-      s_β := c(β, α) + b(β)|_{U_β ∩ U_α} ∈ F(U_β ∩ U_α)
+    For each β < α, define s_β := c(β,α) + b(β)|_{U_β∩U_α} ∈ F(U_β ∩ U_α).
+    Show s_β are compatible by cocycle condition + IH.
+    Glue and extend by flasqueness to get b(α).
 
-    **Compatibility:** For β₁, β₂ < α, on U_{β₁} ∩ U_{β₂} ∩ U_α:
-      s_{β₁} - s_{β₂} = c(β₁, α) + b(β₁) - c(β₂, α) - b(β₂)
-                        = c(β₁, α) - c(β₂, α) + c(β₁, β₂)   (by IH)
-                        = 0                                      (by cocycle condition)
-
-    **Glue:** The compatible {s_β} glue to a section on ⋃_{β<α} (U_β ∩ U_α).
-    **Extend:** By flasqueness, extend to b(α) ∈ F(U_α).
-
-    **Verification:** For any β < α: b(α)|_{U_β ∩ U_α} - b(β)|_{U_β ∩ U_α} = c(β,α)
-    by construction. For α < β: follows from the IH at step β.
-    Cocycle antisymmetry c(β,α) = -c(α,β) handles the sign. -/
+    Verification: d⁰b = c follows from the IH. -/
 theorem flasque_H1_zero (F : OModule X) [IsFlasque F] (𝒰 : OpenCover X) :
     ∀ c : CechCocycles F 𝒰 1, ∃ b : CechCochain F 𝒰 0,
       cechDifferential F 𝒰 0 b = c.val := by
   intro c
   have hcoc : cechDifferential F 𝒰 1 c.val = 0 := c.property
   classical
-  -- Handle the empty cover case (no indices means cochains are over empty domain)
   by_cases hne : Nonempty 𝒰.I
   swap
-  · refine ⟨fun σ => absurd ⟨σ 0⟩ hne, funext fun σ => absurd ⟨σ 0⟩ hne⟩
+  · exact ⟨fun σ => absurd ⟨σ 0⟩ hne, funext fun σ => absurd ⟨σ 0⟩ hne⟩
   · -- Step 1: Well-order the index set
     letI : LinearOrder 𝒰.I := WellOrderingRel.isWellOrder.linearOrder
-    -- Step 2: Construct b_aux : (i : 𝒰.I) → F(U_i) by well-founded recursion.
-    --
-    -- At step α, given b(β) for all β < α satisfying the IH:
-    --   ∀ β₁ β₂ < α, b(β₂)|_{U_{β₁} ∩ U_{β₂}} - b(β₁)|_{U_{β₁} ∩ U_{β₂}} = c(β₁, β₂)
-    --
-    -- For each β < α, define s_β = c(β, α) + b(β)|_{U_β ∩ U_α} ∈ F(U_β ∩ U_α).
-    -- These are compatible on overlaps by the cocycle condition + IH.
-    -- Glue via OModule.glue_sections, then extend by IsFlasque.extend_section.
-    --
-    -- Step 3: Convert b_aux to CechCochain format (via intersection_eq_single)
-    -- and verify d⁰b = c.val pointwise:
-    --   For σ = ![i,j] with i < j: follows from IH at step j
-    --   For σ = ![i,j] with i > j: follows from IH at step i + cocycle antisymmetry
-    --   For σ = ![i,i]: both sides are 0
-    --
-    -- The sheaf gluing step uses OModule.glue_sections (which derives from
-    -- the sheaf condition built into SheafOfModules).
+    -- Step 2: Build step - given b(β) for β < α with IH, construct b(α)
+    -- Uses OModule.res to avoid restrictScalars type issues
+    have build : ∀ α : 𝒰.I,
+        (prev : ∀ β, β < α → F.val.obj (Opposite.op (𝒰.U β))) →
+        (prev_ih : ∀ (β₁ β₂ : 𝒰.I) (h₁ : β₁ < β₂) (h₂ : β₂ < α),
+          F.res (inf_le_right : 𝒰.U β₁ ⊓ 𝒰.U β₂ ≤ 𝒰.U β₂) (prev β₂ h₂) -
+          F.res (inf_le_left : 𝒰.U β₁ ⊓ 𝒰.U β₂ ≤ 𝒰.U β₁) (prev β₁ (lt_trans h₁ h₂)) =
+          cocycleAtInf F 𝒰 c β₁ β₂) →
+        ∃ b_α : F.val.obj (Opposite.op (𝒰.U α)),
+          ∀ β (hβ : β < α),
+            F.res (inf_le_right : 𝒰.U β ⊓ 𝒰.U α ≤ 𝒰.U α) b_α -
+            F.res (inf_le_left : 𝒰.U β ⊓ 𝒰.U α ≤ 𝒰.U β) (prev β hβ) =
+            cocycleAtInf F 𝒰 c β α := by
+      intro α prev prev_ih
+      -- For each β < α, define s_β = c(β,α) + b(β)|_{U_β∩U_α}
+      let s : (β : 𝒰.I) → β < α → F.val.obj (Opposite.op (𝒰.U β ⊓ 𝒰.U α)) :=
+        fun β hβ => cocycleAtInf F 𝒰 c β α + F.res inf_le_left (prev β hβ)
+      -- Compatible sections for gluing
+      let V : {β : 𝒰.I // β < α} → Opens X.carrier := fun ⟨β, _⟩ => 𝒰.U β ⊓ 𝒰.U α
+      let sf : ∀ p : {β // β < α}, F.val.obj (Opposite.op (V p)) :=
+        fun ⟨β, hβ⟩ => s β hβ
+      -- Compatibility: s_{β₁}|_overlap = s_{β₂}|_overlap
+      have compat : ∀ p q : {β // β < α},
+          F.val.map (homOfLE (inf_le_left : V p ⊓ V q ≤ V p)).op (sf p) =
+          F.val.map (homOfLE (inf_le_right : V p ⊓ V q ≤ V q)).op (sf q) := by
+        sorry
+      -- Glue compatible sections
+      obtain ⟨s_glued, hs_glued⟩ := OModule.glue_sections F V sf compat
+      have hV_le : ⨆ p, V p ≤ 𝒰.U α := iSup_le fun ⟨_, _⟩ => inf_le_right
+      -- Extend by flasqueness
+      obtain ⟨b_α, hb_α⟩ := IsFlasque.extend_section F (⨆ p, V p) (𝒰.U α) hV_le s_glued
+      -- Verify IH: b_α|_{U_β∩U_α} - b(β)|_{U_β∩U_α} = c(β,α)
+      refine ⟨b_α, fun β hβ => ?_⟩
+      -- Chain: b_α →[hV_le]→ s_glued →[le_iSup]→ sf = s β hβ
+      have h_chain : F.res (inf_le_right : 𝒰.U β ⊓ 𝒰.U α ≤ 𝒰.U α) b_α = s β hβ := by
+        calc F.res inf_le_right b_α
+            = F.res (le_trans (le_iSup V ⟨β, hβ⟩) hV_le) b_α := OModule.res_irrel F _ _ _
+          _ = F.res (le_iSup V ⟨β, hβ⟩) (F.res hV_le b_α) := (OModule.res_comp F _ _ _).symm
+          _ = F.res (le_iSup V ⟨β, hβ⟩) s_glued := by congr 1
+          _ = sf ⟨β, hβ⟩ := hs_glued ⟨β, hβ⟩
+      -- s β hβ = cocycleAtInf + res(prev β), so (cocycleAtInf + x) - x = cocycleAtInf
+      rw [h_chain]; show cocycleAtInf F 𝒰 c β α + _ - _ = _; abel
+    -- Step 3: Assemble via well-founded recursion
     sorry
 
 /-- Flasque sheaves have Hⁿ⁺¹ = 0 for all n ≥ 0. -/

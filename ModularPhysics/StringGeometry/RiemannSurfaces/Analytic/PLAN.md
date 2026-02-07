@@ -3,456 +3,191 @@
 ## Vision
 
 Develop a **self-contained analytic theory** of Riemann surfaces, culminating in a
-**pure analytic proof of the Riemann-Roch theorem** via Hodge theory and the ∂̄-operator.
+**pure analytic proof of the Riemann-Roch theorem** via Hodge theory and the dbar-operator.
 
 **Independence Constraint**: Only allowed external imports:
 - `Mathlib.*` (always search mathlib for available lemmas and definitions)
 - `ModularPhysics.StringGeometry.RiemannSurfaces.Topology.*`
 
-**Mathlib Usage**: Always search Mathlib for existing definitions and lemmas before
-implementing new infrastructure. Use imports like:
-- `Mathlib.Analysis.Complex.*` for complex analysis
-- `Mathlib.Analysis.SpecialFunctions.*` for special functions
-- `Mathlib.Geometry.Manifold.*` for smooth manifold theory
-- `Mathlib.Topology.*` for topological structures
-- `Mathlib.NumberTheory.ModularForms.JacobiTheta.*` for theta functions (genus 1)
+**No imports from**: SchemeTheoretic/, GAGA/, Algebraic/, Combinatorial/
 
 ---
 
-## Current State
+## Current State (Feb 2026)
 
 ### Folder Structure
 ```
 Analytic/
-├── Basic.lean                 # RiemannSurface, CompactRiemannSurface ✅
-├── MeromorphicFunction.lean   # AnalyticMeromorphicFunction ✅
-├── Divisors.lean              # Analytic Divisor, PicardGroup ✅
-├── LineBundles.lean           # HolomorphicLineBundle (incomplete)
-├── RiemannRoch.lean           # Empty stub
+├── Basic.lean                      # RiemannSurface, CompactRiemannSurface           ✅ 0 sorrys
+├── MeromorphicFunction.lean        # AnalyticMeromorphicFunction                     1 sorry
+├── Divisors.lean                   # Analytic Divisor, PicardGroup                   ✅ 0 sorrys
+├── LineBundles.lean                # HolomorphicLineBundle, LinearSystem             ✅ 0 sorrys
+├── RiemannRoch.lean                # Analytic RR (stubs)                             5 sorrys
+├── Analytic.lean                   # Re-exports                                      ✅ 0 sorrys
 ├── HodgeTheory/
-│   ├── Harmonic.lean          # Basic harmonic functions
-│   └── Helpers/
-├── Jacobian/
-│   ├── AbelJacobi.lean        # ✅ Now uses Analytic.Divisors
-│   ├── ThetaFunctions.lean    # ✅ Uses Analytic namespace
-│   └── Helpers/
-│       └── ThetaHelpers.lean  # ✅ Uses Analytic.Helpers namespace
-├── Applications/
-│   ├── GreenFunction.lean
-│   └── Helpers/
-└── Moduli/
-    ├── FenchelNielsen.lean
-    ├── QuasiconformalMaps.lean
-    └── SiegelSpace.lean
+│   ├── DifferentialForms.lean      # (p,q)-forms, wedge, conjugation                 ✅ 0 sorrys
+│   ├── Dolbeault.lean              # dbar operator, Dolbeault cohomology              1 sorry
+│   ├── Harmonic.lean               # Harmonic functions on RS                         3 sorrys
+│   ├── HodgeDecomposition.lean     # Hodge decomposition, Dolbeault isomorphism       7 sorrys
+│   ├── SerreDuality.lean           # Analytic Serre duality                           4 sorrys
+│   ├── Helpers/
+│   │   └── HarmonicHelpers.lean    # Coordinate definitions                          ✅ 0 sorrys
+│   └── Infrastructure/
+│       ├── RealSmoothness.lean     # R-smooth vs C-smooth bridge                     ✅ 0 sorrys
+│       ├── WirtingerDerivatives.lean # d/dz and d/dz-bar                             ✅ 0 sorrys
+│       ├── MaximumPrinciple.lean   # Maximum principle via circle averages            ✅ 0 sorrys
+│       ├── MeanValueConverse.lean  # MVP <=> harmonic                                ✅ 0 sorrys
+│       ├── PoissonIntegral.lean    # Schwarz/Poisson integral, boundary values        1 sorry
+│       └── HarmonicConjugate.lean  # Harmonic conjugate existence                    1 sorry
+├── Jacobian/                       # (lower priority)
+│   ├── AbelJacobi.lean             # Abel-Jacobi map                                 7 sorrys
+│   ├── ThetaFunctions.lean         # Theta functions                                 6 sorrys
+│   └── Helpers/ThetaHelpers.lean   # Theta helpers                                   4 sorrys*
+├── Applications/                   # (lower priority)
+│   ├── GreenFunction.lean          # Green's function                                5 sorrys
+│   └── Helpers/GreenHelpers.lean   # Green helpers                                   ✅ 0 sorrys
+└── Moduli/                         # (lower priority)
+    ├── Moduli.lean                 # Re-exports                                      ✅ 0 sorrys
+    ├── FenchelNielsen.lean         # Fenchel-Nielsen coordinates                     ✅ 0 sorrys
+    ├── QuasiconformalMaps.lean     # Quasiconformal maps                             3 sorrys
+    └── SiegelSpace.lean            # Siegel upper half-space                         ✅ 0 sorrys
+```
+*ThetaHelpers has 4 actual sorrys + 3 mentions in comments
+
+### Sorry Count Summary
+- **Total**: ~48 actual sorrys across 13 files
+- **Core HodgeTheory pipeline**: 17 sorrys (priority)
+- **Jacobian/Applications/Moduli**: 25 sorrys (lower priority)
+- **Other (MeromorphicFunction, RiemannRoch)**: 6 sorrys
+
+---
+
+## Proven Infrastructure (0 sorrys)
+
+### Foundation
+- **Basic.lean**: `RiemannSurface` (connected complex 1-manifold), `CompactRiemannSurface`,
+  `RiemannSphere` (full 2-chart atlas), `IsHolomorphic`, `holomorphicIsConstant`
+- **Divisors.lean**: `Divisor`, degree, `IsPrincipal`, `PicardGroup`, argument principle
+- **LineBundles.lean**: `HolomorphicLineBundle`, `ofDivisor`, `tensor`, `dual`, `degree`,
+  `LinearSystem`, `linearSystem_empty_negative_degree`
+
+### Differential Forms & Smoothness
+- **DifferentialForms.lean**: `SmoothFunction`, `Form_10/01/11/1`, wedge products,
+  conjugation, `HolomorphicForm`, `areaForm`, full C-module structures
+- **RealSmoothness.lean**: `contMDiff_real_of_complex_rs` (C-smooth => R-smooth),
+  conjugation smoothness, `RealSmoothFunction` ring, re/im extraction
+- **WirtingerDerivatives.lean**: `wirtingerDeriv/wirtingerDerivBar`,
+  `holomorphic_iff_wirtingerDerivBar_zero`, `laplacian_eq_four_wirtinger_mixed`,
+  chain rules, algebraic properties
+
+### Harmonic Analysis
+- **MaximumPrinciple.lean**: `eq_of_circleAverage_eq_of_le`,
+  `harmonic_maximum_principle_ball/connected`, minimum principle
+- **MeanValueConverse.lean**: `SatisfiesMVP`, `harmonicOnNhd_of_mvp`
+  (MVP + continuous => harmonic, via Poisson integral)
+- **PoissonIntegral.lean** (mostly proven):
+  - `schwarzIntegral_differentiableAt` (holomorphic in z)
+  - `poissonIntegral_harmonicOnNhd` (Re(holomorphic) = harmonic)
+  - `poissonIntegral_boundary_values` (correct boundary values)
+  - `mvp_zero_boundary_implies_zero` (MVP + zero boundary => zero)
+  - `mvp_implies_harmonicOnNhd` (main theorem, depends on `mvp_eq_poissonIntegral`)
+  - `mvp_implies_contDiffOn`, `mvp_implies_laplacian_zero` (corollaries)
+
+---
+
+## Priority Sorrys (Core Pipeline)
+
+### Tier 1: Low-Hanging Fruit (infrastructure in place)
+
+| Sorry | File | What's Needed |
+|-------|------|--------------|
+| `mvp_eq_poissonIntegral` | PoissonIntegral.lean | h = f - P[f] satisfies MVP, h=0 on boundary, max principle => h=0. All ingredients proven. |
+| `harmonic_conjugate_simply_connected` | HarmonicConjugate.lean | Poincare lemma / homotopy invariance of curve integrals |
+
+### Tier 2: Hodge Theory Core
+
+| Sorry | File | What's Needed |
+|-------|------|--------------|
+| `local_dbar_poincare` | Dolbeault.lean | Local exactness of dbar (local Cauchy integral formula) |
+| `hodge_decomposition_01` | HodgeDecomposition.lean | Hodge decomposition for (0,1)-forms |
+| `harmonic_10_closed` | HodgeDecomposition.lean | dbar-closed (1,0)-forms => harmonic |
+| `dim_harmonic_10_eq_genus` | HodgeDecomposition.lean | dim H^{1,0} = genus |
+| `harmonic_to_deRham_bijective` | HodgeDecomposition.lean | Harmonic forms represent de Rham |
+| `l2_inner_product_10_exists` | HodgeDecomposition.lean | L2 inner product existence |
+| `orthogonal_to_dbar_image_10` | HodgeDecomposition.lean | Integration by parts |
+| `dolbeault_isomorphism` | HodgeDecomposition.lean | Dolbeault isomorphism |
+
+### Tier 3: Serre Duality & Riemann-Roch
+
+| Sorry | File | What's Needed |
+|-------|------|--------------|
+| `l2_inner_product_exists` | SerreDuality.lean | Integration + metric |
+| `surjective_of_serre_duality` | SerreDuality.lean | Riesz representation |
+| `residue_sum_zero` | SerreDuality.lean | Stokes' theorem |
+| `kodaira_vanishing_kernel_dimension` | SerreDuality.lean | Full Serre duality |
+| `canonical_divisor_exists` | RiemannRoch.lean | Meromorphic 1-form existence |
+| `atiyah_singer_index_formula` | RiemannRoch.lean | Index theorem |
+| `h0_canonical_eq_genus` | RiemannRoch.lean | dim H^0(K) = g |
+| `harmonic_10_isomorphic_h0_canonical` | RiemannRoch.lean | Holomorphic 1-forms = K-sections |
+
+### Tier 4: Other
+
+| Sorry | File | What's Needed |
+|-------|------|--------------|
+| `harmonic_1forms_dimension` | Harmonic.lean | Hodge theory |
+| `poisson_dirichlet_existence` | Harmonic.lean | Poisson solution |
+| `argument_principle_count` | MeromorphicFunction.lean | Integration / topological degree |
+| `linear_system_linear_dependence` | RiemannRoch.lean | Linear dependence criterion |
+
+---
+
+## Proof Strategy: Analytic Riemann-Roch
+
+### Path 1: Via Index Theory (current approach in RiemannRoch.lean)
+1. chi(L) = ind(dbar_L) where dbar_L is the twisted Dolbeault operator
+2. Homotopy invariance: index depends only on topological data
+3. Normalization: chi(O) = 1 - g
+4. Degree shift: chi(L(p)) = chi(L) + 1
+5. Induction: chi(L) = deg(L) + 1 - g
+
+### Path 2: Via Hodge Theory (alternative)
+1. Hodge decomposition => dim H^{p,q} finite
+2. Serre duality => h^1(L) = h^0(K tensor L*)
+3. chi(O) = h^0(O) - h^1(O) = 1 - g
+4. Point exact sequence for degree shift
+5. Same induction as Path 1
+
+### Key Dependencies
+```
+RealSmoothness ──> DifferentialForms ──> Dolbeault ──> HodgeDecomposition
+     |                                      |                |
+WirtingerDerivs ─────────────────────────────┘          SerreDuality
+     |                                                       |
+MaximumPrinciple ──> PoissonIntegral ──> MeanValueConverse   |
+     |                                      |                |
+HarmonicConjugate ──> Harmonic ─────────────┘                |
+                                                             v
+LineBundles ──────────────────────────────────────────> RiemannRoch
 ```
 
 ---
 
-## Part 1: Fix Independence Issues ✅ COMPLETED
-
-### 1.1 Fix AbelJacobi.lean ✅
-
-**Changes made:**
-- Import changed from `Algebraic.Divisors` to `Analytic.Divisors`
-- Namespace changed from `RiemannSurfaces.Algebraic` to `RiemannSurfaces.Analytic`
-- Removed `AlgebraicStructureOn` parameter from `abel_theorem'` and `pic0_isomorphic_jacobian`
-- Now uses `Divisor.IsPrincipal` from Analytic.Divisors
-
-### 1.2 Fix ThetaFunctions.lean and ThetaHelpers.lean ✅
-
-**Changes made:**
-- Namespaces changed to `RiemannSurfaces.Analytic` and `RiemannSurfaces.Analytic.Helpers`
-
-### Verification
-1. ✅ No imports from Algebraic/, GAGA/, Combinatorial/, SchemeTheoretic/
-2. ✅ All files build successfully
-3. ✅ All namespaces use `RiemannSurfaces.Analytic`
-
----
-
-## Part 2: Hodge Theory Development
-
-### 2.1 File Structure for HodgeTheory/
-```
-HodgeTheory/
-├── Harmonic.lean           # Existing - harmonic functions
-├── DifferentialForms.lean  # NEW - (p,q)-forms
-├── Dolbeault.lean          # NEW - ∂̄-operator
-├── HodgeDecomposition.lean # NEW - Hodge theorem
-├── SerreDuality.lean       # NEW - H¹(L)* ≅ H⁰(K ⊗ L*)
-└── Helpers/
-    ├── HarmonicHelpers.lean
-    └── FormHelpers.lean    # NEW
-```
-
-### 2.2 DifferentialForms.lean
-
-**Purpose**: Define differential forms on Riemann surfaces
-
-```lean
-/-- A (p,q)-form on a Riemann surface.
-    For a Riemann surface (complex dimension 1):
-    - (0,0)-forms: smooth functions f
-    - (1,0)-forms: f(z) dz (holomorphic type)
-    - (0,1)-forms: f(z) dz̄ (antiholomorphic type)
-    - (1,1)-forms: f(z) dz ∧ dz̄ (area forms)
--/
-structure DifferentialForm (RS : RiemannSurface) (p q : ℕ) where
-  /-- Local representation in coordinates -/
-  localRep : RS.carrier → ℂ
-  /-- Smoothness condition -/
-  smooth : ContDiff ℝ ⊤ (fun z => localRep z)
-
-/-- The space of (p,q)-forms Ω^{p,q}(Σ) -/
-def FormSpace (RS : RiemannSurface) (p q : ℕ) : Type :=
-  DifferentialForm RS p q
-
-/-- Ω^{p,q}(Σ) is a ℂ-vector space -/
-instance : Module ℂ (FormSpace RS p q) := ...
-```
-
-### 2.3 Dolbeault.lean
-
-**Purpose**: Define the ∂̄-operator and Dolbeault cohomology
-
-```lean
-/-- The ∂̄ operator: Ω^{p,q} → Ω^{p,q+1}
-    In local coordinates: ∂̄(f dz^p ∧ dz̄^q) = (∂f/∂z̄) dz̄ ∧ dz^p ∧ dz̄^q -/
-def dbar (RS : RiemannSurface) :
-    FormSpace RS p q →ₗ[ℂ] FormSpace RS p (q + 1) := ...
-
-/-- ∂̄² = 0 -/
-theorem dbar_comp_dbar : dbar RS ∘ₗ dbar RS = 0 := ...
-
-/-- Dolbeault cohomology H^{p,q}_∂̄(Σ) = ker(∂̄) / im(∂̄) -/
-def DolbeaultCohomology (RS : RiemannSurface) (p q : ℕ) : Type :=
-  (LinearMap.ker (dbar RS : FormSpace RS p q →ₗ[ℂ] _)) ⧸
-  (LinearMap.range (dbar RS : FormSpace RS p (q-1) →ₗ[ℂ] _)).comap _
-
-/-- H^{0,0}(Σ) = holomorphic functions -/
-theorem H00_eq_holomorphic : DolbeaultCohomology RS 0 0 ≃ₗ[ℂ] HolomorphicFunctions RS
-
-/-- H^{1,0}(Σ) = holomorphic 1-forms -/
-theorem H10_eq_holomorphic_forms : DolbeaultCohomology RS 1 0 ≃ₗ[ℂ] Holomorphic1Forms RS
-```
-
-### 2.4 HodgeDecomposition.lean
-
-**Purpose**: Prove the Hodge decomposition theorem
-
-```lean
-/-- The Hodge star operator *: Ω^{p,q} → Ω^{n-q,n-p}
-    For n=1 (Riemann surfaces): *: Ω^{p,q} → Ω^{1-q,1-p} -/
-def hodgeStar (RS : RiemannSurface) (μ : AdmissibleMetric RS) :
-    FormSpace RS p q →ₗ[ℂ] FormSpace RS (1-q) (1-p) := ...
-
-/-- The Laplacian Δ = ∂̄∂̄* + ∂̄*∂̄ -/
-def laplacian (RS : RiemannSurface) (μ : AdmissibleMetric RS) :
-    FormSpace RS p q →ₗ[ℂ] FormSpace RS p q := ...
-
-/-- A form is harmonic iff Δω = 0 -/
-def IsHarmonic (ω : FormSpace RS p q) : Prop := laplacian RS μ ω = 0
-
-/-- The space of harmonic (p,q)-forms -/
-def HarmonicForms (RS : RiemannSurface) (μ : AdmissibleMetric RS) (p q : ℕ) : Submodule ℂ _ :=
-  LinearMap.ker (laplacian RS μ)
-
-/-- **Hodge Decomposition Theorem**
-    Ω^{p,q}(Σ) = H^{p,q} ⊕ im(∂̄) ⊕ im(∂̄*)
-
-    For compact Riemann surfaces, every ∂̄-closed form is cohomologous to a unique
-    harmonic representative. -/
-theorem hodge_decomposition (CRS : CompactRiemannSurface) (μ : AdmissibleMetric CRS) :
-    ∀ ω : FormSpace CRS.toRiemannSurface p q,
-    ∃! (h : HarmonicForms CRS.toRiemannSurface μ p q)
-       (α : FormSpace CRS.toRiemannSurface p (q-1))
-       (β : FormSpace CRS.toRiemannSurface p (q+1)),
-    ω = h + dbar _ α + dbarStar _ β := sorry
-
-/-- **Hodge Isomorphism**: H^{p,q}_∂̄(Σ) ≅ H^{p,q}_harm(Σ) -/
-theorem dolbeault_eq_harmonic (CRS : CompactRiemannSurface) (μ : AdmissibleMetric CRS) :
-    DolbeaultCohomology CRS.toRiemannSurface p q ≃ₗ[ℂ] HarmonicForms CRS.toRiemannSurface μ p q
-```
-
-### 2.5 SerreDuality.lean
-
-**Purpose**: Prove Serre duality analytically
-
-```lean
-/-- The Serre duality pairing via the Hodge star and integration:
-    ⟨ω, η⟩ = ∫_Σ ω ∧ *η̄ -/
-def serrePairing (CRS : CompactRiemannSurface) (μ : AdmissibleMetric CRS) :
-    FormSpace CRS.toRiemannSurface p q →ₗ[ℂ]
-    FormSpace CRS.toRiemannSurface (1-p) (1-q) →ₗ[ℂ] ℂ := ...
-
-/-- **Serre Duality Theorem** (analytic version)
-    H^{0,1}(Σ, L)* ≅ H^{0,0}(Σ, K ⊗ L*)
-
-    For a holomorphic line bundle L, the dual of H¹(Σ, O(L)) is
-    isomorphic to H⁰(Σ, Ω¹ ⊗ L*). -/
-theorem serre_duality_analytic (CRS : CompactRiemannSurface) (L : HolomorphicLineBundle CRS) :
-    (DolbeaultCohomology CRS.toRiemannSurface 0 1) ≃ₗ[ℂ]
-    Module.Dual ℂ (DolbeaultCohomology CRS.toRiemannSurface 1 0) := sorry
-```
-
----
-
-## Part 3: Riemann-Roch via Analytic Methods
-
-### 3.1 File Structure
-```
-RiemannRoch.lean           # Main theorem
-LineBundles.lean           # Enhanced with section spaces
-```
-
-### 3.2 Enhanced LineBundles.lean
-
-**Current state**: Has `HolomorphicLineBundle` and `LinearSystem` but no vector space structure.
-
-**Add:**
-```lean
-/-- The space of holomorphic sections H⁰(Σ, L) as a ℂ-vector space -/
-def SectionSpace (CRS : CompactRiemannSurface) (L : HolomorphicLineBundle CRS) : Type :=
-  { s : CRS.carrier → ℂ // IsHolomorphicSection L s }
-
-instance : Module ℂ (SectionSpace CRS L) := ...
-
-/-- H⁰(Σ, L) is finite-dimensional for compact Σ -/
-instance : FiniteDimensional ℂ (SectionSpace CRS L) := sorry
-
-/-- h⁰(L) = dim H⁰(Σ, L) -/
-noncomputable def h0 (CRS : CompactRiemannSurface) (L : HolomorphicLineBundle CRS) : ℕ :=
-  FiniteDimensional.finrank ℂ (SectionSpace CRS L)
-
-/-- H¹(Σ, L) via Dolbeault: H^{0,1}(Σ, L) -/
-def H1 (CRS : CompactRiemannSurface) (L : HolomorphicLineBundle CRS) : Type :=
-  DolbeaultCohomology CRS.toRiemannSurface 0 1  -- with L-twist
-
-/-- h¹(L) = dim H¹(Σ, L) -/
-noncomputable def h1 (CRS : CompactRiemannSurface) (L : HolomorphicLineBundle CRS) : ℕ :=
-  FiniteDimensional.finrank ℂ (H1 CRS L)
-
-/-- Euler characteristic χ(L) = h⁰(L) - h¹(L) -/
-noncomputable def eulerChar (CRS : CompactRiemannSurface) (L : HolomorphicLineBundle CRS) : ℤ :=
-  (h0 CRS L : ℤ) - h1 CRS L
-```
-
-### 3.3 RiemannRoch.lean - Pure Analytic Proof
-
-**Proof Strategy**: Use the index theorem approach
-
-```lean
-/-- **Riemann-Roch Theorem** (Analytic Proof)
-
-    χ(L) = deg(L) + 1 - g
-
-    **Proof outline:**
-
-    1. **Index interpretation**: χ(L) = ind(∂̄_L) where ∂̄_L is the Dolbeault operator
-       twisted by L.
-
-    2. **Homotopy invariance**: The index only depends on the topological data
-       (degree of L, genus of Σ).
-
-    3. **Normalization**: Compute χ(O) = 1 - g where g = dim H¹(Σ, O).
-       - H⁰(Σ, O) = ℂ (holomorphic functions on compact Σ are constant)
-       - H¹(Σ, O) = H^{0,1}(Σ) ≅ H^{1,0}(Σ)* by Serre duality
-       - dim H^{1,0}(Σ) = g (Hodge number = genus)
-       - So χ(O) = 1 - g
-
-    4. **Degree shift**: Show χ(L(p)) = χ(L) + 1 for each point p.
-       This uses the short exact sequence:
-       0 → L → L(p) → L(p)|_p → 0
-       The fiber L(p)|_p ≅ ℂ contributes χ = 1.
-
-    5. **Induction**: From χ(O) = 1 - g and the degree shift,
-       χ(L) = deg(L) + χ(O) = deg(L) + 1 - g.
--/
-theorem riemann_roch_analytic (CRS : CompactRiemannSurface)
-    (L : HolomorphicLineBundle CRS.toRiemannSurface) :
-    eulerChar CRS L = L.degree + 1 - CRS.genus := by
-  sorry
-
-/-- **Key Lemma 1**: h⁰(O) = 1
-    Holomorphic functions on a compact Riemann surface are constant. -/
-theorem h0_trivial_eq_one (CRS : CompactRiemannSurface) :
-    h0 CRS (HolomorphicLineBundle.trivial) = 1 := by
-  -- Use maximum modulus principle
-  sorry
-
-/-- **Key Lemma 2**: h¹(O) = g (definition of genus via Hodge theory)
-    This is essentially the definition: g = dim H^{0,1}(Σ) = dim H^{1,0}(Σ). -/
-theorem h1_trivial_eq_genus (CRS : CompactRiemannSurface) :
-    h1 CRS (HolomorphicLineBundle.trivial) = CRS.genus := by
-  -- By Hodge theory: H¹(Σ, O) ≅ H^{0,1}(Σ) and dim H^{0,1} = g
-  sorry
-
-/-- **Key Lemma 3**: χ(O) = 1 - g -/
-theorem euler_char_trivial (CRS : CompactRiemannSurface) :
-    eulerChar CRS (HolomorphicLineBundle.trivial) = 1 - CRS.genus := by
-  unfold eulerChar
-  rw [h0_trivial_eq_one, h1_trivial_eq_genus]
-  ring
-
-/-- **Key Lemma 4**: Point exact sequence
-    χ(L(p)) = χ(L) + 1
-
-    From 0 → O(L) → O(L(p)) → ℂ_p → 0, we get χ(L(p)) = χ(L) + χ(ℂ_p) = χ(L) + 1. -/
-theorem euler_char_add_point (CRS : CompactRiemannSurface)
-    (L : HolomorphicLineBundle CRS.toRiemannSurface) (p : CRS.carrier) :
-    eulerChar CRS (L.tensor (HolomorphicLineBundle.ofDivisor (Divisor.point p))) =
-    eulerChar CRS L + 1 := by
-  -- Use long exact sequence in Dolbeault cohomology
-  sorry
-
-/-- Canonical bundle: K = Ω¹ (holomorphic 1-forms) -/
-def canonicalBundle (CRS : CompactRiemannSurface) : HolomorphicLineBundle CRS.toRiemannSurface :=
-  sorry
-
-/-- deg(K) = 2g - 2 -/
-theorem canonical_degree (CRS : CompactRiemannSurface) :
-    (canonicalBundle CRS).degree = 2 * CRS.genus - 2 := by
-  sorry
-
-/-- **Serre Duality** (cohomological version)
-    h¹(L) = h⁰(K ⊗ L*) -/
-theorem serre_duality_dim (CRS : CompactRiemannSurface)
-    (L : HolomorphicLineBundle CRS.toRiemannSurface) :
-    h1 CRS L = h0 CRS ((canonicalBundle CRS).tensor L.dual) := by
-  -- By the Serre duality isomorphism from HodgeTheory/SerreDuality.lean
-  sorry
-
-/-- **Classical Riemann-Roch**
-    h⁰(L) - h⁰(K ⊗ L*) = deg(L) + 1 - g -/
-theorem riemann_roch_classical (CRS : CompactRiemannSurface)
-    (L : HolomorphicLineBundle CRS.toRiemannSurface) :
-    (h0 CRS L : ℤ) - h0 CRS ((canonicalBundle CRS).tensor L.dual) =
-    L.degree + 1 - CRS.genus := by
-  rw [← serre_duality_dim]
-  exact riemann_roch_analytic CRS L
-```
-
----
-
-## Part 4: Integration with Jacobian Theory
-
-### 4.1 Fix AbelJacobi.lean Independence
-
-Use `Analytic.Divisors` instead of `Algebraic.Divisors`:
-
-```lean
--- OLD:
-import ModularPhysics.StringGeometry.RiemannSurfaces.Algebraic.Divisors
-
--- NEW:
-import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Divisors
-```
-
-All `Divisor` references use the analytic definition.
-`IsPrincipal` uses `AnalyticMeromorphicFunction` (already in Analytic.Divisors).
-
-### 4.2 Connect to Hodge Theory
-
-```lean
-/-- Period matrix from Hodge theory.
-    The period matrix Ω_{ij} = ∫_{b_j} ω_i where {ω_i} is a basis of H^{1,0}(Σ). -/
-theorem period_matrix_from_hodge (CRS : CompactRiemannSurface) :
-    ∃ Ω : Matrix (Fin CRS.genus) (Fin CRS.genus) ℂ,
-      Ω.transpose = Ω ∧ ∀ i, 0 < (Ω i i).im := by
-  -- Uses dim H^{1,0} = g from Hodge theory
-  sorry
-```
-
----
-
-## Part 5: Implementation Roadmap
-
-### Phase 1: Independence (Immediate)
-- [ ] Fix `Jacobian/AbelJacobi.lean` to use `Analytic.Divisors`
-- [ ] Verify all imports are internal + Topology + Mathlib
-
-### Phase 2: Differential Forms Foundation
-- [ ] Create `HodgeTheory/DifferentialForms.lean`
-- [ ] Define (p,q)-forms for Riemann surfaces
-- [ ] Establish vector space structure
-
-### Phase 3: Dolbeault Cohomology
-- [ ] Create `HodgeTheory/Dolbeault.lean`
-- [ ] Define ∂̄ operator
-- [ ] Prove ∂̄² = 0
-- [ ] Define Dolbeault cohomology groups
-
-### Phase 4: Hodge Decomposition
-- [ ] Create `HodgeTheory/HodgeDecomposition.lean`
-- [ ] Define Hodge star operator
-- [ ] Define Laplacian
-- [ ] Prove Hodge decomposition (main theorem)
-- [ ] Prove Hodge isomorphism
-
-### Phase 5: Serre Duality
-- [ ] Create `HodgeTheory/SerreDuality.lean`
-- [ ] Define Serre pairing
-- [ ] Prove Serre duality theorem
-
-### Phase 6: Riemann-Roch
-- [ ] Enhance `LineBundles.lean` with section spaces
-- [ ] Define h⁰, h¹, χ properly
-- [ ] Prove h⁰(O) = 1 (maximum principle)
-- [ ] Prove h¹(O) = g (Hodge theory)
-- [ ] Prove point exact sequence
-- [ ] Complete `RiemannRoch.lean` with full proof
-
-### Phase 7: Integration
-- [ ] Connect period matrices to Hodge theory in `Jacobian/AbelJacobi.lean`
-- [ ] Verify all theta function constructions work with new foundations
-
----
-
-## Key Theorems to Prove
-
-| Theorem | File | Dependencies |
-|---------|------|--------------|
-| ∂̄² = 0 | Dolbeault.lean | DifferentialForms |
-| Hodge decomposition | HodgeDecomposition.lean | Dolbeault, Harmonic |
-| Dolbeault ≅ Harmonic | HodgeDecomposition.lean | Hodge decomposition |
-| Serre duality | SerreDuality.lean | Hodge decomposition |
-| h⁰(O) = 1 | RiemannRoch.lean | Maximum principle |
-| h¹(O) = g | RiemannRoch.lean | Hodge isomorphism |
-| χ(L(p)) = χ(L) + 1 | RiemannRoch.lean | Dolbeault LES |
-| **Riemann-Roch** | RiemannRoch.lean | All above |
-
----
-
-## Mathlib Dependencies
-
-Required from Mathlib:
-- `Mathlib.Analysis.Complex.Basic` - Complex analysis
-- `Mathlib.Analysis.Calculus.ContDiff.Basic` - Smooth functions
-- `Mathlib.Geometry.Manifold.*` - Manifold structure
-- `Mathlib.Analysis.InnerProductSpace.Harmonic.*` - Harmonic functions
-- `Mathlib.LinearAlgebra.Dimension.*` - Finite-dimensionality
-- `Mathlib.Topology.Sheaves.*` - Sheaf theory (if needed)
-
----
-
-## Success Criteria
-
-The Analytic folder is complete when:
-1. ✅ No imports from Algebraic/, GAGA/, Combinatorial/, SchemeTheoretic/
-2. ✅ Only imports from Analytic/, Topology/, Mathlib
-3. ⬜ `DifferentialForms.lean` complete with (p,q)-forms
-4. ⬜ `Dolbeault.lean` complete with ∂̄-cohomology
-5. ⬜ `HodgeDecomposition.lean` with Hodge theorem
-6. ⬜ `SerreDuality.lean` with analytic Serre duality
-7. ⬜ `RiemannRoch.lean` with pure analytic proof
-8. ⬜ All sorrys in core theorems resolved (or clearly marked as deep analysis)
+## Next Steps (Priority Order)
+
+1. **Prove `mvp_eq_poissonIntegral`** - all ingredients in place, completes Poisson chain
+2. **Prove `harmonic_conjugate_simply_connected`** - unlocks harmonic infrastructure
+3. **Work on Dolbeault `local_dbar_poincare`** - key for cohomology theory
+4. **HodgeDecomposition sorrys** - core of the analytic approach
+5. **SerreDuality** - needed for classical form of Riemann-Roch
+6. **RiemannRoch** - final goal
 
 ---
 
 ## References
 
-- Griffiths & Harris, "Principles of Algebraic Geometry", Chapter 0-1
+- Griffiths & Harris, "Principles of Algebraic Geometry", Ch 0-1
 - Forster, "Lectures on Riemann Surfaces"
-- Farkas & Kra, "Riemann Surfaces", Chapter III
+- Farkas & Kra, "Riemann Surfaces", Ch III
 - Wells, "Differential Analysis on Complex Manifolds"
-- Kodaira, "Complex Manifolds and Deformation of Complex Structures"
+- Axler, Bourdon, Ramey, "Harmonic Function Theory", Ch 1
+- Ahlfors, "Complex Analysis", Ch 6
