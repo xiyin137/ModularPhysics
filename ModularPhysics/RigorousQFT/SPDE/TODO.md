@@ -33,6 +33,33 @@ wavelet decomposition infrastructure.
 
 ## Recent Updates (2026-02-09)
 
+### Session 29 Progress (Bochner Integral Convention Fix)
+
+**Fixed critical issue with `sq_integrable_limit` and `stoch_integral_sq_integrable`.**
+
+**Problem**: In Session 28, `sq_integrable_limit` was removed from `ItoIntegral` as "axiom smuggling",
+and `stoch_integral_integrable` was removed from `ItoProcess`. However, these CANNOT be proved from
+`is_L2_limit` / `stoch_integral_is_L2_limit` due to Bochner integral conventions:
+- In Mathlib, `∫ f dμ = 0` when `f` is not integrable
+- If `integral t ∉ L²`, then `(S_n - integral t)²` is not integrable
+- So `∫(S_n - I)² = 0 → 0` is vacuously true for ANY non-L² function
+- Therefore, `is_L2_limit` is vacuously satisfied when `integral t ∉ L²`
+
+**Fix**: These are genuinely **part of the L² limit definition**, not axiom smuggling:
+1. **Restored `sq_integrable_limit` as a field** in `ItoIntegral` structure
+   - Docstring explains it's part of L² limit definition, prevents vacuous satisfaction
+2. **Added `stoch_integral_sq_integrable` as a field** in `ItoProcess` structure
+   - Same reasoning: ensures `stoch_integral_is_L2_limit` is not vacuously true
+3. **`integrable_limit` stays as theorem** with `[IsProbabilityMeasure μ]`
+   - On probability spaces, L² ⊂ L¹ by Cauchy-Schwarz (sorry'd, provable)
+4. **`stoch_integral_integrable` stays as theorem** with `[IsProbabilityMeasure μ]`
+   - Same reasoning (sorry'd, provable)
+
+**Updated Sorry Count:**
+- StochasticIntegration.lean: 16 sorrys (was 17, removed sq_integrable_limit sorry)
+
+---
+
 ### Session 28 Progress (Soundness Audit & Axiom Smuggling Fixes)
 
 **Soundness audit of all SPDE definitions, structures, and fields.**
@@ -71,8 +98,9 @@ wavelet decomposition infrastructure.
    - Updated `gaussian_affine` and `gaussian_sum_indep` to remove `all_moments` proofs.
 
 8. **`ItoIntegral.integrable_limit` and `sq_integrable_limit` removed from structure** (StochasticIntegration.lean):
-   - Were consequences of `is_L2_limit`: L² convergence implies the limit is in L².
-   - Now sorry'd theorems in the `ItoIntegral` namespace.
+   - Were initially removed as consequences of `is_L2_limit`.
+   - **CORRECTED in Session 29**: `sq_integrable_limit` restored as field (part of L² limit
+     definition, not derivable due to Bochner integral conventions). See Session 29.
 
 **Not Changed (deliberate design choices):**
 - `IsGaussian.char_function` — IS the defining property of Gaussianity
@@ -930,7 +958,7 @@ Major fixes implemented to address critical mathematical errors:
 |------|--------|--------|-------|
 | Basic.lean | ✅ Compiles | 1 | `is_martingale_of_bounded` (needs uniform integrability) |
 | BrownianMotion.lean | ✅ Compiles | 5 | time_inversion, eval_unit_is_brownian, Q-Wiener (2), levy_characterization |
-| StochasticIntegration.lean | ✅ Compiles | 17 | **`isometry` FULLY PROVED**, ItoIntegral/ItoProcess/SDE sorrys |
+| StochasticIntegration.lean | ✅ Compiles | 16 | **`isometry` FULLY PROVED**, ItoIntegral/ItoProcess/SDE sorrys |
 | Probability/IndependenceHelpers.lean | ✅ Compiles | 0 | **FULLY PROVEN** - bridge lemmas for independence |
 | RegularityStructures.lean | ✅ Compiles | 9 | Chen relation proved, vanishing moments & BPHZ properly defined |
 | SPDE.lean | ✅ Compiles | 6 | Generator linearity proved, proper well-posedness conditions |

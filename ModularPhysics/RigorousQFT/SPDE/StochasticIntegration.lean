@@ -472,23 +472,24 @@ structure ItoIntegral (F : Filtration Ω ℝ) (μ : Measure Ω) (T : ℝ) where
       (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx n) BM t ω)^2 ∂μ)
       Filter.atTop
       (nhds (∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (integrand.process s ω)^2 ∂volume) ∂μ)))
+  /-- The integral is square-integrable at each time in [0, T].
+      This is part of the L² limit definition: the limit of an L² Cauchy sequence
+      is in L². Without this, `is_L2_limit` would be vacuously true for non-L² functions
+      due to Bochner integral conventions (∫ of non-integrable function = 0). -/
+  sq_integrable_limit : ∀ t : ℝ, 0 ≤ t → t ≤ T →
+    Integrable (fun ω => (integral t ω) ^ 2) μ
 
 namespace ItoIntegral
 
 variable {F : Filtration Ω ℝ} {μ : Measure Ω} {T : ℝ}
 
 /-- The Itô integral is integrable at each time in [0, T].
-    Follows from `is_L2_limit`: L² convergence implies the limit is in L² (hence L¹)
-    by completeness of L². -/
-theorem integrable_limit (I : ItoIntegral F μ T) (t : ℝ) (ht0 : 0 ≤ t) (htT : t ≤ T) :
+    On a probability space, follows from `sq_integrable_limit`: L² ⊂ L¹
+    on finite measure spaces (Cauchy-Schwarz). -/
+theorem integrable_limit (I : ItoIntegral F μ T) [IsProbabilityMeasure μ]
+    (t : ℝ) (ht0 : 0 ≤ t) (htT : t ≤ T) :
     Integrable (I.integral t) μ := by
-  sorry -- Consequence of is_L2_limit: L² limit is in L²
-
-/-- The Itô integral is square-integrable at each time in [0, T].
-    Follows from `is_L2_limit`: as the L² limit of L² processes, the integral is in L². -/
-theorem sq_integrable_limit (I : ItoIntegral F μ T) (t : ℝ) (ht0 : 0 ≤ t) (htT : t ≤ T) :
-    Integrable (fun ω => (I.integral t ω) ^ 2) μ := by
-  sorry -- Consequence of is_L2_limit: L² limit is in L²
+  sorry -- Follows from sq_integrable_limit: L² ⊂ L¹ on probability spaces
 
 /-- Linearity of Itô integral in the integrand -/
 theorem linear (I₁ I₂ : ItoIntegral F μ T) (_h : I₁.BM = I₂.BM) (a b : ℝ) :
@@ -571,18 +572,24 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
   /-- The stochastic integral is adapted to F -/
   stoch_integral_adapted : ∀ t : ℝ,
     @Measurable Ω ℝ (F.σ_algebra t) _ (stoch_integral t)
+  /-- The stochastic integral is square-integrable at each t ≥ 0.
+      Part of the L² limit definition: ensures `stoch_integral_is_L2_limit`
+      is not vacuously satisfied due to Bochner integral conventions
+      (∫ of non-integrable function = 0). -/
+  stoch_integral_sq_integrable : ∀ t : ℝ, t ≥ 0 →
+    Integrable (fun ω => (stoch_integral t ω) ^ 2) μ
 
 namespace ItoProcess
 
 variable {F : Filtration Ω ℝ} {μ : Measure Ω}
 
 /-- The stochastic integral is integrable at each t ≥ 0.
-    This follows from the L² limit construction: L² convergence to `stoch_integral t`
-    implies `stoch_integral t` is in L² (hence L¹) by completeness.
-    Proved in Helpers/ from `stoch_integral_is_L2_limit`. -/
-theorem stoch_integral_integrable (X : ItoProcess F μ) (t : ℝ) (ht : t ≥ 0) :
+    On a probability space, follows from `stoch_integral_sq_integrable`:
+    L² ⊂ L¹ on finite measure spaces (Cauchy-Schwarz). -/
+theorem stoch_integral_integrable (X : ItoProcess F μ) [IsProbabilityMeasure μ]
+    (t : ℝ) (ht : t ≥ 0) :
     Integrable (X.stoch_integral t) μ := by
-  sorry -- Proved from stoch_integral_is_L2_limit in Helpers/
+  sorry -- Follows from stoch_integral_sq_integrable: L² ⊂ L¹ on probability spaces
 
 /-- The stochastic integral at time 0 is 0 a.s.
     Follows from L² convergence: simple process integrals at time 0 are all 0,
