@@ -10,6 +10,7 @@ import Mathlib.Probability.Independence.Basic
 import Mathlib.MeasureTheory.Group.MeasurableEquiv
 import ModularPhysics.RigorousQFT.SPDE.Helpers.SetIntegralHelpers
 import Mathlib.MeasureTheory.Measure.CharacteristicFunction
+import Mathlib.Analysis.SpecialFunctions.Pow.Real
 
 /-!
 # Brownian Motion and Wiener Processes
@@ -79,6 +80,12 @@ structure BrownianMotion (Ω : Type*) [MeasurableSpace Ω] (μ : Measure Ω) whe
       This implies both zero mean and variance = t - s. -/
   gaussian_increments : ∀ s t : ℝ, 0 ≤ s → s ≤ t →
     Probability.IsGaussian (fun ω => toAdapted.process t ω - toAdapted.process s ω) μ 0 (t - s)
+
+  /-- Convention for non-positive times: the process equals 0 a.s.
+      Standard Brownian motion is defined on [0, ∞). For t ≤ 0, we set W_t = 0.
+      This is consistent with W_0 = 0 (the `initial` field) and allows the
+      martingale property to hold for all s ≤ t (not just 0 ≤ s ≤ t). -/
+  nonneg_time : ∀ t : ℝ, t ≤ 0 → ∀ᵐ ω ∂μ, toAdapted.process t ω = 0
 
 /-- Alternative characterization using the product measure formulation of independence:
     For disjoint intervals, the increments are independent. -/
@@ -221,9 +228,11 @@ theorem is_martingale (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] :
                    W.toAdapted.process t := by
           filter_upwards [W.initial] with ω h0; simp [h0]
         exact hincr.congr heq
-      · -- BrownianMotion properties only defined for t ≥ 0
-        -- TODO: Either extend definition or restrict time index to ℝ≥0
-        sorry
+      · -- t < 0: by nonneg_time, W_t = 0 a.s., so W_t is integrable
+        push_neg at ht
+        have heq : W.toAdapted.process t =ᶠ[ae μ] (fun _ => (0 : ℝ)) := by
+          filter_upwards [W.nonneg_time t (le_of_lt ht)] with ω h0; exact h0
+        exact (integrable_const (0 : ℝ)).congr heq.symm
     martingale_property := fun s t hst A hA => by
       by_cases hs : s ≥ 0
       · -- Key: ∫_A W_t dμ = ∫_A W_s dμ, equivalently ∫_A (W_t - W_s) dμ = 0
@@ -281,7 +290,56 @@ theorem is_martingale (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] :
           rw [hfun_eq]
           exact integral_add hWs_int.integrableOn hincr_int.integrableOn
         rw [hsum, hzero, add_zero]
-      · sorry -- s < 0 case: BrownianMotion properties only defined for s ≥ 0
+      · -- s < 0 case: W_s = 0 a.s. by nonneg_time
+        push_neg at hs
+        -- ∫_A W_s = ∫_A 0 = 0
+        have hWs_zero : ∫ ω in A, W.toAdapted.process s ω ∂μ = 0 := by
+          have heq : ∫ ω in A, W.toAdapted.process s ω ∂μ =
+                     ∫ ω in A, (0 : ℝ) ∂μ := by
+            apply setIntegral_congr_ae (W.F.le_ambient s A hA)
+            filter_upwards [W.nonneg_time s (le_of_lt hs)] with ω h0 _
+            exact h0
+          rw [heq]; simp
+        -- Now show ∫_A W_t = 0
+        have hWt_zero : ∫ ω in A, W.toAdapted.process t ω ∂μ = 0 := by
+          by_cases ht : t ≤ 0
+          · -- Both s, t ≤ 0: W_t = 0 a.s. too
+            have heq : ∫ ω in A, W.toAdapted.process t ω ∂μ =
+                       ∫ ω in A, (0 : ℝ) ∂μ := by
+              apply setIntegral_congr_ae (W.F.le_ambient s A hA)
+              filter_upwards [W.nonneg_time t ht] with ω h0 _
+              exact h0
+            rw [heq]; simp
+          · -- s < 0 < t: W_t = (W_t - W_0) a.s. since W_0 = 0
+            push_neg at ht
+            have ht' : 0 ≤ t := le_of_lt ht
+            -- A ∈ F_s ⊆ F_0 (since s ≤ 0)
+            have hA0 : @MeasurableSet Ω (W.F.σ_algebra 0) A :=
+              (W.F.mono s 0 (le_of_lt hs)) A hA
+            -- W_t =ᵃᵉ (W_t - W_0) since W_0 = 0 a.s.
+            have hWt_eq : ∫ ω in A, W.toAdapted.process t ω ∂μ =
+                ∫ ω in A, (W.toAdapted.process t ω - W.toAdapted.process 0 ω) ∂μ := by
+              apply setIntegral_congr_ae (W.F.le_ambient 0 A hA0)
+              filter_upwards [W.initial] with ω h0 _
+              simp [h0]
+            rw [hWt_eq]
+            -- The increment W_t - W_0 is independent of F_0 with zero mean
+            set incr0 := fun ω => W.toAdapted.process t ω - W.toAdapted.process 0 ω
+            have hm₂ : W.F.σ_algebra 0 ≤ ‹MeasurableSpace Ω› := W.F.le_ambient 0
+            haveI : SigmaFinite (μ.trim hm₂) := inferInstance
+            have hincr0_sm : StronglyMeasurable[MeasurableSpace.comap incr0 inferInstance] incr0 :=
+              _root_.SPDE.Probability.stronglyMeasurable_comap_self incr0
+            have hm₁ : MeasurableSpace.comap incr0 inferInstance ≤ ‹MeasurableSpace Ω› := by
+              apply MeasurableSpace.comap_le_iff_le_map.mpr
+              intro s' hs'
+              exact (((W.toAdapted.adapted t).mono (W.F.le_ambient t) le_rfl).sub
+                ((W.toAdapted.adapted 0).mono (W.F.le_ambient 0) le_rfl)) hs'
+            have hincr0_int := (W.gaussian_increments 0 t (le_refl 0) ht').integrable
+            have hindep0 := (W.independent_increments 0 t (le_refl 0) ht').symm
+            have hmean0 := W.increment_mean_zero 0 t (le_refl 0) ht'
+            exact Probability.setIntegral_eq_zero_of_indep_zero_mean
+              hm₁ hm₂ hincr0_sm hincr0_int hindep0 hmean0 A hA0
+        rw [hWt_zero, hWs_zero]
   }
   rfl
 
@@ -408,10 +466,74 @@ theorem quadratic_variation_compensator (W : BrownianMotion Ω μ) [IsProbabilit
   rw [hcross2, hvar_rem, add_zero]
 
 /-- Brownian scaling: if W_t is a BM, then c^{-1/2} W_{ct} is also a BM -/
-theorem scaling (W : BrownianMotion Ω μ) (c : ℝ) (hc : 0 < c) :
+theorem scaling (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] (c : ℝ) (hc : 0 < c) :
     ∃ W' : BrownianMotion Ω μ,
       ∀ t : ℝ, ∀ᵐ ω ∂μ, W'.process t ω = c^(-(1/2 : ℝ)) * W.process (c * t) ω := by
-  sorry
+  -- The scaling constant
+  set a := c ^ (-(1/2 : ℝ)) with ha_def
+  have ha_pos : 0 < a := Real.rpow_pos_of_pos hc _
+  have ha_ne : a ≠ 0 := ne_of_gt ha_pos
+  -- Key arithmetic: a² * c = 1
+  have ha_sq_c : a ^ 2 * c = 1 := by
+    rw [sq, ha_def, ← Real.rpow_add hc]
+    norm_num
+    rw [show (-1 : ℝ) = ((-1 : ℤ) : ℝ) from by norm_cast, Real.rpow_intCast,
+        zpow_neg_one, inv_mul_cancel₀ (ne_of_gt hc)]
+  -- Construct the rescaled filtration: F'_t = F_{ct}
+  let F' : Filtration Ω ℝ := {
+    σ_algebra := fun t => W.F.σ_algebra (c * t)
+    mono := fun s t hst => W.F.mono _ _ (mul_le_mul_of_nonneg_left hst hc.le)
+    le_ambient := fun t => W.F.le_ambient _
+  }
+  -- Construct the scaled adapted process
+  let scaledW : AdaptedProcess F' ℝ := {
+    process := fun t ω => a * W.toAdapted.process (c * t) ω
+    adapted := fun t => (W.toAdapted.adapted (c * t)).const_mul a
+  }
+  -- Increment helper
+  have incr_scaled : ∀ s t, (fun ω => scaledW.process t ω - scaledW.process s ω) =
+      (fun ω => a * (W.toAdapted.process (c * t) ω - W.toAdapted.process (c * s) ω)) := by
+    intro s t; ext ω; simp [scaledW]; ring
+  -- comap(a * f) = comap(f) for a ≠ 0
+  have comap_mul_eq : ∀ (g : Ω → ℝ),
+      MeasurableSpace.comap (fun ω => a * (g ω)) inferInstance =
+      MeasurableSpace.comap g inferInstance := by
+    intro g
+    change (inferInstance : MeasurableSpace ℝ).comap ((fun x => a * x) ∘ g) =
+           (inferInstance : MeasurableSpace ℝ).comap g
+    rw [← MeasurableSpace.comap_comp]
+    congr 1
+    exact (MeasurableEquiv.mulLeft₀ a ha_ne).measurableEmbedding.comap_eq
+  use {
+    F := F'
+    toAdapted := scaledW
+    initial := by
+      filter_upwards [W.initial] with ω h0
+      simp [scaledW, mul_zero, h0]
+    continuous_paths := by
+      filter_upwards [W.continuous_paths] with ω hcont
+      show Continuous (fun t => a * W.toAdapted.process (c * t) ω)
+      exact continuous_const.mul (hcont.comp (continuous_const.mul continuous_id))
+    independent_increments := fun s t hs hst => by
+      rw [incr_scaled, comap_mul_eq]
+      exact W.independent_increments _ _ (mul_nonneg hc.le hs) (mul_le_mul_of_nonneg_left hst hc.le)
+    gaussian_increments := fun s t hs hst => by
+      rw [incr_scaled]
+      -- a * (W(ct) - W(cs)) = a * IsGaussian(0, ct-cs) + 0
+      have hgauss := W.gaussian_increments _ _ (mul_nonneg hc.le hs)
+          (mul_le_mul_of_nonneg_left hst hc.le)
+      have hg := Probability.gaussian_affine hgauss a 0
+      simp only [mul_zero, add_zero] at hg
+      -- hg : IsGaussian (fun ω => a * ...) μ 0 (a² * (c*t - c*s))
+      have h_var : a ^ 2 * (c * t - c * s) = t - s := by nlinarith [ha_sq_c]
+      rwa [h_var] at hg
+    nonneg_time := fun t ht => by
+      filter_upwards [W.nonneg_time (c * t) (mul_nonpos_of_nonneg_of_nonpos hc.le ht)] with ω h0
+      simp [scaledW, h0]
+  }
+  intro t
+  filter_upwards with ω
+  simp [process, scaledW]
 
 /-- Reflection principle: -W is also a Brownian motion -/
 theorem reflection (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] :
@@ -458,6 +580,9 @@ theorem reflection (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] :
       have hg := Probability.gaussian_affine (W.gaussian_increments s t hs hst) (-1) 0
       simp only [neg_one_mul, neg_zero, add_zero, one_mul, neg_one_sq] at hg
       convert hg using 2 <;> (try ring)
+    nonneg_time := fun t ht => by
+      filter_upwards [W.nonneg_time t ht] with ω h0
+      simp [negW, h0]
   }
   intro t
   filter_upwards with ω
@@ -500,6 +625,8 @@ structure CylindricalWienerProcess (Ω : Type*) [MeasurableSpace Ω]
   F : Filtration Ω ℝ
   /-- The adapted process -/
   toAdapted : AdaptedProcess F (H →L[ℝ] ℝ)
+  /-- Initial condition: W(0) = 0 a.s. -/
+  initial : ∀ h : H, ∀ᵐ ω ∂μ, toAdapted.process 0 ω h = 0
   /-- Isometry property: E[⟨W(t), h₁⟩⟨W(s), h₂⟩] = (t ∧ s)⟨h₁, h₂⟩ -/
   isometry : ∀ h₁ h₂ : H, ∀ t s : ℝ, 0 ≤ t → 0 ≤ s →
     ∫ ω, (toAdapted.process t ω h₁) * (toAdapted.process s ω h₂) ∂μ =
@@ -597,6 +724,8 @@ structure QWienerProcess (Ω : Type*) [MeasurableSpace Ω]
   F : Filtration Ω ℝ
   /-- The adapted process -/
   toAdapted : AdaptedProcess F H
+  /-- Initial condition: W(0) = 0 a.s. -/
+  initial : ∀ᵐ ω ∂μ, toAdapted.process 0 ω = 0
   /-- Covariance: E[⟨W(t), h₁⟩⟨W(s), h₂⟩] = (t ∧ s)⟨Qh₁, h₂⟩ -/
   covariance : ∀ h₁ h₂ : H, ∀ t s : ℝ, 0 ≤ t → 0 ≤ s →
     ∫ ω, @inner ℝ H _ (toAdapted.process t ω) h₁ * @inner ℝ H _ (toAdapted.process s ω) h₂ ∂μ =
@@ -633,6 +762,9 @@ structure SpaceTimeWhiteNoise (Ω : Type*) [MeasurableSpace Ω]
     eval (fun x => a * ϕ x + b * ψ x) = fun ω => a * eval ϕ ω + b * eval ψ ω
   /-- Isometry: E[W(ϕ)W(ψ)] = ⟨ϕ, ψ⟩_{L²} -/
   isometry : ∀ ϕ ψ : D → ℝ, ∫ ω, eval ϕ ω * eval ψ ω ∂μ = ∫ x, ϕ x * ψ x ∂ν
+  /-- Gaussianity: each W(ϕ) is a Gaussian random variable with mean 0 and variance ‖ϕ‖²_{L²} -/
+  gaussian : ∀ ϕ : D → ℝ,
+    SPDE.Probability.IsGaussian (eval ϕ) μ 0 (∫ x, (ϕ x)^2 ∂ν)
 
 /-! ## Lévy's Characterization -/
 
@@ -694,15 +826,21 @@ structure OrnsteinUhlenbeck (Ω : Type*) [MeasurableSpace Ω]
   mean_reversion : ∀ t : ℝ, 0 ≤ t →
     ∀ A : Set Ω, @MeasurableSet Ω (F.σ_algebra 0) A →
     ∫ ω in A, process t ω ∂μ = ∫ ω in A, process 0 ω * Real.exp (-θ * t) ∂μ
-  /-- Conditional variance: Var(X_t | X_0) = (σ²/2θ)(1 - e^{-2θt})
-      The unconditional variance of the centered process equals this value. -/
-  conditional_variance : ∀ t : ℝ, 0 ≤ t →
-    ∫ ω, (process t ω - process 0 ω * Real.exp (-θ * t))^2 ∂μ =
-      (σ^2 / (2 * θ)) * (1 - Real.exp (-2 * θ * t))
   /-- X_t is Gaussian given X_0 -/
   gaussian_conditional : ∀ t : ℝ, 0 ≤ t →
     Probability.IsGaussian (fun ω => process t ω - process 0 ω * Real.exp (-θ * t)) μ
       0 ((σ^2 / (2 * θ)) * (1 - Real.exp (-2 * θ * t)))
+
+/-- Conditional variance: Var(X_t | X_0) = (σ²/2θ)(1 - e^{-2θt}).
+    Derived from `gaussian_conditional` (it is literally the variance_eq field). -/
+theorem ou_conditional_variance {Ω : Type*} [MeasurableSpace Ω]
+    {μ : Measure Ω} {θ σ : ℝ} {hθ : 0 < θ} {hσ : 0 < σ}
+    (X : OrnsteinUhlenbeck Ω μ θ σ hθ hσ) (t : ℝ) (ht : 0 ≤ t) :
+    ∫ ω, (X.process t ω - X.process 0 ω * Real.exp (-θ * t))^2 ∂μ =
+      (σ^2 / (2 * θ)) * (1 - Real.exp (-2 * θ * t)) := by
+  have h := (X.gaussian_conditional t ht).variance_eq
+  simp only [sub_zero] at h
+  exact h
 
 /-- In the stationary regime (t → ∞), Var(X_t) → σ²/(2θ) -/
 theorem ou_stationary_variance {Ω : Type*} [MeasurableSpace Ω]

@@ -6,6 +6,7 @@ Authors: ModularPhysics Contributors
 import Mathlib.AlgebraicGeometry.ResidueField
 import Mathlib.Algebra.Category.ModuleCat.Sheaf
 import Mathlib.LinearAlgebra.Dimension.Finrank
+import Mathlib.LinearAlgebra.FiniteDimensional.Basic
 import ModularPhysics.StringGeometry.RiemannSurfaces.SchemeTheoretic.Basic
 
 /-!
@@ -210,5 +211,66 @@ theorem skyscraper_restriction_surjective (p : X) (U V : Opens X.carrier) (_ : U
   · -- Case 3: p ∉ V
     intro _ y
     exact ⟨y, rfl⟩
+
+/-!
+## Canonical Residue Map
+
+The canonical ring homomorphism ℂ → κ(p) via the structure morphism.
+This defines the ℂ-module structure used in Čech cohomology.
+-/
+
+/-- The canonical ring homomorphism from ℂ to κ(p) via the structure morphism.
+
+    This is the composition:
+    ℂ →[ΓSpecIso⁻¹]→ Γ(Spec ℂ, ⊤) →[π*.appTop]→ Γ(C, ⊤) →[evalAtPoint]→ κ(p)
+
+    This map defines the ℂ-module structure on κ(p) that appears in
+    `moduleValueComplex` and hence in all Čech cohomology computations.
+
+    For any open U containing p:
+    canonicalResidueMap(a) = evalAtPoint(U, p)(algebraMap ℂ O_C(U) a)
+    by evalAtPoint_comp_restriction. -/
+noncomputable def canonicalResidueMap (p : C.PointType) :
+    ℂ →+* C.toScheme.residueField p :=
+  (evalAtPoint p ⊤ (Set.mem_univ (p : C.toScheme.carrier))).comp
+    (C.structureMorphism.appTop.hom.comp (Scheme.ΓSpecIso (CommRingCat.of ℂ)).inv.hom)
+
+/-- The canonical residue map is injective (ring hom from field to nontrivial ring). -/
+theorem canonicalResidueMap_injective (p : C.PointType) :
+    Function.Injective (canonicalResidueMap C p) :=
+  (canonicalResidueMap C p).injective
+
+/-- The canonical residue map is surjective.
+
+    This follows from the algebraic Nullstellensatz: for schemes of finite type
+    over algebraically closed fields, residue fields at closed points equal
+    the base field. Since our curves are of finite type over ℂ (algebraically
+    closed), the canonical map ℂ → κ(p) is surjective.
+
+    References: Stacks Project Tag 00FJ, Hartshorne Exercise II.2.13. -/
+theorem canonicalResidueMap_surjective (p : C.PointType) :
+    Function.Surjective (canonicalResidueMap C p) := by
+  sorry
+
+/-- The canonical residue map as a ring equivalence. -/
+noncomputable def canonicalResidueEquiv (p : C.PointType) :
+    ℂ ≃+* C.toScheme.residueField p :=
+  RingEquiv.ofBijective (canonicalResidueMap C p)
+    ⟨canonicalResidueMap_injective C p, canonicalResidueMap_surjective C p⟩
+
+/-- κ(p) is 1-dimensional over ℂ with the module structure from the canonical map.
+
+    The ℂ-module structure is: a • v = canonicalResidueMap(a) * v.
+    This is the same module structure used in `moduleValueComplex` / `algebraOnSections`. -/
+theorem residueField_finrank_one_canonical (p : C.PointType) :
+    letI : Module ℂ (C.toScheme.residueField p) :=
+      Module.compHom (C.toScheme.residueField p) (canonicalResidueMap C p)
+    Module.finrank ℂ (C.toScheme.residueField p) = 1 := by
+  letI : Module ℂ (C.toScheme.residueField p) :=
+    Module.compHom (C.toScheme.residueField p) (canonicalResidueMap C p)
+  apply (finrank_eq_one_iff_of_nonzero' (1 : C.toScheme.residueField p) one_ne_zero).mpr
+  intro w
+  obtain ⟨c, hc⟩ := canonicalResidueMap_surjective C p w
+  exact ⟨c, by show canonicalResidueMap C p c * 1 = w; rw [mul_one]; exact hc⟩
 
 end RiemannSurfaces.SchemeTheoretic

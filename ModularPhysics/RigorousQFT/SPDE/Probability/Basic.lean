@@ -328,11 +328,20 @@ structure IsGaussian (X : Ω → ℝ) (μ : Measure Ω) (mean : ℝ) (variance :
   mean_eq : ∫ ω, X ω ∂μ = mean
   /-- Variance condition -/
   variance_eq : ∫ ω, (X ω - mean)^2 ∂μ = variance
-  /-- All moments exist (Gaussian has all moments) -/
-  all_moments : ∀ n : ℕ, Integrable (fun ω => (X ω)^n) μ
   /-- Characteristic function condition (captures Gaussianity beyond just mean/variance) -/
   char_function : ∀ t : ℝ, ∫ ω, Complex.exp (Complex.I * t * X ω) ∂μ =
     Complex.exp (Complex.I * t * mean - variance * t^2 / 2)
+
+/-- All moments of a Gaussian random variable exist.
+    This is a consequence of the characteristic function: the Gaussian characteristic
+    function φ(t) = exp(itm - vt²/2) is entire, so E[X^n] = (1/i^n) φ^{(n)}(0) exists
+    for all n. Equivalently, the moment generating function converges in a neighborhood
+    of 0, which implies all moments are finite.
+    TODO: Prove from `char_function` using moment generating function convergence. -/
+theorem IsGaussian.all_moments {X : Ω → ℝ} {μ : Measure Ω} {mean variance : ℝ}
+    (h : IsGaussian X μ mean variance) :
+    ∀ n : ℕ, Integrable (fun ω => (X ω)^n) μ := by
+  sorry -- Derivable from char_function via moment generating function
 
 /-- Standard normal distribution N(0, 1) -/
 def IsStandardNormal (X : Ω → ℝ) (μ : Measure Ω) : Prop :=
@@ -352,25 +361,6 @@ theorem gaussian_affine {X : Ω → ℝ} {μ : Measure Ω} [IsProbabilityMeasure
     have h : (fun ω => (a * X ω + b - (a * m + b))^2) = (fun ω => a^2 * (X ω - m)^2) := by
       ext ω; ring
     rw [h, integral_const_mul, hX.variance_eq]
-  all_moments := fun n => by
-    -- (aX + b)^n is integrable since it expands to sum of integrable terms
-    -- Use add_pow binomial expansion
-    have hpoly : (fun ω => (a * X ω + b)^n) = fun ω =>
-        ∑ k ∈ Finset.range (n + 1), (n.choose k : ℝ) * (a * X ω)^k * b^(n - k) := by
-      ext ω
-      rw [add_pow]
-      apply Finset.sum_congr rfl
-      intro k _
-      ring
-    rw [hpoly]
-    apply integrable_finset_sum
-    intro k _
-    -- Each term C(n,k) * a^k * X^k * b^(n-k) is integrable
-    have : (fun ω => (n.choose k : ℝ) * (a * X ω)^k * b^(n - k)) =
-           (fun ω => ((n.choose k : ℝ) * a^k * b^(n - k)) * (X ω)^k) := by
-      ext ω; ring
-    rw [this]
-    exact (hX.all_moments k).const_mul _
   char_function := fun t => by
     -- Show the integrands are equal pointwise
     have heq : ∀ ω, Complex.exp (Complex.I * t * ↑(a * X ω + b)) =
@@ -441,36 +431,6 @@ theorem gaussian_sum_indep {X Y : Ω → ℝ} {μ : Measure Ω} [IsProbabilityMe
           (ProbabilityTheory.variance_eq_integral (hX.integrable.add hY.integrable).aemeasurable).symm
       _ = ProbabilityTheory.variance X μ + ProbabilityTheory.variance Y μ := hvar
       _ = v₁ + v₂ := by rw [hXvar, hYvar]
-  all_moments := fun n => by
-    -- (X + Y)^n expands to sum of terms X^k * Y^(n-k), all integrable
-    have hpoly : (fun ω => (X ω + Y ω)^n) = fun ω =>
-        ∑ k ∈ Finset.range (n + 1), (n.choose k : ℝ) * (X ω)^k * (Y ω)^(n - k) := by
-      ext ω; rw [add_pow]; apply Finset.sum_congr rfl; intro k _; ring
-    rw [hpoly]
-    apply integrable_finset_sum
-    intro k _
-    have heq : (fun ω => (n.choose k : ℝ) * (X ω)^k * (Y ω)^(n - k)) =
-               (fun ω => (n.choose k : ℝ) * ((X ω)^k * (Y ω)^(n - k))) := by ext; ring
-    rw [heq]
-    apply Integrable.const_mul
-    -- Use Hölder's inequality: L^2 × L^2 → L^1
-    -- X^k ∈ L^2 because X^(2k) is integrable (from all_moments)
-    -- Y^(n-k) ∈ L^2 because Y^(2(n-k)) is integrable (from all_moments)
-    have hXk_sq : Integrable (fun ω => ((X ω)^k)^2) μ := by
-      have h : (fun ω => ((X ω)^k)^2) = fun ω => (X ω)^(2 * k) := by ext ω; ring
-      rw [h]; exact hX.all_moments (2 * k)
-    have hYnk_sq : Integrable (fun ω => ((Y ω)^(n - k))^2) μ := by
-      have h : (fun ω => ((Y ω)^(n - k))^2) = fun ω => (Y ω)^(2 * (n - k)) := by ext ω; ring
-      rw [h]; exact hY.all_moments (2 * (n - k))
-    have hXk_ae : AEStronglyMeasurable (fun ω => (X ω)^k) μ :=
-      hX.integrable.aestronglyMeasurable.pow k
-    have hYnk_ae : AEStronglyMeasurable (fun ω => (Y ω)^(n - k)) μ :=
-      hY.integrable.aestronglyMeasurable.pow (n - k)
-    have hXk_memLp : MemLp (fun ω => (X ω)^k) 2 μ :=
-      (memLp_two_iff_integrable_sq hXk_ae).mpr hXk_sq
-    have hYnk_memLp : MemLp (fun ω => (Y ω)^(n - k)) 2 μ :=
-      (memLp_two_iff_integrable_sq hYnk_ae).mpr hYnk_sq
-    exact MemLp.integrable_mul (p := 2) (q := 2) hXk_memLp hYnk_memLp
   char_function := fun t => by
     -- E[exp(it(X+Y))] = E[exp(itX) * exp(itY)] = E[exp(itX)] * E[exp(itY)]
     -- by independence of X and Y

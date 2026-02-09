@@ -205,27 +205,49 @@ instance skyscraperModule_isFlasque (p : C.PointType) :
 The key fact for Riemann-Roch: skyscraper sheaves have Euler characteristic 1.
 -/
 
+/-- H⁰(C, k_p) is ℂ-linearly equivalent to ℂ.
+
+    **Mathematical proof:**
+    H⁰(C, k_p) = ker(d⁰) where d⁰ is the Čech differential on 0-cochains.
+    For the skyscraper sheaf k_p:
+    - k_p(U_i) = κ(p) if p ∈ U_i, else 0
+    - A 0-cocycle c has res(c(i)) = res(c(j)) on overlaps U_i ∩ U_j
+    - Since restrictions on κ(p) are identity, all c(i) with p ∈ U_i agree
+    - So ker(d⁰) ≅ κ(p) as ℂ-modules (evaluation at any index i₀ with p ∈ U_{i₀})
+    - κ(p) ≅ ℂ via canonicalResidueEquiv
+
+    The ℂ-module structure on ker(d⁰) comes from CechCocycles.submodule, which
+    acts on each component via algebraMap(ℂ, O_C(U)) followed by the module action.
+    For the skyscraper, this equals the canonicalResidueMap action on κ(p), so the
+    evaluation map is ℂ-linear (using algebraMap_restriction_commute). -/
+private noncomputable def h0_skyscraper_equiv (C : ProperCurve)
+    (p : C.toAlgebraicCurve.PointType) :
+    letI := sheafCohomologyModule C.toAlgebraicCurve 0
+      (skyscraperModule C.toAlgebraicCurve p)
+    SheafCohomology C.toAlgebraicCurve 0
+      (skyscraperModule C.toAlgebraicCurve p) ≃ₗ[ℂ] ℂ := by
+  letI := sheafCohomologyModule C.toAlgebraicCurve 0
+    (skyscraperModule C.toAlgebraicCurve p)
+  -- Construction: choose i₀ with p ∈ U_{i₀}, define
+  --   eval(c) = canonicalResidueEquiv(c(fun _ => i₀))
+  -- This is ℂ-linear (algebraMap_restriction_commute ensures uniform ℂ-action)
+  -- Injective: cocycle condition forces all values to agree, so c = 0 iff c(i₀) = 0
+  -- Surjective: for any z ∈ ℂ, define c(σ) = canonicalResidueEquiv⁻¹(z) ∈ κ(p)
+  sorry
+
 /-- h⁰(k_p) = 1.
 
     **Proof:**
-    H⁰(C, k_p) = Γ(C, k_p) = k_p(C) = κ(p) ≅ ℂ, which is 1-dimensional.
-
-    **Detailed proof:**
-    1. H⁰(C, k_p) = Γ(C, k_p) by definition of H⁰
-    2. For the skyscraper sheaf, Γ(C, k_p) = k_p(C) = κ(p) since p ∈ C
-    3. κ(p) ≅ ℂ as ℂ-vector spaces (from residueFieldLinearEquiv)
-    4. dim_ℂ(ℂ) = 1 (from residueField_finrank_one)
+    H⁰(C, k_p) ≃ₗ[ℂ] ℂ (from h0_skyscraper_equiv), so
+    finrank ℂ H⁰(C, k_p) = finrank ℂ ℂ = 1.
 
     **Key infrastructure:**
-    - `residueFieldLinearEquiv` : κ(p) ≃ₗ[ℂ] ℂ (in SkyscraperInfrastructure.lean)
-    - `residueField_finrank_one` : finrank ℂ κ(p) = 1 -/
+    - `h0_skyscraper_equiv` : H⁰(k_p) ≃ₗ[ℂ] ℂ
+    - `residueField_finrank_one_canonical` : finrank ℂ κ(p) = 1 -/
 theorem h0_skyscraper (C : ProperCurve) (p : C.toAlgebraicCurve.PointType) :
     h_i C 0 (skyscraperSheaf C.toAlgebraicCurve p) = 1 := by
-  -- The proof requires:
-  -- 1. H⁰(C, k_p) = Γ(C, k_p) = κ(p) (since p ∈ C, the global sections are κ(p))
-  -- 2. finrank ℂ κ(p) = 1 (from residueField_finrank_one)
-  -- This depends on the skyscraperModule construction
-  sorry
+  unfold h_i
+  exact (LinearEquiv.finrank_eq (h0_skyscraper_equiv C p)).trans (Module.finrank_self ℂ)
 
 /-- h¹(k_p) = 0 (skyscraper sheaves are acyclic).
 

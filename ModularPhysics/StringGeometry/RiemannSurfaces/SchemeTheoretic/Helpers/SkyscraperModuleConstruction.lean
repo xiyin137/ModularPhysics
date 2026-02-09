@@ -86,6 +86,40 @@ theorem skyscraperObj_neg (p : X) (U : (Opens X.carrier)ᵒᵖ) (h : (p : X.carr
     skyscraperObj p U = (ModuleCat.of ↑(X.ringCatSheaf.val.obj U) PUnit) := by
   simp only [skyscraperObj, dif_neg h]
 
+/-- When p ∉ U, the carrier of skyscraperObj is a subsingleton (it's PUnit). -/
+instance skyscraperObj_subsingleton' (p : X) (U : (Opens X.carrier)ᵒᵖ)
+    (h : (p : X.carrier) ∉ U.unop) :
+    Subsingleton ↑(skyscraperObj p U) := by
+  rw [skyscraperObj_neg p U h]
+  exact instSubsingletonPUnit
+
+/-- The carrier type of restrictScalars.obj equals the original carrier. -/
+theorem skyscraperObj_restrictScalars_carrier' (p : X) (U : (Opens X.carrier)ᵒᵖ)
+    {V : (Opens X.carrier)ᵒᵖ} (f : V ⟶ U) :
+    (↑((ModuleCat.restrictScalars (X.ringCatSheaf.val.map f).hom).obj (skyscraperObj p U)) : Type _) =
+    (↑(skyscraperObj p U) : Type _) := rfl
+
+/-- When p ∉ U, the restrictScalars variant is also a subsingleton. -/
+instance skyscraperObj_restrictScalars_subsingleton' (p : X) (U : (Opens X.carrier)ᵒᵖ)
+    (h : (p : X.carrier) ∉ U.unop)
+    {V : (Opens X.carrier)ᵒᵖ} (f : V ⟶ U) :
+    Subsingleton ↑((ModuleCat.restrictScalars (X.ringCatSheaf.val.map f).hom).obj (skyscraperObj p U)) := by
+  rw [show (↑((ModuleCat.restrictScalars (X.ringCatSheaf.val.map f).hom).obj
+    (skyscraperObj p U)) : Type _) = ↑(skyscraperObj p U) from rfl]
+  exact skyscraperObj_subsingleton' p U h
+
+/-- eqToHom followed by its inverse is identity on elements (using .hom). -/
+@[simp] theorem eqToHom_hom_symm_comp' {R : Type*} [Ring R] {A B : ModuleCat R}
+    (h : A = B) (x : ↑A) :
+    (eqToHom h.symm).hom ((eqToHom h).hom x) = x := by
+  subst h; rfl
+
+/-- eqToHom inverse followed by eqToHom is identity on elements (using .hom). -/
+@[simp] theorem eqToHom_hom_comp_symm' {R : Type*} [Ring R] {A B : ModuleCat R}
+    (h : A = B) (y : ↑B) :
+    (eqToHom h).hom ((eqToHom h.symm).hom y) = y := by
+  subst h; rfl
+
 /-!
 ## Restriction Maps
 -/
@@ -130,15 +164,47 @@ noncomputable def skyscraperPresheafOfModules (p : X) :
   obj := skyscraperObj p
   map f := skyscraperMap p f
   map_id U := by
-    -- Both sides are the identity on elements:
-    -- LHS: skyscraperMap p (𝟙 U) = id on κ(p) or 0 on PUnit
-    -- RHS: (restrictScalarsId' ...).inv.app _ = id (by restrictScalarsId'App_inv_apply)
-    sorry
-  map_comp f g := by
-    -- Both sides compose restriction maps:
-    -- LHS: skyscraperMap p (f ≫ g) = id on κ(p) or 0
-    -- RHS: skyscraperMap p f ≫ restrictScalars.map(skyscraperMap p g) ≫ comp_iso
-    sorry
+    by_cases h : (p : X.carrier) ∈ U.unop
+    · -- p ∈ U: both sides are identity on κ(p) through type-level casts
+      ext; apply DFunLike.ext; intro x
+      -- RHS: restrictScalarsId'App.inv acts as identity on elements
+      simp only [ModuleCat.restrictScalarsId'_inv_app,
+        ModuleCat.restrictScalarsId'App_inv_apply]
+      -- Now goal is: (skyscraperMap p (𝟙 U)).hom x = x
+      -- LHS: unfold skyscraperMap and simplify the eqToHom chain
+      simp only [skyscraperMap, dif_pos h, ModuleCat.comp_apply]
+      -- Goal: eqToHom(pos.symm).hom (eqToHom(pos).hom x) = x
+      exact eqToHom_hom_symm_comp' (skyscraperObj_pos p U h) x
+    · -- p ∉ U: both source and target have PUnit carrier (subsingleton)
+      ext; apply DFunLike.ext; intro x
+      exact (skyscraperObj_restrictScalars_subsingleton' p U h (𝟙 U)).elim _ _
+  map_comp {U V W} f g := by
+    -- Work around instance diamond for restrictScalarsComp' (cf. Mathlib Pushforward.lean)
+    refine ModuleCat.hom_ext
+      (@LinearMap.ext _ _ _ _ _ _ _ _ (_) (_) _ _ _ (fun x => ?_))
+    by_cases hW : (p : X.carrier) ∈ W.unop
+    · -- p ∈ W (hence p ∈ V and p ∈ U): all maps are identity on κ(p)
+      have hV : (p : X.carrier) ∈ V.unop := g.unop.le hW
+      -- Unfold skyscraperMap and comp iso to expose the eqToHom chains
+      simp only [ModuleCat.restrictScalarsComp'_inv_app,
+        ModuleCat.restrictScalarsComp'App_inv_apply,
+        skyscraperMap, dif_pos hW, dif_pos hV,
+        ModuleCat.comp_apply]
+      -- The goal has ConcreteCategory.hom wrappers; normalize coercions
+      -- Both sides are identity on κ(p) through eqToHom chains.
+      -- Show both sides equal the same cast of x.
+      -- LHS: eqToHom(W.symm).hom (id (eqToHom(U).hom x))
+      -- RHS: eqToHom(W.symm).hom (eqToHom(V).hom (eqToHom(V.symm).hom (id (eqToHom(U).hom x))))
+      -- The intermediate V pair cancels, making both sides equal.
+      change (eqToHom (skyscraperObj_pos p W hW).symm).hom
+            (id ((eqToHom (skyscraperObj_pos p U _)).hom x)) =
+          (eqToHom (skyscraperObj_pos p W hW).symm).hom
+            ((eqToHom (skyscraperObj_pos p V hV)).hom
+              ((eqToHom (skyscraperObj_pos p V hV).symm).hom
+                (id ((eqToHom (skyscraperObj_pos p U _)).hom x))))
+      rw [eqToHom_hom_comp_symm' (skyscraperObj_pos p V hV)]
+    · -- p ∉ W: target module has PUnit carrier (subsingleton)
+      exact (skyscraperObj_restrictScalars_subsingleton' p W hW (f ≫ g)).elim _ _
 
 /-- The skyscraper presheaf of modules satisfies the sheaf condition. -/
 theorem skyscraper_isSheaf (p : X) :

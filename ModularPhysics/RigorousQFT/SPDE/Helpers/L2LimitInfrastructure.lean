@@ -163,4 +163,134 @@ theorem martingale_setIntegral_eq_of_L2_limit [IsProbabilityMeasure μ]
   -- By uniqueness of limits
   exact tendsto_nhds_unique (h_eq ▸ h_conv_t) h_conv_s
 
+/-! ## Young's inequality with parameter -/
+
+/-- Young's inequality with parameter: `|a| * |b| ≤ t/2 * a² + 1/(2t) * b²` for `t > 0`.
+    Proof: multiply by `2t` and use `(t*|a| - |b|)² ≥ 0`. -/
+private lemma young_ineq (a b t : ℝ) (ht : 0 < t) :
+    |a| * |b| ≤ t / 2 * a ^ 2 + 1 / (2 * t) * b ^ 2 := by
+  have h2t : (0 : ℝ) < 2 * t := by positivity
+  -- (t|a| - |b|)² ≥ 0 gives: 2t|a||b| ≤ t²a² + b²
+  have key : 2 * t * (|a| * |b|) ≤ t ^ 2 * a ^ 2 + b ^ 2 := by
+    have h1 := sq_nonneg (t * |a| - |b|)
+    have h2 : |a| ^ 2 = a ^ 2 := sq_abs a
+    have h3 : |b| ^ 2 = b ^ 2 := sq_abs b
+    nlinarith
+  -- RHS * 2t = t²a² + b²
+  have identity : 2 * t * (t / 2 * a ^ 2 + 1 / (2 * t) * b ^ 2) =
+      t ^ 2 * a ^ 2 + b ^ 2 := by field_simp
+  -- Conclude by dividing the scaled inequality by 2t
+  by_contra h_neg
+  push_neg at h_neg
+  have scaled := mul_lt_mul_of_pos_left h_neg h2t
+  rw [identity] at scaled
+  linarith
+
+/-! ## L² norm convergence from L² convergence -/
+
+/-- If `∫(f_n - f)² → 0` then `∫ f_n² → ∫ f²`.
+
+    Proof uses Young's inequality with parameter:
+    `|ab| ≤ t/2·a² + 1/(2t)·b²` for t > 0.
+    This gives `|∫(F_n-f)·f| ≤ t/2·∫(F_n-f)² + 1/(2t)·∫f²`.
+    Since the first term → 0 for fixed t and the second → 0 as t → ∞,
+    we conclude `∫(F_n-f)·f → 0`, hence `∫F_n² → ∫f²`. -/
+theorem sq_integral_tendsto_of_L2_tendsto [IsProbabilityMeasure μ]
+    {f : Ω → ℝ} {F : ℕ → Ω → ℝ}
+    (hf_sq : Integrable (fun ω => f ω ^ 2) μ)
+    (hFf_sq : ∀ n, Integrable (fun ω => (F n ω - f ω) ^ 2) μ)
+    (hFf_prod : ∀ n, Integrable (fun ω => (F n ω - f ω) * f ω) μ)
+    (hL2 : Filter.Tendsto (fun n => ∫ ω, (F n ω - f ω) ^ 2 ∂μ)
+      Filter.atTop (nhds 0)) :
+    Filter.Tendsto (fun n => ∫ ω, F n ω ^ 2 ∂μ)
+      Filter.atTop (nhds (∫ ω, f ω ^ 2 ∂μ)) := by
+  -- Expand: F_n² = (F_n-f)² + 2(F_n-f)·f + f²
+  -- So ∫F_n² - ∫f² = ∫(F_n-f)² + 2∫(F_n-f)·f
+  -- Suffices to show ∫(F_n-f)² → 0 and ∫(F_n-f)·f → 0
+  rw [Metric.tendsto_atTop]
+  intro ε hε
+  rw [Metric.tendsto_atTop] at hL2
+  set C := ∫ ω, f ω ^ 2 ∂μ
+  have hC_nn : 0 ≤ C := integral_nonneg (fun ω => sq_nonneg _)
+  -- Young's parameter: choose t > 0 so that C/t < ε/4
+  set t := 4 * C / ε + 1 with ht_def
+  have ht_pos : 0 < t := by positivity
+  have hCt : C / t < ε / 4 := by
+    rw [div_lt_div_iff₀ ht_pos (by positivity : (0 : ℝ) < 4)]
+    have : ε * t = 4 * C + ε := by
+      rw [ht_def]; field_simp
+    linarith
+  -- Choose N so that (1 + t)·∫(F_n-f)² < ε/2 for n ≥ N
+  obtain ⟨N, hN⟩ := hL2 (ε / (2 * (1 + t))) (by positivity)
+  use N
+  intro n hn
+  rw [Real.dist_eq]
+  -- Expand: ∫F_n² - ∫f² = ∫(F_n-f)² + 2∫(F_n-f)·f
+  have hfun : ∀ ω, F n ω ^ 2 - f ω ^ 2 =
+      (F n ω - f ω) ^ 2 + 2 * ((F n ω - f ω) * f ω) := by
+    intro ω; ring
+  have hFn_sq : Integrable (fun ω => F n ω ^ 2) μ := by
+    have heq : (fun ω => F n ω ^ 2) =
+        fun ω => (F n ω - f ω) ^ 2 + 2 * ((F n ω - f ω) * f ω) + f ω ^ 2 := by
+      ext ω; ring
+    rw [heq]
+    exact ((hFf_sq n).add ((hFf_prod n).const_mul 2)).add hf_sq
+  have hdiff : ∫ ω, F n ω ^ 2 ∂μ - ∫ ω, f ω ^ 2 ∂μ =
+      ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * ∫ ω, (F n ω - f ω) * f ω ∂μ := by
+    calc ∫ ω, F n ω ^ 2 ∂μ - ∫ ω, f ω ^ 2 ∂μ
+        = ∫ ω, (F n ω ^ 2 - f ω ^ 2) ∂μ := (integral_sub hFn_sq hf_sq).symm
+      _ = ∫ ω, ((F n ω - f ω) ^ 2 + 2 * ((F n ω - f ω) * f ω)) ∂μ := by
+          congr 1; ext ω; exact hfun ω
+      _ = ∫ ω, (F n ω - f ω) ^ 2 ∂μ + ∫ ω, 2 * ((F n ω - f ω) * f ω) ∂μ :=
+          integral_add (hFf_sq n) ((hFf_prod n).const_mul 2)
+      _ = ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * ∫ ω, (F n ω - f ω) * f ω ∂μ := by
+          rw [integral_const_mul]
+  -- Get L² bound for this n
+  have hL2n := hN n hn
+  rw [Real.dist_eq, sub_zero] at hL2n
+  have hL2_nn : 0 ≤ ∫ ω, (F n ω - f ω) ^ 2 ∂μ := integral_nonneg (fun ω => sq_nonneg _)
+  have hL2_val : ∫ ω, (F n ω - f ω) ^ 2 ∂μ < ε / (2 * (1 + t)) := by
+    rwa [abs_of_nonneg hL2_nn] at hL2n
+  -- Young's inequality pointwise: |(a-b)·b| ≤ t/2·(a-b)² + 1/(2t)·b²
+  have hyoung : |∫ ω, (F n ω - f ω) * f ω ∂μ| ≤
+      t / 2 * ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 1 / (2 * t) * C := by
+    calc |∫ ω, (F n ω - f ω) * f ω ∂μ|
+        ≤ ∫ ω, |(F n ω - f ω) * f ω| ∂μ := by
+          rw [show |∫ ω, (F n ω - f ω) * f ω ∂μ| =
+            ‖∫ ω, (F n ω - f ω) * f ω ∂μ‖ from (Real.norm_eq_abs _).symm]
+          exact norm_integral_le_integral_norm _
+      _ ≤ ∫ ω, (t / 2 * (F n ω - f ω) ^ 2 + 1 / (2 * t) * f ω ^ 2) ∂μ := by
+          apply integral_mono_ae (hFf_prod n).abs
+            ((hFf_sq n).const_mul _ |>.add (hf_sq.const_mul _))
+          filter_upwards with ω
+          simp only [Pi.add_apply]
+          rw [abs_mul]
+          exact young_ineq _ _ t ht_pos
+      _ = t / 2 * ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 1 / (2 * t) * C := by
+          rw [integral_add ((hFf_sq n).const_mul _) (hf_sq.const_mul _),
+              integral_const_mul, integral_const_mul]
+  -- Combine bounds
+  calc |∫ ω, F n ω ^ 2 ∂μ - ∫ ω, f ω ^ 2 ∂μ|
+      = |∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * ∫ ω, (F n ω - f ω) * f ω ∂μ| := by
+        rw [hdiff]
+    _ ≤ ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * |∫ ω, (F n ω - f ω) * f ω ∂μ| := by
+        calc |∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * ∫ ω, (F n ω - f ω) * f ω ∂μ|
+            ≤ |∫ ω, (F n ω - f ω) ^ 2 ∂μ| + |2 * ∫ ω, (F n ω - f ω) * f ω ∂μ| :=
+              abs_add_le _ _
+          _ = ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * |∫ ω, (F n ω - f ω) * f ω ∂μ| := by
+              rw [abs_of_nonneg hL2_nn, abs_mul, abs_of_pos (by positivity : (2 : ℝ) > 0)]
+    _ ≤ ∫ ω, (F n ω - f ω) ^ 2 ∂μ + 2 * (t / 2 * ∫ ω, (F n ω - f ω) ^ 2 ∂μ +
+        1 / (2 * t) * C) := by linarith [hyoung]
+    _ = (1 + t) * ∫ ω, (F n ω - f ω) ^ 2 ∂μ + C / t := by
+        have hne : t ≠ 0 := ne_of_gt ht_pos
+        field_simp
+        ring
+    _ < (1 + t) * (ε / (2 * (1 + t))) + ε / 4 := by
+        have h1 : (1 + t) * ∫ ω, (F n ω - f ω) ^ 2 ∂μ <
+            (1 + t) * (ε / (2 * (1 + t))) :=
+          mul_lt_mul_of_pos_left hL2_val (by linarith)
+        linarith
+    _ = ε / 2 + ε / 4 := by field_simp
+    _ < ε := by linarith
+
 end SPDE
