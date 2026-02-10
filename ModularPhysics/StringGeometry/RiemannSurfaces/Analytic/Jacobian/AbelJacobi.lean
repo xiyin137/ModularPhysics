@@ -1,5 +1,6 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Divisors
 import Mathlib.LinearAlgebra.Matrix.NonsingularInverse
+import Mathlib.LinearAlgebra.Matrix.PosDef
 
 /-!
 # Abel-Jacobi Map and the Jacobian Variety
@@ -187,8 +188,10 @@ structure PeriodMatrix (CRS : RiemannSurfaces.CompactRiemannSurface) where
   Ω : Matrix (Fin CRS.genus) (Fin CRS.genus) ℂ
   /-- Symmetric: Ω = Ωᵀ (from Riemann bilinear relations) -/
   symmetric : Ω.transpose = Ω
-  /-- Imaginary part has positive diagonal entries (weak positive definiteness) -/
-  posImDiag : ∀ i, 0 < (Ω i i).im
+  /-- Imaginary part matrix -/
+  imPart : Matrix (Fin CRS.genus) (Fin CRS.genus) ℝ := fun i j => (Ω i j).im
+  /-- Im(Ω) is positive definite (Riemann bilinear relations) -/
+  posDefIm : imPart.PosDef
 
 /-- Period matrix lies in Siegel upper half space H_g.
 
@@ -196,8 +199,8 @@ structure PeriodMatrix (CRS : RiemannSurfaces.CompactRiemannSurface) where
     with positive definite imaginary part. Every period matrix lies in H_g. -/
 theorem period_matrix_in_siegel (CRS : RiemannSurfaces.CompactRiemannSurface)
     (P : PeriodMatrix CRS) :
-    P.Ω.transpose = P.Ω ∧ ∀ i, 0 < (P.Ω i i).im :=
-  ⟨P.symmetric, P.posImDiag⟩
+    P.Ω.transpose = P.Ω ∧ P.imPart.PosDef :=
+  ⟨P.symmetric, P.posDefIm⟩
 
 /-- The period lattice Λ = ℤ^g + Ω ℤ^g ⊂ ℂ^g.
 
@@ -501,13 +504,15 @@ The Jacobian with its polarization determines the curve.
     φ : J₁ → J₂ that preserves the polarization: φ*θ₂ = θ₁. -/
 structure PPAVIsomorphism (CRS₁ CRS₂ : RiemannSurfaces.CompactRiemannSurface)
     (J₁ : Jacobian' CRS₁) (J₂ : Jacobian' CRS₂)
-    (_ : PrincipalPolarization CRS₁ J₁) (_ : PrincipalPolarization CRS₂ J₂) where
+    (pol₁ : PrincipalPolarization CRS₁ J₁) (pol₂ : PrincipalPolarization CRS₂ J₂) where
   /-- The underlying map -/
   toFun : J₁.points → J₂.points
   /-- The map is a group homomorphism -/
   map_add : ∀ x y, toFun (x + y) = toFun x + toFun y
   /-- The map is bijective -/
   bijective : Function.Bijective toFun
+  /-- The isomorphism preserves polarization degree -/
+  preserves_degree : pol₁.degree = pol₂.degree
 
 /-- Torelli's theorem: (J(Σ), θ) determines Σ.
 

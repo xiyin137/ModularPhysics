@@ -1,5 +1,6 @@
 import Mathlib.Analysis.Complex.Basic
 import Mathlib.MeasureTheory.Constructions.BorelSpace.Complex
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.HodgeTheory.Infrastructure.WirtingerDerivatives
 
 /-!
 # Quasiconformal Maps
@@ -71,6 +72,11 @@ structure QuasiconformalMap (U V : Set ℂ) (K : ℝ) where
   dilatation_bound : ∀ z ∈ U, ‖μ z‖ ≤ (K - 1) / (K + 1)
   /-- μ is measurable -/
   μ_measurable : Measurable μ
+  /-- f is ℝ-differentiable on U (prerequisite for Wirtinger derivatives) -/
+  f_differentiable : DifferentiableOn ℝ f U
+  /-- Beltrami equation: ∂f/∂z̄ = μ · ∂f/∂z on U -/
+  beltrami_eq : ∀ z ∈ U, Infrastructure.wirtingerDerivBar f z =
+    μ z * Infrastructure.wirtingerDeriv f z
 
 /-- The complex dilatation (Beltrami coefficient) of a quasiconformal map.
 
@@ -146,7 +152,22 @@ noncomputable def BeltramiDifferential.norm {U : Set ℂ} (bd : BeltramiDifferen
 /-- The essential supremum bound from the structure -/
 theorem BeltramiDifferential.norm_lt_one {U : Set ℂ} (bd : BeltramiDifferential U)
     (hU : U.Nonempty) : bd.norm < 1 := by
-  sorry  -- Requires analysis of sSup
+  obtain ⟨k, hk_lt, hk_bound⟩ := bd.bounded
+  unfold BeltramiDifferential.norm
+  -- The set { ‖μ z‖ | z ∈ U } is nonempty (U is nonempty) and bounded above by k
+  have hS_nonempty : (Set.range fun z : ↥U => ‖bd.μ z‖).Nonempty := by
+    obtain ⟨z, hz⟩ := hU
+    exact ⟨‖bd.μ z‖, ⟨⟨z, hz⟩, rfl⟩⟩
+  -- Show { ‖bd.μ z‖ | z ∈ U } = Set.range (fun z : ↥U => ‖bd.μ z‖)
+  have hS_eq : { x | ∃ z ∈ U, ‖bd.μ z‖ = x } = Set.range (fun z : ↥U => ‖bd.μ z‖) := by
+    ext x; simp only [Set.mem_setOf_eq, Set.mem_range, Subtype.exists]
+    constructor
+    · rintro ⟨z, hz, hx⟩; exact ⟨z, hz, hx⟩
+    · rintro ⟨z, hz, hx⟩; exact ⟨z, hz, hx⟩
+  rw [hS_eq]
+  apply lt_of_le_of_lt (csSup_le hS_nonempty _) hk_lt
+  rintro _ ⟨⟨z, hz⟩, rfl⟩
+  exact hk_bound z hz
 
 /-- Composition of quasiconformal maps.
 
@@ -173,10 +194,11 @@ structure BeltramiEquationSolution {U : Set ℂ} (bd : BeltramiDifferential U) w
   f : ℂ → ℂ
   /-- f is a homeomorphism (required for qc maps) -/
   f_homeomorph : Continuous f
-  /-- f solves ∂f/∂z̄ = μ · ∂f/∂z.
-      TODO: Replace with proper weak derivative condition when Sobolev infrastructure available.
-      The condition should be: f ∈ W^{1,2}_{loc} and ∂̄f = μ · ∂f a.e. -/
-  solves_beltrami : Prop
+  /-- f is ℝ-differentiable on U -/
+  f_differentiable : DifferentiableOn ℝ f U
+  /-- f solves the Beltrami equation: ∂f/∂z̄ = μ · ∂f/∂z on U -/
+  solves_beltrami : ∀ z ∈ U, Infrastructure.wirtingerDerivBar f z =
+    bd.μ z * Infrastructure.wirtingerDeriv f z
   /-- Normalization: f(0) = 0, f(1) = 1 when U = ℂ -/
   normalized : f 0 = 0 ∧ f 1 = 1
 

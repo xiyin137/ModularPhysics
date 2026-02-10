@@ -465,4 +465,52 @@ theorem res_toKappa (p : X) {U' V' : (Opens X.carrier)ᵒᵖ} (f' : U' ⟶ V')
   simp only [skyscraperMap, dif_pos hV', fromKappa, toKappa]
   rfl
 
+/-- Version of res_toKappa using PresheafOfModules.map (= SheafOfModules.val.map).
+    This version matches the syntactic form of restriction maps in Čech cohomology
+    computations and can be used with `rw` instead of `erw`.
+
+    For the skyscraper presheaf F at point p, when p ∈ U and p ∈ V,
+    the restriction map F.map f : F.obj(U) → (restrictScalars ...).obj(F.obj(V))
+    acts as identity on κ(p) (i.e., toKappa(F.map f x) = toKappa(x)). -/
+theorem res_toKappa_val (p : X) {U V : (Opens X.carrier)ᵒᵖ} (f : U ⟶ V)
+    (hU : (p : X.carrier) ∈ U.unop) (hV : (p : X.carrier) ∈ V.unop)
+    (x : ↑(skyscraperObj p U)) :
+    toKappa p V hV ((skyscraperPresheafOfModules p).map f x) =
+    toKappa p U hU x := by
+  -- PresheafOfModules.map f applied to x equals presheaf.map f applied to x
+  -- (by presheaf_map_apply_coe which is rfl)
+  -- So this reduces to res_toKappa
+  exact res_toKappa p f hU hV x
+
+/-- toKappa commutes with ring scalar multiplication via evalAtPoint.
+    For r : O_X(U) and x : skyscraperObj(p, U) with p ∈ U:
+    toKappa(r • x) = evalAtPoint(r) * toKappa(x). -/
+theorem toKappa_ring_smul (p : X) (U : (Opens X.carrier)ᵒᵖ)
+    (hp : (p : X.carrier) ∈ U.unop)
+    (r : ↑(X.ringCatSheaf.val.obj U))
+    (x : ↑(skyscraperObj p U)) :
+    toKappa p U hp (r • x) = evalAtPoint p U.unop hp r * toKappa p U hp x := by
+  letI := residueFieldModuleRCS p U hp
+  simp only [toKappa]
+  -- eqToHom h is a morphism in ModuleCat R, hence R-linear
+  -- So (eqToHom h).hom (r • x) = r • (eqToHom h).hom x
+  -- And r • v in κ(p) with residueFieldModuleRCS = evalAtPoint(r) * v
+  have h_eq := skyscraperObj_pos p U hp
+  have h_smul : (eqToHom h_eq).hom (r • x) = r • (eqToHom h_eq).hom x :=
+    map_smul (eqToHom h_eq).hom r x
+  rw [h_smul]
+  -- r • v in κ(p) = evalAtPoint(r) * v (definitional from Module.compHom)
+  rfl
+
+/-- fromKappa commutes with ring scalar multiplication via evalAtPoint.
+    r • fromKappa(v) = fromKappa(evalAtPoint(r) * v). -/
+theorem fromKappa_ring_smul (p : X) (U : (Opens X.carrier)ᵒᵖ)
+    (hp : (p : X.carrier) ∈ U.unop)
+    (r : ↑(X.ringCatSheaf.val.obj U))
+    (v : X.residueField p) :
+    r • fromKappa p U hp v = fromKappa p U hp (evalAtPoint p U.unop hp r * v) := by
+  apply toKappa_injective p U hp
+  rw [toKappa_ring_smul p U hp r (fromKappa p U hp v)]
+  rw [toKappa_fromKappa, toKappa_fromKappa]
+
 end RiemannSurfaces.SchemeTheoretic.SkyscraperConstruction

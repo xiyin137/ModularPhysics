@@ -65,22 +65,6 @@ We use Mathlib's `MeromorphicAt` from `Mathlib.Analysis.Meromorphic.Basic`.
 structure AnalyticMeromorphicFunction (RS : RiemannSurface) where
   /-- The function on the surface (ℂ ⊕ Unit represents ℂ ∪ {∞}) -/
   toFun : RS.carrier → ℂ ⊕ Unit
-  /-- The function is meromorphic in local charts.
-
-      This is the key analytic condition: at each point p, the function is
-      holomorphic except at isolated poles, and near any pole has a Laurent
-      expansion with finitely many negative powers.
-
-      **Implementation note**: The meromorphic condition is captured implicitly
-      by the other structure fields:
-      - `order` specifies the Laurent series leading term at each point
-      - `order_finiteSupport` ensures poles/zeros are isolated
-      - `order_pos_iff_zero` and `order_neg_iff_pole` connect order to values
-
-      This field is kept for API compatibility but is redundant given the other fields.
-      When full atlas infrastructure is available, one should verify:
-      `∀ (φ : RS.atlas), MeromorphicOn (toFun ∘ φ.invFun) φ.source`. -/
-  isMeromorphic : Prop
   /-- The order function at each point (positive = zero, negative = pole, 0 = regular).
 
       For a proper implementation, this should be computed from the Laurent series:
@@ -92,6 +76,18 @@ structure AnalyticMeromorphicFunction (RS : RiemannSurface) where
   order_pos_iff_zero : ∀ p, 0 < order p ↔ toFun p = Sum.inl 0
   /-- Negative order iff the value is ∞ (poles) -/
   order_neg_iff_pole : ∀ p, order p < 0 ↔ toFun p = Sum.inr ()
+  /-- The leading coefficient of the Laurent expansion at each point.
+
+      For order k at point p: f(z) = leadingCoefficient(p) · (z - p)^k + higher order terms
+      - At regular points (k = 0): this is the function value
+      - At zeros (k > 0): this is the first non-zero Taylor coefficient
+      - At poles (k < 0): this is the leading Laurent coefficient -/
+  leadingCoefficient : RS.carrier → ℂ
+  /-- The leading coefficient is always non-zero -/
+  leadingCoefficient_ne_zero : ∀ p, leadingCoefficient p ≠ 0
+  /-- At regular points (order = 0), the function value equals the leading coefficient -/
+  leadingCoefficient_at_regular : ∀ p, order p = 0 →
+    toFun p = Sum.inl (leadingCoefficient p)
 
 namespace AnalyticMeromorphicFunction
 
@@ -112,11 +108,13 @@ theorem support_finite (f : AnalyticMeromorphicFunction RS) :
 /-- The constant function 1 -/
 def one : AnalyticMeromorphicFunction RS where
   toFun := fun _ => Sum.inl 1
-  isMeromorphic := True  -- Constant functions are meromorphic
   order := fun _ => 0
   order_finiteSupport := by simp [Set.finite_empty]
   order_pos_iff_zero := fun _ => by simp
   order_neg_iff_pole := fun _ => by simp
+  leadingCoefficient := fun _ => 1
+  leadingCoefficient_ne_zero := fun _ => one_ne_zero
+  leadingCoefficient_at_regular := fun _ _ => rfl
 
 instance : One (AnalyticMeromorphicFunction RS) := ⟨one⟩
 
@@ -138,9 +136,9 @@ noncomputable def mul (f g : AnalyticMeromorphicFunction RS) : AnalyticMeromorph
     else if ordSum < 0 then Sum.inr ()  -- Pole
     else  -- ordSum = 0: regular point with non-zero value
       match f.toFun p, g.toFun p with
-      | Sum.inl a, Sum.inl b => Sum.inl (a * b)  -- Both finite
-      | _, _ => Sum.inl 1  -- Zero-pole cancellation gives non-zero finite value
-  isMeromorphic := f.isMeromorphic ∧ g.isMeromorphic
+      | Sum.inl a, Sum.inl b => Sum.inl (a * b)  -- Both finite (both order 0)
+      | _, _ => Sum.inl (f.leadingCoefficient p * g.leadingCoefficient p)
+        -- Zero-pole cancellation: product of leading Laurent coefficients
   order := fun p => f.order p + g.order p
   order_finiteSupport := by
     apply Set.Finite.subset (f.order_finiteSupport.union g.order_finiteSupport)
@@ -200,16 +198,18 @@ noncomputable def mul (f g : AnalyticMeromorphicFunction RS) : AnalyticMeromorph
               exact Sum.inr_ne_inl hf
           | inr _ =>
             simp only [hf, hg] at h
-            -- h : Sum.inl 1 = Sum.inl 0
-            exact one_ne_zero (Sum.inl.inj h)
+            exact mul_ne_zero (f.leadingCoefficient_ne_zero p)
+              (g.leadingCoefficient_ne_zero p) (Sum.inl.inj h)
         | inr _ =>
           cases hg : g.toFun p with
           | inl _ =>
             simp only [hf, hg] at h
-            exact one_ne_zero (Sum.inl.inj h)
+            exact mul_ne_zero (f.leadingCoefficient_ne_zero p)
+              (g.leadingCoefficient_ne_zero p) (Sum.inl.inj h)
           | inr _ =>
             simp only [hf, hg] at h
-            exact one_ne_zero (Sum.inl.inj h)
+            exact mul_ne_zero (f.leadingCoefficient_ne_zero p)
+              (g.leadingCoefficient_ne_zero p) (Sum.inl.inj h)
   order_neg_iff_pole := fun p => by
     simp only
     constructor
@@ -244,6 +244,28 @@ noncomputable def mul (f g : AnalyticMeromorphicFunction RS) : AnalyticMeromorph
           | inr _ =>
             simp only [hf, hg] at h
             exact Sum.inl_ne_inr h
+  leadingCoefficient := fun p => f.leadingCoefficient p * g.leadingCoefficient p
+  leadingCoefficient_ne_zero := fun p =>
+    mul_ne_zero (f.leadingCoefficient_ne_zero p) (g.leadingCoefficient_ne_zero p)
+  leadingCoefficient_at_regular := fun p hp => by
+    -- hp : f.order p + g.order p = 0
+    simp only at hp ⊢
+    -- When ordSum = 0, toFun is the match expression
+    have hnotgt : ¬(f.order p + g.order p > 0) := by omega
+    have hnotlt : ¬(f.order p + g.order p < 0) := by omega
+    simp only [hnotgt, ↓reduceIte, hnotlt, ↓reduceIte]
+    -- Now show the match gives the right value
+    -- Case: both have order 0
+    by_cases hf0 : f.order p = 0
+    · have hg0 : g.order p = 0 := by omega
+      rw [f.leadingCoefficient_at_regular p hf0, g.leadingCoefficient_at_regular p hg0]
+    · by_cases hfpos : f.order p > 0
+      · have hgneg : g.order p < 0 := by omega
+        rw [(f.order_pos_iff_zero p).mp hfpos, (g.order_neg_iff_pole p).mp hgneg]
+      · push_neg at hfpos
+        have hfneg : f.order p < 0 := by omega
+        have hgpos : g.order p > 0 := by omega
+        rw [(f.order_neg_iff_pole p).mp hfneg, (g.order_pos_iff_zero p).mp hgpos]
 
 noncomputable instance : Mul (AnalyticMeromorphicFunction RS) := ⟨mul⟩
 
@@ -261,7 +283,6 @@ noncomputable def inv (f : AnalyticMeromorphicFunction RS) : AnalyticMeromorphic
       match f.toFun p with
       | Sum.inl a => Sum.inl a⁻¹
       | Sum.inr () => Sum.inl 1  -- shouldn't happen when ord = 0
-  isMeromorphic := f.isMeromorphic
   order := fun p => -f.order p
   order_finiteSupport := by
     convert f.order_finiteSupport using 1
@@ -324,6 +345,14 @@ noncomputable def inv (f : AnalyticMeromorphicFunction RS) : AnalyticMeromorphic
         | inr _ =>
           have hfpole := (f.order_neg_iff_pole p).mpr hf
           omega
+  leadingCoefficient := fun p => (f.leadingCoefficient p)⁻¹
+  leadingCoefficient_ne_zero := fun p => inv_ne_zero (f.leadingCoefficient_ne_zero p)
+  leadingCoefficient_at_regular := fun p hp => by
+    simp only [neg_eq_zero] at hp
+    have hnotgt : ¬(f.order p > 0) := by omega
+    have hnotlt : ¬(f.order p < 0) := by omega
+    simp only [hnotgt, ↓reduceIte, hnotlt]
+    rw [f.leadingCoefficient_at_regular p hp]
 
 noncomputable instance : Inv (AnalyticMeromorphicFunction RS) := ⟨inv⟩
 
@@ -348,7 +377,6 @@ noncomputable def smulNonzero (c : ℂ) (hc : c ≠ 0) (f : AnalyticMeromorphicF
     match f.toFun p with
     | Sum.inl a => Sum.inl (c * a)
     | Sum.inr () => Sum.inr ()
-  isMeromorphic := f.isMeromorphic
   order := f.order
   order_finiteSupport := f.order_finiteSupport
   order_pos_iff_zero := fun p => by
@@ -381,6 +409,10 @@ noncomputable def smulNonzero (c : ℂ) (hc : c ≠ 0) (f : AnalyticMeromorphicF
         simp only [hfp] at h
         exact (Sum.inl_ne_inr h).elim
       | inr _ => exact (f.order_neg_iff_pole p).mpr hfp
+  leadingCoefficient := fun p => c * f.leadingCoefficient p
+  leadingCoefficient_ne_zero := fun p => mul_ne_zero hc (f.leadingCoefficient_ne_zero p)
+  leadingCoefficient_at_regular := fun p hp => by
+    rw [f.leadingCoefficient_at_regular p hp]
 
 theorem order_smulNonzero (c : ℂ) (hc : c ≠ 0) (f : AnalyticMeromorphicFunction RS)
     (p : RS.carrier) : (smulNonzero c hc f).order p = f.order p := rfl

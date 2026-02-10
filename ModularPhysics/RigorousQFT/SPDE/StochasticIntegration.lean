@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoIntegralProperties
+import ModularPhysics.RigorousQFT.SPDE.Helpers.SimpleProcessLinear
+import ModularPhysics.RigorousQFT.SPDE.Helpers.GronwallForSDE
 import ModularPhysics.RigorousQFT.SPDE.Probability.IndependenceHelpers
 import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
 import Mathlib.Analysis.Calculus.Deriv.Basic
@@ -464,11 +466,176 @@ theorem integrable_limit (I : ItoIntegral F μ T) [IsProbabilityMeasure μ]
     abs_nonneg (I.integral t ω)]
 
 /-- Linearity of Itô integral in the integrand -/
-theorem linear (I₁ I₂ : ItoIntegral F μ T) (_h : I₁.BM = I₂.BM) (a b : ℝ) :
+theorem linear (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMeasure μ]
+    (_h : I₁.BM = I₂.BM) (a b : ℝ) :
     ∃ I : ItoIntegral F μ T,
       I.BM = I₁.BM ∧
       ∀ t : ℝ, ∀ᵐ ω ∂μ, I.integral t ω = a * I₁.integral t ω + b * I₂.integral t ω := by
-  sorry
+  -- Get approximating sequences for both integrals
+  obtain ⟨approx₁, hadapt₁, hbdd₁, hnn₁, hL2₁, hiso₁⟩ := I₁.is_L2_limit
+  obtain ⟨approx₂, hadapt₂, hbdd₂, hnn₂, hL2₂, hiso₂⟩ := I₂.is_L2_limit
+  -- Convert I₂.BM references to I₁.BM using _h
+  have hadapt₂' : ∀ (n : ℕ), ∀ i : Fin (approx₂ n).n,
+      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((approx₂ n).times i)) _ ((approx₂ n).values i) := by
+    intro n i; rw [_h]; exact hadapt₂ n i
+  -- For each n, combine approximations using exists_linear_simple_integral
+  choose combined hcomb_int hcomb_adapt hcomb_bdd hcomb_nn using
+    fun n => SimpleProcess.exists_linear_simple_integral (approx₁ n) (approx₂ n) I₁.BM a b
+  -- Extract fully instantiated properties
+  have hcomb_adapt' : ∀ (n : ℕ), ∀ i : Fin (combined n).n,
+      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((combined n).times i)) _ ((combined n).values i) :=
+    fun n => hcomb_adapt n (hadapt₁ n) (hadapt₂' n)
+  have hcomb_bdd' : ∀ (n : ℕ), ∀ i : Fin (combined n).n,
+      ∃ C : ℝ, ∀ ω, |(combined n).values i ω| ≤ C :=
+    fun n => hcomb_bdd n (hbdd₁ n) (hbdd₂ n)
+  have hcomb_nn' : ∀ (n : ℕ), ∀ i : Fin (combined n).n, 0 ≤ (combined n).times i :=
+    fun n => hcomb_nn n (hnn₁ n) (hnn₂ n)
+  -- The combined integral function
+  let I_integral : ℝ → Ω → ℝ := fun t ω => a * I₁.integral t ω + b * I₂.integral t ω
+  -- Construct the ItoIntegral
+  refine ⟨{
+    integrand := {
+      process := fun t ω => a * I₁.integrand.process t ω + b * I₂.integrand.process t ω
+      adapted := fun t ht =>
+        (measurable_const.mul (I₁.integrand.adapted t ht)).add
+          (measurable_const.mul (I₂.integrand.adapted t ht))
+      square_integrable := by exact ⟨_, le_refl _⟩
+    }
+    BM := I₁.BM
+    integral := I_integral
+    adapted := fun t ht =>
+      (measurable_const.mul (I₁.adapted t ht)).add
+        (measurable_const.mul (I₂.adapted t ht))
+    initial := by
+      filter_upwards [I₁.initial, I₂.initial] with ω h₁ h₂
+      show a * I₁.integral 0 ω + b * I₂.integral 0 ω = 0
+      rw [h₁, h₂, mul_zero, mul_zero, add_zero]
+    is_L2_limit := ⟨combined, hcomb_adapt', hcomb_bdd', hcomb_nn', ?_, ?_⟩
+    sq_integrable_limit := fun t ht0 htT => by
+      -- Use L² approach: aI₁ + bI₂ ∈ L² → (aI₁ + bI₂)² ∈ L¹
+      have hmeas : AEStronglyMeasurable
+          (fun ω => a * I₁.integral t ω + b * I₂.integral t ω) μ := by
+        apply Measurable.aestronglyMeasurable
+        exact (measurable_const.mul ((I₁.adapted t htT).mono (F.le_ambient t) le_rfl)).add
+          (measurable_const.mul ((I₂.adapted t htT).mono (F.le_ambient t) le_rfl))
+      rw [← memLp_two_iff_integrable_sq hmeas]
+      have hI₁_L2 : MemLp (I₁.integral t) 2 μ :=
+        (memLp_two_iff_integrable_sq
+          (I₁.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
+          (I₁.sq_integrable_limit t ht0 htT)
+      have hI₂_L2 : MemLp (I₂.integral t) 2 μ :=
+        (memLp_two_iff_integrable_sq
+          (I₂.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
+          (I₂.sq_integrable_limit t ht0 htT)
+      exact (hI₁_L2.const_smul a).add (hI₂_L2.const_smul b)
+  }, rfl, fun t => Filter.Eventually.of_forall fun ω => rfl⟩
+  · -- L² convergence: ∫((combined n).integral_at - I_integral)² → 0
+    -- Squeeze: 0 ≤ ∫(a(S₁-I₁)+b(S₂-I₂))² ≤ 2a²∫(S₁-I₁)² + 2b²∫(S₂-I₂)² → 0
+    intro t ht0 htT
+    -- Rewrite S₂ₙ with I₁.BM → I₂.BM for hL2₂
+    have hL2₂' : Filter.Tendsto
+        (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω)^2 ∂μ) Filter.atTop (nhds 0) := by
+      rw [show I₁.BM = I₂.BM from _h]; exact hL2₂ t ht0 htT
+    -- Integrability of individual error squares
+    have hI₁_int := I₁.integrable_limit t ht0 htT
+    have hI₁_sq := I₁.sq_integrable_limit t ht0 htT
+    have hI₂_int := I₂.integrable_limit t ht0 htT
+    have hI₂_sq := I₂.sq_integrable_limit t ht0 htT
+    have hd1_sq : ∀ n, Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) ^ 2) μ :=
+      fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₁ n) I₁.BM
+        (hadapt₁ n) (hbdd₁ n) (hnn₁ n) _ hI₁_int hI₁_sq t ht0
+    have hd2_sq : ∀ n, Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2) μ := by
+      intro n; rw [show I₁.BM = I₂.BM from _h]
+      exact SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₂ n) I₂.BM
+        (hadapt₂ n) (hbdd₂ n) (hnn₂ n) _ hI₂_int hI₂_sq t ht0
+    -- Upper bound → 0
+    have hupper : Filter.Tendsto (fun n =>
+        2 * a ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) ^ 2 ∂μ +
+        2 * b ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
+      have h1 : Filter.Tendsto (fun n => 2 * a ^ 2 * ∫ ω,
+          (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
+        simpa [mul_zero] using tendsto_const_nhds.mul (hL2₁ t ht0 htT)
+      have h2 : Filter.Tendsto (fun n => 2 * b ^ 2 * ∫ ω,
+          (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
+        simpa [mul_zero] using tendsto_const_nhds.mul hL2₂'
+      simpa [add_zero] using h1.add h2
+    -- Squeeze: 0 ≤ ∫ error² ≤ upper → 0
+    refine squeeze_zero (fun n => integral_nonneg (fun ω => sq_nonneg _)) ?_ hupper
+    intro n
+    -- Rewrite combined integral as a*S₁ₙ + b*S₂ₙ
+    have hrewrite : ∀ ω,
+        (combined n).stochasticIntegral_at I₁.BM t ω - I_integral t ω =
+        a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) +
+        b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) := by
+      intro ω; simp only [I_integral]; rw [hcomb_int n t ω]; ring
+    simp_rw [hrewrite]
+    -- Upper bound is integrable
+    have hbd_int : Integrable (fun ω =>
+        2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) ^ 2 +
+        2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2) μ :=
+      ((hd1_sq n).const_mul _).add ((hd2_sq n).const_mul _)
+    -- Pointwise bound: (aX+bY)² ≤ 2a²X² + 2b²Y²
+    have hpw_bound : ∀ ω : Ω,
+        (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) +
+         b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω)) ^ 2 ≤
+        2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) ^ 2 +
+        2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω) ^ 2 := by
+      intro ω
+      set X := SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω - I₁.integral t ω
+      set Y := SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω - I₂.integral t ω
+      have h1 : 0 ≤ (a * X - b * Y) ^ 2 := sq_nonneg _
+      have h2 : (a * X + b * Y) ^ 2 + (a * X - b * Y) ^ 2 =
+        2 * a ^ 2 * X ^ 2 + 2 * b ^ 2 * Y ^ 2 := by ring
+      linarith
+    -- Integral bound via integral_mono_of_nonneg then split
+    have h_le := integral_mono_of_nonneg
+      (ae_of_all μ fun ω => sq_nonneg
+        (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) +
+         b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω)))
+      hbd_int (ae_of_all μ hpw_bound)
+    calc ∫ ω, (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+              I₁.integral t ω) +
+            b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+              I₂.integral t ω)) ^ 2 ∂μ
+        ≤ ∫ ω, (2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+              I₁.integral t ω) ^ 2 +
+            2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+              I₂.integral t ω) ^ 2) ∂μ := h_le
+      _ = 2 * a ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+              I₁.integral t ω) ^ 2 ∂μ +
+          2 * b ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+              I₂.integral t ω) ^ 2 ∂μ := by
+        rw [integral_add ((hd1_sq n).const_mul _) ((hd2_sq n).const_mul _),
+          integral_const_mul, integral_const_mul]
+  · -- Isometry convergence: ∫ (combined_n stoch)² → ∫∫ (aH₁+bH₂)²
+    -- Proof plan:
+    -- 1. sq_integral_tendsto_of_L2_tendsto gives ∫(combined_n stoch)² → ∫(aI₁+bI₂)²
+    -- 2. Need: ∫(aI₁+bI₂)² = ∫∫(aH₁+bH₂)² (bilinear Itô isometry)
+    -- Step 2 expands to: ∫I₁I₂ = ∫∫H₁H₂ (from ito_isometry for I₁² and I₂²).
+    -- The bilinear Itô isometry requires:
+    --   (a) Product L² convergence: S₁ₙ→I₁, S₂ₙ→I₂ in L² ⟹ ∫S₁ₙS₂ₙ → ∫I₁I₂
+    --   (b) Bilinear simple process isometry: E[∫H₁dW·∫H₂dW] = Σ E[H₁ᵢH₂ᵢ]Δtᵢ
+    --   (c) Riemann sum convergence for the cross terms
+    sorry
 
 /-- Itô isometry: E[(∫₀ᵗ H dW)²] = E[∫₀ᵗ H² ds].
 
@@ -863,11 +1030,43 @@ theorem sde_existence_uniqueness {F : Filtration Ω ℝ} {μ : Measure Ω}
     ∃ sol : SDESolution F μ sde, sol.initial = initial ∧ sol.solution.BM = W := by
   sorry
 
-/-- Uniqueness in law for SDE solutions -/
+/-- Pathwise uniqueness for SDE solutions.
+
+    If two strong solutions to the same SDE, driven by the same Brownian motion,
+    start from the same initial condition a.s., then they agree a.s. at all times.
+
+    The proof uses Grönwall's inequality: define φ(t) = E[|X₁(t) - X₂(t)|²],
+    show φ(0) = 0 and φ(t) ≤ C ∫₀ᵗ φ(s) ds via Lipschitz + Itô isometry,
+    then apply `integral_gronwall_zero` to get φ ≡ 0. -/
 theorem sde_uniqueness_law {F : Filtration Ω ℝ} {μ : Measure Ω}
     (sde : SDE F μ) (sol₁ sol₂ : SDESolution F μ sde)
+    (h_bm : sol₁.solution.BM = sol₂.solution.BM)
     (h : ∀ᵐ ω ∂μ, sol₁.initial ω = sol₂.initial ω) :
-    ∀ t : ℝ, ∀ᵐ ω ∂μ, sol₁.solution.process t ω = sol₂.solution.process t ω := by
+    ∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ, sol₁.solution.process t ω = sol₂.solution.process t ω := by
+  -- Step 1: Get the Lipschitz constant
+  obtain ⟨K, hK_pos, hK_lip⟩ := sde.lipschitz
+  -- Step 2: Define the difference and its L² norm
+  set Z : ℝ → Ω → ℝ := fun t ω =>
+    sol₁.solution.process t ω - sol₂.solution.process t ω with hZ_def
+  set φ : ℝ → ℝ := fun t => ∫ ω, (Z t ω) ^ 2 ∂μ with hφ_def
+  -- Step 3: φ(0) = 0 from equal initial conditions
+  have hφ0 : φ 0 = 0 := by
+    have h_ae : ∀ᵐ ω ∂μ, (Z 0 ω) ^ 2 = 0 := by
+      filter_upwards [sol₁.initial_matches, sol₂.initial_matches, h] with ω h1 h2 h3
+      simp only [hZ_def, h1, h3, ← h2, sub_self, zero_pow, ne_eq, OfNat.ofNat_ne_zero,
+        not_false_eq_true]
+    calc φ 0 = ∫ ω, (0 : ℝ) ∂μ := integral_congr_ae h_ae
+      _ = 0 := by simp
+  -- Step 4: Main argument via Grönwall
+  -- The full Grönwall argument requires:
+  -- (a) φ is continuous on [0, T] for each T (L² continuity of Itô processes)
+  -- (b) φ(t) ≤ C ∫₀ᵗ φ(s) ds (from integral_form + Lipschitz + Itô isometry)
+  -- (c) integral_gronwall_zero gives φ ≡ 0
+  -- (d) ae_eq_zero_of_integral_sq_zero gives Z = 0 a.e.
+  -- The main estimate (b) uses:
+  --   Z_t = Z_0 + ∫₀ᵗ [b(s,X₁)-b(s,X₂)] ds + [M₁(t)-M₂(t)]  (integral form)
+  --   E[Z_t²] ≤ 3E[Z_0²] + 3t·K²·∫₀ᵗ E[Z_s²]ds + 3K²·∫₀ᵗ E[Z_s²]ds  (Lipschitz+isometry)
+  --          = C ∫₀ᵗ φ(s) ds   (since E[Z_0²] = 0)
   sorry
 
 /-! ## Stratonovich Integral -/

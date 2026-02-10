@@ -31,6 +31,44 @@ wavelet decomposition infrastructure.
 
 ---
 
+## Recent Updates (2026-02-10)
+
+### Session 31 Progress (ItoIntegral.linear — 3/4 sorrys proved)
+
+**Proved 3 out of 4 sorrys in `ItoIntegral.linear`** (linearity of Itô integral).
+
+**New Helper Files (0 sorrys each):**
+1. **`Helpers/CommonRefinement.lean`** — Common refinement infrastructure for simple process partitions:
+   - `mergedFinset`, `mergedProcess`: union of partition time points, merged simple process
+   - `valueAtTime`, `valueAtTime_measurable_filtration`, `valueAtTime_bounded`: step function evaluation
+   - `mergedProcess_integral_eq`: stochastic integral of merged process = a*S₁ₙ + b*S₂ₙ (PROVED)
+2. **`Helpers/SimpleProcessLinear.lean`** — Linear combination of simple process integrals:
+   - `SimpleProcess.scale`: scale values by constant
+   - `stochasticIntegral_at_scale`, `stochasticIntegral_scale`: scaling commutes with integration
+   - `exists_linear_simple_integral`: linear combination is a simple process integral (PROVED)
+
+**Sorrys Proved in `ItoIntegral.linear`:**
+1. **`square_integrable`** — trivially satisfiable (Bochner integral convention)
+2. **`sq_integrable_limit`** — via MemLp approach: `MemLp.const_smul` + `MemLp.add`
+3. **L² convergence** — squeeze theorem: `0 ≤ ∫(aX+bY)² ≤ 2a²∫X² + 2b²∫Y² → 0`
+   - Pointwise bound via ring identity: `(aX+bY)² + (aX-bY)² = 2a²X² + 2b²Y²`
+   - Upper bound convergence from individual L² convergences
+
+**Remaining sorry in `linear` (1):**
+- **Isometry convergence**: `∫(combined_n stoch)² → ∫∫(aH₁+bH₂)²`
+  - Requires bilinear Itô isometry: `∫I₁I₂ = ∫∫H₁H₂`
+  - Proof plan: (a) product L² convergence, (b) bilinear simple process isometry,
+    (c) Riemann sum convergence for cross terms
+  - This is genuine new infrastructure (~200-300 lines)
+
+**Updated Sorry Count:**
+- StochasticIntegration.lean: **10 sorrys** (same count — reduced `linear` from 4 sorrys to 1,
+  but the 3 eliminated were introduced in session 30.5 during the proof construction)
+- New Helpers: CommonRefinement.lean (0), SimpleProcessLinear.lean (0)
+- **Total SPDE core: 19 sorrys** (unchanged)
+
+---
+
 ## Recent Updates (2026-02-09)
 
 ### Session 30 Progress (Import Refactoring + 3 Sorrys Eliminated)
@@ -1003,7 +1041,7 @@ Major fixes implemented to address critical mathematical errors:
 |------|--------|--------|-------|
 | Basic.lean | ✅ Compiles | 1 | `is_martingale_of_bounded` (needs uniform integrability) |
 | BrownianMotion.lean | ✅ Compiles | 5 | time_inversion, eval_unit_is_brownian, Q-Wiener (2), levy_characterization |
-| StochasticIntegration.lean | ✅ Compiles | 14 | **`isometry` FULLY PROVED**, ItoIntegral/ItoProcess/SDE sorrys |
+| StochasticIntegration.lean | ✅ Compiles | 10 | **`isometry` FULLY PROVED**, **`linear` 3/4 proved**, ItoProcess/SDE sorrys |
 | Probability/IndependenceHelpers.lean | ✅ Compiles | 0 | **FULLY PROVEN** - bridge lemmas for independence |
 | RegularityStructures.lean | ✅ Compiles | 9 | Chen relation proved, vanishing moments & BPHZ properly defined |
 | SPDE.lean | ✅ Compiles | 6 | Generator linearity proved, proper well-posedness conditions |

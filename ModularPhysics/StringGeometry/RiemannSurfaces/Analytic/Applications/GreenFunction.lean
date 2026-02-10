@@ -225,10 +225,10 @@ Green's functions are used to compute period matrices analytically.
 structure BergmanKernel (CRS : RiemannSurfaces.CompactRiemannSurface) where
   /-- The kernel K(z, w) -/
   K : CRS.carrier × CRS.carrier → ℂ
-  /-- K is holomorphic in z for fixed w ≠ z -/
-  holomorphic_z : ∀ w, HarmonicOnSurface CRS.toRiemannSurface (fun z => (K (z, w)).re)
-  /-- K is antiholomorphic in w for fixed z ≠ w -/
-  antiholomorphic_w : ∀ z, HarmonicOnSurface CRS.toRiemannSurface (fun w => (K (z, w)).re)
+  /-- K is holomorphic in z for fixed w (away from diagonal) -/
+  holomorphic_z : ∀ w, CRS.toRiemannSurface.IsHolomorphic (fun z => K (z, w))
+  /-- K is antiholomorphic in w for fixed z: z ↦ conj(K(z,w)) is holomorphic -/
+  antiholomorphic_w : ∀ z, CRS.toRiemannSurface.IsHolomorphic (fun w => starRingEnd ℂ (K (z, w)))
 
 /-- The period matrix can be recovered from the Green's function.
 

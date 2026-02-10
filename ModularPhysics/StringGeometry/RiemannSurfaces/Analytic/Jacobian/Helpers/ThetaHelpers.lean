@@ -174,51 +174,151 @@ theorem theta_periodic_int (g : ℕ) (z : Fin g → ℂ) (Ω : Matrix (Fin g) (F
       ↑(Finset.univ.sum fun i => n i * m i) * (2 * π * I) := by ring
   rw [h_rearrange, h_exp_one, mul_one]
 
+/-- Symmetry of the bilinear form: m·Ω·n = n·Ω·m when Ω is symmetric -/
+private lemma bilinear_symm (g : ℕ) (Ω : Matrix (Fin g) (Fin g) ℂ)
+    (hΩ : Ω.transpose = Ω) (v w : Fin g → ℂ) :
+    (Finset.univ.sum fun i => Finset.univ.sum fun j => v i * Ω i j * w j) =
+    (Finset.univ.sum fun i => Finset.univ.sum fun j => w i * Ω i j * v j) := by
+  rw [Finset.sum_comm]
+  congr 1; funext i; congr 1; funext j
+  have hsym : Ω j i = Ω i j := by
+    have h := congr_fun (congr_fun hΩ i) j
+    simp [Matrix.transpose_apply] at h
+    exact h
+  rw [hsym]; ring
+
+/-- Distribute multiplication into a Finset.sum -/
+private lemma mul_finset_sum_eq (g : ℕ) (v : Fin g → ℂ) (f : Fin g → Fin g → ℂ) :
+    (Finset.univ.sum fun i => v i * Finset.univ.sum fun j => f i j) =
+    (Finset.univ.sum fun i => Finset.univ.sum fun j => v i * f i j) := by
+  congr 1; funext i; exact Finset.mul_sum Finset.univ (f i) (v i)
+
+/-- Key term-level identity: after substituting m-n for m, the theta term decomposes.
+    For symmetric Ω, the exponent of riemannThetaTerm at (m-n) with shifted z
+    equals the sum of automorphy factor exponent and original theta term exponent. -/
+private lemma theta_exponent_identity (g : ℕ) (z : Fin g → ℂ) (Ω : Matrix (Fin g) (Fin g) ℂ)
+    (hΩ : Ω.transpose = Ω) (m n : Fin g → ℤ) :
+    let z' := fun i => z i + Finset.univ.sum (fun j => Ω i j * ↑(n j))
+    let nΩn_mn := Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(m i) - ↑(n i) : ℂ) * Ω i j * (↑(m j) - ↑(n j))
+    let nz_mn := Finset.univ.sum fun i => (↑(m i) - ↑(n i) : ℂ) * z' i
+    let nΩn_m := Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(m i) : ℂ) * Ω i j * ↑(m j)
+    let nz_m := Finset.univ.sum fun i => (↑(m i) : ℂ) * z i
+    let nΩn_n := Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(n i) : ℂ) * Ω i j * ↑(n j)
+    let nz_n := Finset.univ.sum fun i => (↑(n i) : ℂ) * z i
+    π * I * nΩn_mn + 2 * π * I * nz_mn =
+    (-π * I * nΩn_n - 2 * π * I * nz_n) + (π * I * nΩn_m + 2 * π * I * nz_m) := by
+  simp only []
+  -- Define abbreviations for the bilinear form cross terms
+  set mΩn := Finset.univ.sum fun i => Finset.univ.sum fun j =>
+    (↑(m i) : ℂ) * Ω i j * ↑(n j) with mΩn_def
+  set mΩm := Finset.univ.sum fun i => Finset.univ.sum fun j =>
+    (↑(m i) : ℂ) * Ω i j * ↑(m j) with mΩm_def
+  set nΩn := Finset.univ.sum fun i => Finset.univ.sum fun j =>
+    (↑(n i) : ℂ) * Ω i j * ↑(n j) with nΩn_def
+  set mz := Finset.univ.sum fun i => (↑(m i) : ℂ) * z i with mz_def
+  set nz := Finset.univ.sum fun i => (↑(n i) : ℂ) * z i with nz_def
+
+  -- Step 1: Expand (m-n)·Ω·(m-n) = mΩm - mΩn - nΩm + nΩn
+  have h_quad : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(m i) - ↑(n i) : ℂ) * Ω i j * (↑(m j) - ↑(n j))) =
+      mΩm - mΩn - (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+        (↑(n i) : ℂ) * Ω i j * ↑(m j)) + nΩn := by
+    have : ∀ i j, (↑(m i) - ↑(n i) : ℂ) * Ω i j * (↑(m j) - ↑(n j)) =
+        ↑(m i) * Ω i j * ↑(m j) - ↑(m i) * Ω i j * ↑(n j) -
+        ↑(n i) * Ω i j * ↑(m j) + ↑(n i) * Ω i j * ↑(n j) := by
+      intro i j; ring
+    simp_rw [this]
+    simp only [Finset.sum_add_distrib, Finset.sum_sub_distrib]
+    rw [← mΩm_def, ← mΩn_def, ← nΩn_def]
+
+  -- Step 2: nΩm = mΩn by symmetry of Ω
+  have h_cross_symm : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(n i) : ℂ) * Ω i j * ↑(m j)) = mΩn :=
+    bilinear_symm g Ω hΩ (fun i => ↑(n i)) (fun i => ↑(m i))
+
+  -- So (m-n)·Ω·(m-n) = mΩm - 2·mΩn + nΩn
+  have h_quad' : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(m i) - ↑(n i) : ℂ) * Ω i j * (↑(m j) - ↑(n j))) =
+      mΩm - 2 * mΩn + nΩn := by
+    rw [h_quad, h_cross_symm]; ring
+
+  -- Step 3: Expand (m-n)·z' where z'_i = z_i + Σ_j Ω_{ij} n_j
+  -- (m-n)·z' = m·z + m·Ωn - n·z - n·Ωn
+  have h_lin : (Finset.univ.sum fun i => (↑(m i) - ↑(n i) : ℂ) *
+      (z i + Finset.univ.sum (fun j => Ω i j * ↑(n j)))) =
+      mz + mΩn - nz - nΩn := by
+    -- Expand the product
+    have h_expand : ∀ i, (↑(m i) - ↑(n i) : ℂ) *
+        (z i + Finset.univ.sum (fun j => Ω i j * ↑(n j))) =
+        ↑(m i) * z i + ↑(m i) * Finset.univ.sum (fun j => Ω i j * ↑(n j)) -
+        ↑(n i) * z i - ↑(n i) * Finset.univ.sum (fun j => Ω i j * ↑(n j)) := by
+      intro i; ring
+    simp_rw [h_expand]
+    simp only [Finset.sum_add_distrib, Finset.sum_sub_distrib]
+    -- Now need: Σ_i m_i * (Σ_j Ω_{ij} * n_j) = mΩn and Σ_i n_i * (Σ_j Ω_{ij} * n_j) = nΩn
+    have h_mΩn : (Finset.univ.sum fun i => (↑(m i) : ℂ) *
+        Finset.univ.sum (fun j => Ω i j * ↑(n j))) = mΩn := by
+      rw [mΩn_def, mul_finset_sum_eq]
+      congr 1; funext i; congr 1; funext j; ring
+    have h_nΩn : (Finset.univ.sum fun i => (↑(n i) : ℂ) *
+        Finset.univ.sum (fun j => Ω i j * ↑(n j))) = nΩn := by
+      rw [nΩn_def, mul_finset_sum_eq]
+      congr 1; funext i; congr 1; funext j; ring
+    rw [h_mΩn, h_nΩn]
+
+  -- Step 4: Combine
+  rw [h_quad', h_lin]
+  ring
+
 /-- Theta quasi-periodicity under Ω-lattice translations.
-
-    **Mathematical Proof**:
-    θ(z + Ωn, Ω) = Σ_m exp(πi m·Ω·m + 2πi m·(z + Ωn))
-
-    Substitute m' = m + n (bijection on ℤ^g, so sum unchanged):
-    = Σ_{m'} exp(πi (m'-n)·Ω·(m'-n) + 2πi (m'-n)·(z + Ωn))
-
-    Expand the exponent:
-    - Quadratic: (m'-n)·Ω·(m'-n) = m'·Ω·m' - m'·Ω·n - n·Ω·m' + n·Ω·n
-    - Linear in z: 2(m'-n)·z = 2m'·z - 2n·z
-    - Linear in Ωn: 2(m'-n)·Ωn = 2m'·Ωn - 2n·Ωn
-
-    Note: m'·Ωn = Σᵢⱼ m'ᵢ·Ωᵢⱼ·nⱼ and n·Ω·m' = Σᵢⱼ nᵢ·Ωᵢⱼ·m'ⱼ
-    The cross terms: -πi(m'·Ω·n + n·Ω·m') + 2πi·m'·Ωn = πi(m'·Ω·n - n·Ω·m')
-    For symmetric Ω (period matrix), these cancel.
-
-    Final result:
-    = Σ_{m'} exp(πi m'·Ω·m' + 2πi m'·z) · exp(-πi n·Ω·n - 2πi n·z - 2πi n·Ωn + 2πi m'·Ωn - πi(cross terms))
-
-    After simplification with symmetric Ω:
-    = exp(-πi n·Ω·n - 2πi n·z) · Σ_{m'} exp(πi m'·Ω·m' + 2πi m'·z)
-    = automorphyFactor(z, n) · θ(z, Ω)
-
-    **Implementation Note**: This proof requires:
-    1. `Equiv.tsum_eq` to reindex over ℤ^g
-    2. Factoring out the constant automorphy factor from the sum
-    3. Substantial algebraic manipulation of quadratic forms
-    4. Assumption that Ω is symmetric (standard for period matrices)
-
-    **Current status**: Proof deferred - requires substantial setup with:
-    - Equiv.addRight for reindexing the tsum
-    - Complex manipulation of quadratic form in exponents
-    - Handling of symmetric matrix cancellations -/
+    θ(z + Ωn, Ω) = exp(-πi n·Ω·n - 2πi n·z) · θ(z, Ω)
+    Requires Ω symmetric (true for period matrices). -/
 theorem theta_quasi_periodic (g : ℕ) (z : Fin g → ℂ) (Ω : Matrix (Fin g) (Fin g) ℂ)
-    (n : Fin g → ℤ) :
+    (hΩ : Ω.transpose = Ω) (n : Fin g → ℤ) :
     riemannThetaVal g (fun i => z i + Finset.univ.sum (fun j => Ω i j * n j)) Ω =
     automorphyFactorVal g z Ω n * riemannThetaVal g z Ω := by
-  -- The proof follows the docstring outline but requires significant algebraic manipulation.
-  -- Key steps:
-  -- 1. Define e : (Fin g → ℤ) ≃ (Fin g → ℤ) := Equiv.addRight (fun i => n i)
-  -- 2. Apply Equiv.tsum_eq to reindex
-  -- 3. Show each term transforms by the automorphy factor
-  -- For now, defer to focus on other proofs.
-  sorry
+  unfold riemannThetaVal
+  -- Step 1: Factor out the automorphy factor on the RHS
+  rw [← tsum_mul_left]
+  -- Goal: ∑' m, term(z', m) = ∑' m, automorphy * term(z, m)
+  -- Step 2: Reindex LHS by m ↦ m - n (via Equiv.addRight (-n))
+  rw [show (∑' m, riemannThetaTerm g
+      (fun i => z i + Finset.univ.sum (fun j => Ω i j * ↑(n j))) Ω m) =
+    ∑' m, riemannThetaTerm g
+      (fun i => z i + Finset.univ.sum (fun j => Ω i j * ↑(n j))) Ω (m + (-n))
+    from ((Equiv.addRight (-n)).tsum_eq _).symm]
+  -- Step 3: Show term-by-term equality
+  apply tsum_congr
+  intro m
+  -- Need: riemannThetaTerm g z' Ω (m + (-n)) = automorphy * riemannThetaTerm g z Ω m
+  -- Unfold definitions
+  unfold riemannThetaTerm automorphyFactorVal
+  simp only []
+  -- Use exp(A) * exp(B) = exp(A + B)
+  rw [← Complex.exp_add]
+  -- Reduce to showing exponents are equal
+  congr 1
+  -- The key: m + (-n) gives fun i => m i + (-n i) = fun i => m i - n i
+  -- So the cast ↑((m + (-n)) i) = ↑(m i + (-n i)) = ↑(m i) - ↑(n i)
+  have h_cast : ∀ i, (↑((m + (-n)) i) : ℂ) = (↑(m i) : ℂ) - ↑(n i) := by
+    intro i; simp [Pi.add_apply, Pi.neg_apply, Int.cast_add, Int.cast_neg, sub_eq_add_neg]
+  -- Rewrite the sums using h_cast
+  have h_quad_rw : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑((m + (-n)) i) : ℂ) * Ω i j * ↑((m + (-n)) j)) =
+      (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(m i) - ↑(n i) : ℂ) * Ω i j * (↑(m j) - ↑(n j))) := by
+    congr 1; funext i; congr 1; funext j; rw [h_cast, h_cast]
+  have h_lin_rw : (Finset.univ.sum fun i => (↑((m + (-n)) i) : ℂ) *
+      (z i + Finset.univ.sum (fun j => Ω i j * ↑(n j)))) =
+      (Finset.univ.sum fun i => (↑(m i) - ↑(n i) : ℂ) *
+      (z i + Finset.univ.sum (fun j => Ω i j * ↑(n j)))) := by
+    congr 1; funext i; rw [h_cast]
+  rw [h_quad_rw, h_lin_rw]
+  -- Now apply the exponent identity
+  exact theta_exponent_identity g z Ω hΩ m n
 
 /-- Odd theta null vanishes: if χ is odd, then θ[a;b](0) = 0 -/
 theorem odd_theta_null_vanishes (g : ℕ) (a b : Fin g → ℚ)

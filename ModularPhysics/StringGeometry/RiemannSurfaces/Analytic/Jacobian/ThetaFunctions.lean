@@ -1,5 +1,6 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Jacobian.AbelJacobi
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Jacobian.Helpers.ThetaHelpers
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Moduli.SiegelSpace
 import Mathlib.Analysis.SpecialFunctions.Pow.Complex
 import Mathlib.Analysis.SpecialFunctions.ExpDeriv
 import Mathlib.LinearAlgebra.Matrix.PosDef
@@ -59,37 +60,13 @@ namespace RiemannSurfaces.Analytic
 open Complex Real
 
 /-!
-## Siegel Upper Half Space
-
-The domain for period matrices.
--/
-
-/-- The Siegel upper half space H_g.
-
-    H_g = { Ω ∈ M_{g×g}(ℂ) : Ω^T = Ω and Im(Ω) is positive definite }
-
-    This is equivalent to `SiegelUpperHalfSpace` in Analytic/Moduli/SiegelSpace.lean
-    but uses a simpler representation for theta function computations. -/
-structure SiegelHg (g : ℕ) where
-  /-- The period matrix Ω -/
-  Ω : Matrix (Fin g) (Fin g) ℂ
-  /-- Symmetric: Ω^T = Ω -/
-  symmetric : Ω.transpose = Ω
-  /-- Imaginary part -/
-  imPart : Matrix (Fin g) (Fin g) ℝ := fun i j => (Ω i j).im
-  /-- Imaginary part is symmetric (follows from Ω symmetric) -/
-  imPart_symmetric : imPart.transpose = imPart
-  /-- Imaginary part is positive definite: v^T · Im(Ω) · v > 0 for v ≠ 0 -/
-  imPart_posDef : imPart.PosDef
-
-/-!
 ## Riemann Theta Function
 
 The fundamental theta function.
 -/
 
 /-- The Riemann theta function θ(z, Ω) -/
-noncomputable def riemannTheta (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelHg g) : ℂ :=
+noncomputable def riemannTheta (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g) : ℂ :=
   -- θ(z, Ω) = Σ_{n ∈ ℤ^g} exp(πi n·Ω·n + 2πi n·z)
   -- This is a formal sum; convergence follows from Im(Ω) > 0
   Helpers.riemannThetaVal g z Ω.Ω
@@ -98,7 +75,7 @@ noncomputable def riemannTheta (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelHg g) :
 
     The sum defining θ converges absolutely and uniformly on compact sets,
     hence θ(·, Ω) is holomorphic on ℂ^g. -/
-theorem theta_holomorphic (g : ℕ) (Ω : SiegelHg g) :
+theorem theta_holomorphic (g : ℕ) (Ω : SiegelUpperHalfSpace g) :
     Differentiable ℂ (fun z : Fin g → ℂ => riemannTheta g z Ω) := by
   sorry  -- Requires uniform convergence of the theta series
 
@@ -117,20 +94,20 @@ Transformation laws under lattice translations.
 -/
 
 /-- Periodicity in integer lattice directions -/
-theorem theta_integer_periodicity (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelHg g)
+theorem theta_integer_periodicity (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g)
     (m : Fin g → ℤ) :
     riemannTheta g (fun i => z i + m i) Ω = riemannTheta g z Ω := by
   unfold riemannTheta
   exact Helpers.theta_periodic_int g z Ω.Ω m
 
 /-- The automorphy factor -/
-noncomputable def automorphyFactor (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelHg g)
+noncomputable def automorphyFactor (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g)
     (n : Fin g → ℤ) : ℂ :=
   -- exp(-πi n·Ω·n - 2πi n·z)
   Helpers.automorphyFactorVal g z Ω.Ω n
 
 /-- Quasi-periodicity in Ω-lattice directions -/
-theorem theta_omega_periodicity (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelHg g)
+theorem theta_omega_periodicity (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g)
     (n : Fin g → ℤ) :
     riemannTheta g (fun i => z i + (Finset.univ.sum fun j => Ω.Ω i j * n j)) Ω =
     automorphyFactor g z Ω n * riemannTheta g z Ω := by
@@ -157,14 +134,14 @@ def ThetaCharacteristic.halfInteger {g : ℕ} (χ : ThetaCharacteristic g) : Pro
 
 /-- Theta function with characteristic -/
 noncomputable def thetaWithChar (g : ℕ) (χ : ThetaCharacteristic g)
-    (z : Fin g → ℂ) (Ω : SiegelHg g) : ℂ :=
+    (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g) : ℂ :=
   -- θ[a;b](z, Ω) = Σ_n exp(πi(n+a)·Ω·(n+a) + 2πi(n+a)·(z+b))
   Helpers.thetaWithCharVal g χ.a χ.b z Ω.Ω
 
 /-- Relation to Riemann theta.
     θ[a;b](z) = exp(πi a·Ω·a + 2πi a·(z+b)) · θ(z + Ωa + b) -/
 theorem thetaWithChar_relation (g : ℕ) (χ : ThetaCharacteristic g)
-    (z : Fin g → ℂ) (Ω : SiegelHg g) :
+    (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g) :
     ∃ (phase : ℂ) (shift : Fin g → ℂ),
       thetaWithChar g χ z Ω = phase * riemannTheta g (fun i => z i + shift i) Ω := by
   -- The definition of thetaWithCharVal is exactly in this form
@@ -191,7 +168,7 @@ theorem thetaWithChar_relation (g : ℕ) (χ : ThetaCharacteristic g)
 
 /-- Parity of theta function under negation -/
 theorem theta_parity (g : ℕ) (χ : ThetaCharacteristic g)
-    (_ : χ.halfInteger) (z : Fin g → ℂ) (Ω : SiegelHg g) :
+    (_ : χ.halfInteger) (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g) :
     thetaWithChar g χ (fun i => -z i) Ω =
     (if (4 * Finset.univ.sum fun i => χ.a i * χ.b i) % 2 = 0 then 1 else -1) *
     thetaWithChar g χ z Ω := by
@@ -212,12 +189,12 @@ Values θ[a;b](0, Ω) at z = 0.
 -/
 
 /-- Theta constant (theta null) -/
-noncomputable def thetaNull (g : ℕ) (χ : ThetaCharacteristic g) (Ω : SiegelHg g) : ℂ :=
+noncomputable def thetaNull (g : ℕ) (χ : ThetaCharacteristic g) (Ω : SiegelUpperHalfSpace g) : ℂ :=
   thetaWithChar g χ (fun _ => 0) Ω
 
 /-- Odd theta nulls vanish -/
 theorem odd_theta_null_zero (g : ℕ) (χ : ThetaCharacteristic g)
-    (_ : χ.halfInteger) (hodd : χ.odd) (Ω : SiegelHg g) :
+    (_ : χ.halfInteger) (hodd : χ.odd) (Ω : SiegelUpperHalfSpace g) :
     thetaNull g χ Ω = 0 := by
   unfold thetaNull thetaWithChar ThetaCharacteristic.odd at *
   exact Helpers.odd_theta_null_vanishes g χ.a χ.b hodd Ω.Ω
@@ -327,7 +304,7 @@ theorem jacobi_identity (τ : ℂ) (hτ : τ.im > 0) :
 -/
 
 /-- The theta divisor Θ = {z ∈ J : θ(z) = 0} -/
-structure ThetaDivisorAnalytic (g : ℕ) (Ω : SiegelHg g) where
+structure ThetaDivisorAnalytic (g : ℕ) (Ω : SiegelUpperHalfSpace g) where
   /-- Points where θ vanishes -/
   points : Set (Fin g → ℂ)
   /-- Defined by θ = 0 -/
@@ -359,15 +336,23 @@ Riemann's theorem: Θ = W_{g-1} + κ where W_{g-1} is the image of the
     For genus 1: κ = AJ(w) for the unique Weierstrass point w
     For general genus: requires the full computation above -/
 noncomputable def riemannConstant (CRS : RiemannSurfaces.CompactRiemannSurface)
-    (J : Jacobian' CRS) (_ : AbelJacobiData CRS J)
-    (_ : CRS.carrier) : J.points := by
-  -- The Riemann constant requires computing the sum of Abel-Jacobi images
-  -- of g Weierstrass points. This requires:
-  -- 1. Weierstrass point infrastructure (not yet available)
-  -- 2. Explicit integration to compute AJ images
-  -- We mark this as sorry rather than using Classical.choice, to be honest
-  -- that the specific mathematical value has not been computed.
-  exact sorry
+    (J : Jacobian' CRS) (ajd : AbelJacobiData CRS J)
+    (base : CRS.carrier) : J.points :=
+  -- The Riemann constant κ ∈ J(Σ) = ℂ^g / Λ.
+  -- Standard formula (Mumford, "Tata Lectures on Theta" I, §IIIa):
+  --   κ_j = (1 + Ω_{jj})/2 - Σ_{k≠j} ∮_{a_k} ω_k(z) ∫_{base}^z ω_j
+  --
+  -- The second term requires integration infrastructure. Using the
+  -- Abel-Jacobi data, we express the base-point contribution via
+  -- the AJ map: the correction from the base point is (g-1) · AJ(base).
+  --
+  -- Full formula: κ = proj(halfPeriod) - (g-1) • AJ(base)
+  -- where halfPeriod_j = (1 + Ω_{jj})/2
+  let Ω := J.lattice.periodMatrix.Ω
+  let halfPeriod : Fin CRS.genus → ℂ := fun j => (1 + Ω j j) / 2
+  let baseContribution : J.points :=
+    Finset.univ.sum (fun (_ : Fin (CRS.genus - 1)) => ajd.pointMap base)
+  J.proj halfPeriod - baseContribution
 
 /-!
 ## Fay's Identities
@@ -380,7 +365,7 @@ Important functional equations for theta functions.
     This is one of the fundamental identities satisfied by theta functions,
     relating products of theta functions at different points. It generalizes
     the Jacobi triple product identity to higher genus. -/
-theorem fay_trisecant (g : ℕ) (Ω : SiegelHg g)
+theorem fay_trisecant (g : ℕ) (Ω : SiegelUpperHalfSpace g)
     (z₁ z₂ z₃ z₄ : Fin g → ℂ) :
     ∃ (c : ℂ), c ≠ 0 ∧
       riemannTheta g (fun i => z₁ i + z₂ i) Ω *

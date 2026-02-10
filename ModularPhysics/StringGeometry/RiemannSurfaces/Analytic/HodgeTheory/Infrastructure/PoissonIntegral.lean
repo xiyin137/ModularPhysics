@@ -730,6 +730,139 @@ theorem poissonIntegral_boundary_values (g : ℂ → ℝ) (c : ℂ) (R : ℝ) (h
 The main theorem: continuous functions satisfying MVP are harmonic.
 -/
 
+/-- In a normed space, closedBall z r ⊆ closedBall c R implies r + dist z c ≤ R.
+    Proof: construct a point at distance r from z in the direction away from c. -/
+private theorem dist_add_le_of_closedBall_subset {z c : ℂ} {r R : ℝ} (hr : 0 < r)
+    (hsub : closedBall z r ⊆ closedBall c R) : r + dist z c ≤ R := by
+  by_cases hzc : z = c
+  · -- z = c case: take any point at distance r from z
+    subst hzc
+    have hw_mem : z + (↑r : ℂ) ∈ closedBall z r := by
+      rw [mem_closedBall, dist_eq_norm, add_sub_cancel_left]
+      simp [Complex.norm_real, abs_of_pos hr]
+    have := mem_closedBall.mp (hsub hw_mem)
+    simp only [dist_self, add_zero]
+    -- After subst, this : dist (z + ↑r) z ≤ R, and dist (z + ↑r) z = r
+    have : dist (z + (↑r : ℂ)) z = r := by
+      rw [dist_eq_norm, add_sub_cancel_left]
+      simp [Complex.norm_real, abs_of_pos hr]
+    linarith
+  · -- z ≠ c case: go in direction away from c
+    have hzc_ne : z - c ≠ 0 := sub_ne_zero.mpr hzc
+    set u := (‖z - c‖⁻¹ : ℝ) • (z - c)
+    have hu_norm : ‖u‖ = 1 := by
+      simp only [u, norm_smul, Real.norm_eq_abs, abs_inv, abs_norm]
+      exact inv_mul_cancel₀ (norm_ne_zero_iff.mpr hzc_ne)
+    set w := z + r • u
+    have hw_dist_z : dist w z = r := by
+      simp only [w, dist_eq_norm, add_sub_cancel_left, norm_smul,
+                  Real.norm_eq_abs, abs_of_pos hr, hu_norm, mul_one]
+    have hw_mem : w ∈ closedBall z r := by rw [mem_closedBall]; linarith
+    have hw_cb := mem_closedBall.mp (hsub hw_mem)
+    -- Show dist w c = r + dist z c
+    have hw_dist_c : dist w c = r + dist z c := by
+      simp only [w, u, dist_eq_norm]
+      -- w - c = (z - c) + r • (‖z-c‖⁻¹ • (z - c)) = (1 + r * ‖z-c‖⁻¹) • (z - c)
+      have h_eq : z + r • (‖z - c‖⁻¹ • (z - c)) - c = (1 + r * ‖z - c‖⁻¹) • (z - c) := by
+        rw [smul_smul, add_smul, one_smul]; abel
+      rw [h_eq, norm_smul, Real.norm_eq_abs]
+      have hfactor_pos : 0 < 1 + r * ‖z - c‖⁻¹ := by positivity
+      rw [abs_of_pos hfactor_pos]
+      have hne : ‖z - c‖ ≠ 0 := norm_ne_zero_iff.mpr hzc_ne
+      field_simp; ring
+    linarith
+
+/-- Distance between circleMap points at different radii. -/
+private theorem dist_circleMap_radii (z : ℂ) (r r' : ℝ) (θ : ℝ) :
+    dist (circleMap z r θ) (circleMap z r' θ) = |r - r'| := by
+  simp only [circleMap, dist_eq_norm]
+  rw [show z + ↑r * exp (↑θ * Complex.I) - (z + ↑r' * exp (↑θ * Complex.I))
+      = ↑(r - r') * exp (↑θ * Complex.I) from by push_cast; ring]
+  rw [norm_mul, Complex.norm_real, Complex.norm_exp_ofReal_mul_I, mul_one, Real.norm_eq_abs]
+
+private theorem harmonicOnNhd_mvp_closedball (f : ℂ → ℝ) (c : ℂ) (R : ℝ) (hR : 0 < R)
+    (hf_cont : ContinuousOn f (closedBall c R))
+    (hf_harm : HarmonicOnNhd f (ball c R)) :
+    ∀ z ∈ ball c R, ∀ r > 0, closedBall z r ⊆ closedBall c R →
+      f z = circleAverage f z r := by
+  intro z hz r hr hsub
+  have hdist : dist z c < R := mem_ball.mp hz
+  have hrd : r + dist z c ≤ R := dist_add_le_of_closedBall_subset hr hsub
+  -- For any 0 < r' < r with closedBall z r' ⊂ ball c R, the MVP holds
+  have hmvp_small : ∀ r' : ℝ, 0 < r' → r' < r → f z = circleAverage f z r' := by
+    intro r' hr' hr'_lt
+    have habs : |r'| = r' := abs_of_pos hr'
+    have hcb_sub : closedBall z |r'| ⊆ ball c R := by
+      rw [habs]; intro w hw
+      rw [mem_closedBall] at hw; rw [mem_ball]
+      calc dist w c ≤ dist w z + dist z c := dist_triangle w z c
+        _ ≤ r' + dist z c := by linarith
+        _ < r + dist z c := by linarith
+        _ ≤ R := hrd
+    have hharm_cb : HarmonicOnNhd f (closedBall z |r'|) := by
+      intro w hw; exact hf_harm w (hcb_sub hw)
+    exact (HarmonicOnNhd.circleAverage_eq hharm_cb).symm
+  -- f z = circleAverage f z r by a limiting argument via uniform continuity
+  -- Strategy: show dist (f z) (circleAverage f z r) ≤ ε for all ε > 0
+  apply eq_of_forall_dist_le
+  intro ε hε
+  -- f is uniformly continuous on the compact set closedBall c R
+  have huc := (isCompact_closedBall (x := c) (r := R)).uniformContinuousOn_of_continuous hf_cont
+  rw [Metric.uniformContinuousOn_iff] at huc
+  obtain ⟨δ, hδ_pos, huc_δ⟩ := huc ε hε
+  -- Choose r' with 0 < r' < r and |r - r'| < δ
+  set r' := r - min (δ / 2) (r / 2) with hr'_def
+  have hmin_pos : 0 < min (δ / 2) (r / 2) := lt_min (by linarith) (by linarith)
+  have hr'_pos : 0 < r' := by linarith [min_le_right (δ / 2) (r / 2)]
+  have hr'_lt : r' < r := by linarith
+  have hr_r'_lt : r - r' < δ := by
+    have : r - r' = min (δ / 2) (r / 2) := by simp [hr'_def]
+    linarith [min_le_left (δ / 2) (r / 2)]
+  have hr_r'_abs : |r - r'| < δ := by rwa [abs_of_pos (by linarith)]
+  -- f z = circleAverage f z r'
+  have hfz_eq := hmvp_small r' hr'_pos hr'_lt
+  -- Bound: dist (f z) (circleAverage f z r) = dist (circleAverage f z r') (circleAverage f z r)
+  rw [Real.dist_eq, hfz_eq]
+  -- Bound |circleAverage f z r' - circleAverage f z r| ≤ ε
+  rw [circleAverage_def, circleAverage_def]
+  -- f ∘ circleMap z r is integrable (continuous on compact interval)
+  have hr_nn : (0 : ℝ) ≤ r := hr.le
+  have hr'_nn : (0 : ℝ) ≤ r' := hr'_pos.le
+  have hf_r_int : IntervalIntegrable (fun θ => f (circleMap z r θ)) MeasureTheory.volume 0 (2 * π) :=
+    ((hf_cont.mono (sphere_subset_closedBall.trans hsub)).comp_continuous
+      (continuous_circleMap z r) (fun θ => circleMap_mem_sphere z hr_nn θ)).intervalIntegrable 0 (2 * π)
+  have hf_r'_int : IntervalIntegrable (fun θ => f (circleMap z r' θ)) MeasureTheory.volume 0 (2 * π) :=
+    ((hf_cont.mono (sphere_subset_closedBall.trans
+      ((closedBall_subset_closedBall hr'_lt.le).trans hsub))).comp_continuous
+      (continuous_circleMap z r') (fun θ => circleMap_mem_sphere z hr'_nn θ)).intervalIntegrable 0 (2 * π)
+  -- Rewrite: |(2π)⁻¹ • A - (2π)⁻¹ • B| = (2π)⁻¹ * |A - B| (for ℝ, smul = mul)
+  rw [← smul_sub, smul_eq_mul, abs_mul,
+      abs_of_pos (by positivity : (0:ℝ) < (2 * π)⁻¹)]
+  -- Rewrite integral difference as integral of difference
+  rw [(intervalIntegral.integral_sub hf_r'_int hf_r_int).symm]
+  -- Pointwise bound: for each θ, ‖f(circleMap z r' θ) - f(circleMap z r θ)‖ ≤ ε
+  have h_ptwise : ∀ θ ∈ Set.uIoc (0:ℝ) (2 * π),
+      ‖f (circleMap z r' θ) - f (circleMap z r θ)‖ ≤ ε := by
+    intro θ _
+    rw [Real.norm_eq_abs, abs_sub_comm]
+    have h_close : dist (circleMap z r θ) (circleMap z r' θ) < δ := by
+      rw [dist_circleMap_radii]; exact hr_r'_abs
+    have h1 : circleMap z r θ ∈ closedBall c R :=
+      hsub (circleMap_mem_closedBall z hr_nn θ)
+    have h2 : circleMap z r' θ ∈ closedBall c R :=
+      (closedBall_subset_closedBall hr'_lt.le).trans hsub (circleMap_mem_closedBall z hr'_nn θ)
+    exact (huc_δ _ h1 _ h2 h_close).le
+  -- Apply interval integral bound: |∫ f| ≤ C * |b - a|, then (2π)⁻¹ * (ε * 2π) = ε
+  rw [← Real.norm_eq_abs]
+  calc (2 * π)⁻¹ * ‖∫ θ in (0:ℝ)..(2 * π), (f (circleMap z r' θ) - f (circleMap z r θ))‖
+      ≤ (2 * π)⁻¹ * (ε * |2 * π - 0|) := by
+        gcongr
+        exact intervalIntegral.norm_integral_le_of_norm_le_const h_ptwise
+    _ = ε := by
+        rw [sub_zero, abs_of_pos (by positivity : (0:ℝ) < 2 * π)]
+        field_simp
+
+open Classical in
 /-- A continuous function satisfying MVP on a closed ball equals
     its Poisson integral on the ball. -/
 theorem mvp_eq_poissonIntegral (f : ℂ → ℝ) (c : ℂ) (R : ℝ) (hR : 0 < R)
@@ -737,11 +870,91 @@ theorem mvp_eq_poissonIntegral (f : ℂ → ℝ) (c : ℂ) (R : ℝ) (hR : 0 < R
     (hmvp : ∀ z ∈ ball c R, ∀ r > 0, closedBall z r ⊆ closedBall c R →
       f z = circleAverage f z r) :
     ∀ z ∈ ball c R, f z = poissonIntegralDisc f c R z := by
-  -- Define h = f - P[f]
-  -- h satisfies MVP (f satisfies MVP, P[f] is harmonic hence satisfies MVP)
-  -- h = 0 on sphere (P[f] has boundary values f)
-  -- By MVP maximum principle: h = 0 on ball
-  sorry
+  -- Strategy: Define Pt = P[f] on ball, f on complement.
+  -- h = f - Pt is continuous on closedBall, satisfies MVP, vanishes on sphere.
+  -- By maximum principle: h = 0 on ball.
+  set Pt : ℂ → ℝ := fun w => if w ∈ ball c R then poissonIntegralDisc f c R w else f w with hPt_def
+  -- Pt is HarmonicOnNhd on ball c R
+  have hP_harm : HarmonicOnNhd Pt (ball c R) := by
+    intro w hw
+    have : Pt =ᶠ[nhds w] poissonIntegralDisc f c R := by
+      apply eventuallyEq_iff_exists_mem.mpr
+      exact ⟨ball c R, isOpen_ball.mem_nhds hw,
+        fun v hv => by simp only [hPt_def, if_pos hv]⟩
+    exact (harmonicAt_congr_nhds this.symm).mp
+      (poissonIntegral_harmonicOnNhd f c R hR (hcont.mono sphere_subset_closedBall) w hw)
+  -- Pt is ContinuousOn on closedBall c R
+  have hP_cont : ContinuousOn Pt (closedBall c R) := by
+    intro w hw
+    rcases (mem_closedBall.mp hw).eq_or_lt with h | h
+    · -- w on sphere: Pt(w) = f(w), show continuity
+      have hw_not_ball : ¬(w ∈ ball c R) := by rw [mem_ball]; linarith
+      have hP_eq : Pt w = f w := by simp only [hPt_def, if_neg hw_not_ball]
+      rw [Metric.continuousWithinAt_iff]
+      intro ε hε
+      rw [hP_eq]
+      -- f is continuous at w within closedBall
+      obtain ⟨δ₁, hδ₁_pos, hf_close⟩ :=
+        Metric.continuousWithinAt_iff.mp (hcont.continuousWithinAt hw) (ε / 2) (half_pos hε)
+      -- Poisson integral has boundary values
+      have hP_bv := poissonIntegral_boundary_values f c R hR (hcont.mono sphere_subset_closedBall)
+        w (mem_sphere.mpr h)
+      rw [Metric.tendsto_nhdsWithin_nhds] at hP_bv
+      obtain ⟨δ₂, hδ₂_pos, hP_close⟩ := hP_bv (ε / 2) (half_pos hε)
+      refine ⟨min δ₁ δ₂, lt_min hδ₁_pos hδ₂_pos, fun v hv_cb hv_dist => ?_⟩
+      by_cases hv_ball : v ∈ ball c R
+      · simp only [hPt_def, if_pos hv_ball]
+        exact lt_trans (hP_close hv_ball (lt_of_lt_of_le hv_dist (min_le_right _ _))) (by linarith)
+      · simp only [hPt_def, if_neg hv_ball]
+        exact lt_trans (hf_close hv_cb (lt_of_lt_of_le hv_dist (min_le_left _ _))) (by linarith)
+    · -- w in ball: Pt = P[f] locally, which is harmonic hence continuous
+      exact (hP_harm w (mem_ball.mpr h)).1.continuousAt.continuousWithinAt
+  -- Pt satisfies MVP on ball c R
+  have hP_mvp : ∀ w ∈ ball c R, ∀ r > 0, closedBall w r ⊆ closedBall c R →
+      Pt w = circleAverage Pt w r :=
+    harmonicOnNhd_mvp_closedball Pt c R hR hP_cont hP_harm
+  -- h = f - Pt is continuous on closedBall, satisfies MVP, vanishes on sphere
+  set h : ℂ → ℝ := fun w => f w - Pt w with hh_def
+  have hh_cont : ContinuousOn h (closedBall c R) := hcont.sub hP_cont
+  have hh_mvp : ∀ w ∈ ball c R, ∀ r > 0, closedBall w r ⊆ closedBall c R →
+      h w = circleAverage h w r := by
+    intro w hw r' hr' hsub'
+    have hf_eq := hmvp w hw r' hr' hsub'
+    have hP_eq := hP_mvp w hw r' hr' hsub'
+    simp only [hh_def]
+    rw [hf_eq, hP_eq]
+    -- circleAverage f - circleAverage Pt = circleAverage (f - Pt)
+    have hr'_nn : (0 : ℝ) ≤ r' := hr'.le
+    have hsphere_sub : sphere w r' ⊆ closedBall c R :=
+      sphere_subset_closedBall.trans hsub'
+    have hf_on_sphere : ContinuousOn f (sphere w r') := hcont.mono hsphere_sub
+    have hf_circ : Continuous (fun θ => f (circleMap w r' θ)) :=
+      hf_on_sphere.comp_continuous (continuous_circleMap w r')
+        (fun θ => circleMap_mem_sphere w hr'_nn θ)
+    have hf_int : IntervalIntegrable (fun θ => f (circleMap w r' θ))
+        MeasureTheory.volume 0 (2 * π) := hf_circ.intervalIntegrable 0 (2 * π)
+    have hP_on_sphere : ContinuousOn Pt (sphere w r') := hP_cont.mono hsphere_sub
+    have hP_circ : Continuous (fun θ => Pt (circleMap w r' θ)) :=
+      hP_on_sphere.comp_continuous (continuous_circleMap w r')
+        (fun θ => circleMap_mem_sphere w hr'_nn θ)
+    have hP_int : IntervalIntegrable (fun θ => Pt (circleMap w r' θ))
+        MeasureTheory.volume 0 (2 * π) := hP_circ.intervalIntegrable 0 (2 * π)
+    simp only [circleAverage_def, ← smul_sub,
+      ← intervalIntegral.integral_sub hf_int hP_int]
+  have hh_bdry : ∀ w, ‖w - c‖ = R → h w = 0 := by
+    intro w hw_norm
+    simp only [hh_def]
+    have : ¬(w ∈ ball c R) := by
+      rw [mem_ball, not_lt, dist_eq_norm]
+      linarith
+    simp only [hPt_def, if_neg this, sub_self]
+  -- Apply maximum principle
+  have hh_zero := mvp_zero_boundary_implies_zero h c R hR hh_cont hh_mvp hh_bdry
+  -- Extract: f = P[f] on ball
+  intro w hw
+  have := hh_zero w hw
+  simp only [hh_def, hPt_def, if_pos hw, sub_eq_zero] at this
+  exact this
 
 /-- **Main theorem**: Continuous functions satisfying MVP on a ball are harmonic.
 

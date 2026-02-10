@@ -10,6 +10,7 @@ import Mathlib.Probability.Independence.Basic
 import Mathlib.Probability.Independence.Integration
 import Mathlib.Probability.Moments.Variance
 import Mathlib.Probability.ConditionalExpectation
+import Mathlib.Probability.Distributions.Gaussian.Real
 
 /-!
 # Probability Theory Infrastructure
@@ -317,6 +318,8 @@ end IndepIntegral
 
 section Gaussian
 
+open ProbabilityTheory
+
 /-- A random variable X has Gaussian distribution N(m, v) if its characteristic function
     is E[exp(itX)] = exp(itm - vt^2/2). We characterize this via moment conditions. -/
 structure IsGaussian (X : Ω → ℝ) (μ : Measure Ω) (mean : ℝ) (variance : ℝ) : Prop where
@@ -332,16 +335,78 @@ structure IsGaussian (X : Ω → ℝ) (μ : Measure Ω) (mean : ℝ) (variance :
   char_function : ∀ t : ℝ, ∫ ω, Complex.exp (Complex.I * t * X ω) ∂μ =
     Complex.exp (Complex.I * t * mean - variance * t^2 / 2)
 
-/-- All moments of a Gaussian random variable exist.
-    This is a consequence of the characteristic function: the Gaussian characteristic
-    function φ(t) = exp(itm - vt²/2) is entire, so E[X^n] = (1/i^n) φ^{(n)}(0) exists
-    for all n. Equivalently, the moment generating function converges in a neighborhood
-    of 0, which implies all moments are finite.
-    TODO: Prove from `char_function` using moment generating function convergence. -/
+/-- From the characteristic function at t=0, a Gaussian RV lives on a probability space. -/
+theorem IsGaussian.isProbabilityMeasure {X : Ω → ℝ} {μ : Measure Ω} {mean variance : ℝ}
+    (h : IsGaussian X μ mean variance) : IsProbabilityMeasure μ := by
+  -- At t=0: ∫ exp(I·0·X) dμ = exp(0) = 1, i.e., ∫ 1 dμ = 1
+  have h0 : ∫ ω, (1 : ℂ) ∂μ = 1 := by
+    have hcf := h.char_function 0
+    simp only [Complex.ofReal_zero, mul_zero, zero_mul, Complex.exp_zero] at hcf
+    -- hcf : ∫ ω, 1 ∂μ = Complex.exp (0 - ↑variance * 0 ^ 2 / 2)
+    -- The remaining RHS exponent simplifies to 0
+    rw [show (0 : ℂ) - ↑variance * (0 : ℂ) ^ 2 / 2 = 0 from by ring,
+        Complex.exp_zero] at hcf
+    exact hcf
+  -- Since ∫ 1 dμ ≠ 0, the constant function is integrable
+  have h_int : Integrable (fun _ : Ω => (1 : ℂ)) μ := by
+    by_contra h_not; simp [integral_undef h_not] at h0
+  -- Integrable constant implies finite measure
+  have _hfin : IsFiniteMeasure μ := by
+    constructor
+    calc μ Set.univ = ∫⁻ _, 1 ∂μ := (lintegral_one).symm
+      _ = ∫⁻ a, ‖(fun _ : Ω => (1 : ℂ)) a‖ₑ ∂μ := by congr 1; ext; simp
+      _ < ⊤ := h_int.hasFiniteIntegral
+  -- Extract μ(Ω) = 1 via ofReal embedding
+  constructor
+  suffices h_univ : (μ Set.univ).toReal = 1 by
+    rw [← ENNReal.ofReal_toReal (measure_ne_top μ Set.univ), h_univ, ENNReal.ofReal_one]
+  -- Get real-valued integral from complex-valued one
+  have h_real : ∫ ω, (1 : ℝ) ∂μ = 1 := by
+    have key : (↑(∫ ω, (1 : ℝ) ∂μ) : ℂ) = 1 := by
+      exact ((@integral_ofReal Ω _ μ ℂ _ (fun _ => (1 : ℝ))).symm).trans h0
+    exact_mod_cast key
+  rw [integral_const, smul_eq_mul, mul_one, measureReal_def] at h_real
+  exact h_real
+
+/-- The pushforward of μ by a Gaussian RV X is the Gaussian measure on ℝ. -/
+theorem IsGaussian.map_eq_gaussianReal {X : Ω → ℝ} {μ : Measure Ω} {mean variance : ℝ}
+    (h : IsGaussian X μ mean variance) :
+    μ.map X = gaussianReal mean ⟨variance, h.variance_nonneg⟩ := by
+  have := h.isProbabilityMeasure
+  have hX_am : AEMeasurable X μ := h.integrable.aemeasurable
+  apply Measure.ext_of_charFun
+  ext t
+  rw [charFun_apply_real, integral_map hX_am (by fun_prop), charFun_gaussianReal]
+  -- LHS: ∫ ω, exp(t * X ω * I) ∂μ, need to match h.char_function t
+  have hcf := h.char_function t
+  -- Rewrite: t * X ω * I = I * t * X ω (commutativity in ℂ)
+  simp_rw [show ∀ ω, (t : ℂ) * ↑(X ω) * Complex.I = Complex.I * ↑t * ↑(X ω) from
+    fun ω => by ring]
+  rw [hcf]; congr 1
+  simp only [NNReal.coe_mk]; ring
+
+/-- All moments of a Gaussian random variable exist. The pushforward μ.map X is the
+    Gaussian measure on ℝ, which has all moments finite via `integrableExpSet = Set.univ`. -/
 theorem IsGaussian.all_moments {X : Ω → ℝ} {μ : Measure Ω} {mean variance : ℝ}
     (h : IsGaussian X μ mean variance) :
     ∀ n : ℕ, Integrable (fun ω => (X ω)^n) μ := by
-  sorry -- Derivable from char_function via moment generating function
+  intro n
+  have _hprob := h.isProbabilityMeasure
+  have hX_am : AEMeasurable X μ := h.integrable.aemeasurable
+  have hmap := h.map_eq_gaussianReal
+  -- |x|^n is integrable against gaussianReal via integrableExpSet = Set.univ
+  open ProbabilityTheory in
+  have hint_abs : Integrable (fun x : ℝ => |x| ^ n)
+      (gaussianReal mean ⟨variance, h.variance_nonneg⟩) := by
+    apply integrable_pow_abs_of_mem_interior_integrableExpSet _ n
+    simp only [← Function.id_def, integrableExpSet_id_gaussianReal, interior_univ, Set.mem_univ]
+  -- Transfer via pushforward: μ.map X = gaussianReal mean v
+  rw [← hmap] at hint_abs
+  have hint_abs_X : Integrable (fun ω => |X ω| ^ n) μ :=
+    hint_abs.comp_aemeasurable hX_am
+  -- (X ω)^n is integrable since ‖(X ω)^n‖ = |X ω|^n = ‖|X ω|^n‖
+  exact hint_abs_X.mono (h.integrable.aestronglyMeasurable.pow n)
+    (by filter_upwards with ω; simp [norm_pow, Real.norm_eq_abs])
 
 /-- Standard normal distribution N(0, 1) -/
 def IsStandardNormal (X : Ω → ℝ) (μ : Measure Ω) : Prop :=

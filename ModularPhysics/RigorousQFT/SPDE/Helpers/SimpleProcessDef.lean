@@ -43,9 +43,10 @@ structure SimpleProcess (F : Filtration Ω ℝ) where
   values : Fin n → Ω → ℝ
   /-- Partition is increasing -/
   increasing : ∀ i j : Fin n, i < j → times i < times j
-  /-- Values are predictable (F_{t_{i-1}}-measurable) -/
-  adapted : ∀ i : Fin n, (i : ℕ) > 0 →
-    @Measurable Ω ℝ (F.σ_algebra (times ⟨i - 1, by omega⟩)) _ (values i)
+  /-- Values are measurable random variables.
+      The stronger predictability condition (F_{t_{i-1}}-measurability) and
+      BM-adaptedness are passed as explicit hypotheses in the integration theorems. -/
+  adapted : ∀ i : Fin n, Measurable (values i)
 
 namespace SimpleProcess
 
