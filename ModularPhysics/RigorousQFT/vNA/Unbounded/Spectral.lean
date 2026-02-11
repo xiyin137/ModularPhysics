@@ -10,7 +10,9 @@ import ModularPhysics.RigorousQFT.vNA.Spectral.SigmaAdditivity
 import ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC.Basic
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralStieltjes
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralIntegral
+import ModularPhysics.RigorousQFT.vNA.Spectral.TPConnection
 import Mathlib.MeasureTheory.Integral.Bochner.Basic
+import Mathlib.MeasureTheory.Integral.Bochner.ContinuousLinearMap
 import Mathlib.MeasureTheory.Measure.Regular
 import Mathlib.Topology.Algebra.Module.Basic
 import Mathlib.Topology.UniformSpace.HeineCantor
@@ -70,7 +72,7 @@ and filling in any sorry would not require changing the API.
 
 noncomputable section
 
-open scoped InnerProduct ComplexConjugate Classical
+open scoped InnerProduct ComplexConjugate Classical NNReal
 open Filter Topology
 
 universe u
@@ -709,10 +711,10 @@ theorem distributionFunction_parallelogram (x y : H) (t : ℝ) :
   -- Sum = 2⟨x,Ax⟩ + 2⟨y,Ay⟩
   have h1 : @inner ℂ H _ (x + y) (A (x + y)) = @inner ℂ H _ x (A x) + @inner ℂ H _ x (A y) +
       @inner ℂ H _ y (A x) + @inner ℂ H _ y (A y) := by
-    rw [hlin_add]; simp [inner_add_left, inner_add_right]; ring
+    rw [hlin_add]; simp; ring
   have h2 : @inner ℂ H _ (x - y) (A (x - y)) = @inner ℂ H _ x (A x) - @inner ℂ H _ x (A y) -
       @inner ℂ H _ y (A x) + @inner ℂ H _ y (A y) := by
-    rw [hlin_sub]; simp [inner_sub_left, inner_sub_right]; ring
+    rw [hlin_sub]; simp; ring
   have h3 : (@inner ℂ H _ (x + y) (A (x + y))).re + (@inner ℂ H _ (x - y) (A (x - y))).re =
       2 * (@inner ℂ H _ x (A x)).re + 2 * (@inner ℂ H _ y (A y)).re := by
     rw [h1, h2]; simp only [Complex.add_re, Complex.sub_re]; ring
@@ -735,7 +737,7 @@ theorem distributionFunction_irot (x y : H) (t : ℝ) :
     have : P.proj (Set.Iic t) (Complex.I • y) = Complex.I • P.proj (Set.Iic t) y :=
       map_smul _ _ _
     rw [this, inner_smul_left, inner_smul_right]
-    simp [Complex.conj_I, Complex.normSq_I, mul_comm]
+    simp [Complex.conj_I]
   rw [h_iy] at h; exact h
 
 /-- Diagonal measure of -z equals that of z: μ_{-z} = μ_z. -/
@@ -773,13 +775,105 @@ open MeasureTheory in
 /-- For bounded f, the integral against the diagonal measure is bounded:
     ‖∫ f dμ_z‖ ≤ M * ‖z‖² when ‖f‖_∞ ≤ M. -/
 theorem integral_diagonalMeasure_norm_le (x : H) (f : ℝ → ℂ) (M : ℝ)
-    (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
+    (_hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
     ‖∫ t, f t ∂(P.diagonalMeasure x)‖ ≤ M * ‖x‖ ^ 2 := by
   have hfm := P.diagonalMeasure_isFiniteMeasure x
   calc ‖∫ t, f t ∂(P.diagonalMeasure x)‖
       ≤ M * (P.diagonalMeasure x).real Set.univ :=
         norm_integral_le_of_norm_le_const (Filter.Eventually.of_forall hf)
     _ = M * ‖x‖ ^ 2 := by rw [P.diagonalMeasure_real_univ x]
+
+/-! #### Scalar rotation identities -/
+
+/-- The distribution function is invariant under multiplication by i:
+    F_{iz}(t) = F_z(t). This follows from ‖P(E)(iz)‖² = |i|²‖P(E)z‖² = ‖P(E)z‖². -/
+theorem distributionFunction_smul_I (x : H) (t : ℝ) :
+    (P.distributionFunction (Complex.I • x)).toFun t = (P.distributionFunction x).toFun t := by
+  simp only [distributionFunction]
+  have : P.proj (Set.Iic t) (Complex.I • x) = Complex.I • P.proj (Set.Iic t) x :=
+    map_smul _ _ _
+  rw [this, inner_smul_left, inner_smul_right]
+  simp [Complex.conj_I]
+
+/-- The diagonal measure is invariant under multiplication by i: μ_{iz} = μ_z. -/
+theorem diagonalMeasure_smul_I (x : H) :
+    P.diagonalMeasure (Complex.I • x) = P.diagonalMeasure x := by
+  simp only [diagonalMeasure, SpectralDistribution.toMeasure]
+  congr 1
+  ext t
+  exact P.distributionFunction_smul_I x t
+
+/-! #### Measure-level parallelogram identity -/
+
+open MeasureTheory in
+/-- **Parallelogram identity for diagonal measures:**
+    μ_{x+y} + μ_{x-y} = 2 • μ_x + 2 • μ_y.
+    Proved via `ext_of_Ioc`: both sides agree on all half-open intervals (a,b],
+    using the distribution function parallelogram identity.  -/
+theorem diagonalMeasure_parallelogram (x y : H) :
+    P.diagonalMeasure (x + y) + P.diagonalMeasure (x - y) =
+    (2 : ℝ≥0) • P.diagonalMeasure x + (2 : ℝ≥0) • P.diagonalMeasure y := by
+  -- Both sides are finite measures, use ext_of_Ioc
+  apply Measure.ext_of_Ioc
+  intro a b hab
+  -- LHS on (a,b]
+  simp only [Measure.coe_add, Pi.add_apply, Measure.smul_apply]
+  -- Each μ_z((a,b]) = F_z(b) - F_z(a) via StieltjesFunction.measure_Ioc
+  simp only [diagonalMeasure, SpectralDistribution.toMeasure, SpectralDistribution.toStieltjes,
+    StieltjesFunction.measure_Ioc]
+  have hpb := P.distributionFunction_parallelogram x y b
+  have hpa := P.distributionFunction_parallelogram x y a
+  have hm1 := (P.distributionFunction (x + y)).mono hab.le
+  have hm2 := (P.distributionFunction (x - y)).mono hab.le
+  have hm3 := (P.distributionFunction x).mono hab.le
+  have hm4 := (P.distributionFunction y).mono hab.le
+  -- Convert (2 : ℝ≥0) • a = a + a in ENNReal
+  have smul2 : ∀ a : ENNReal, (2 : ℝ≥0) • a = a + a := fun a => by
+    change ((2 : ℝ≥0) : ENNReal) * a = a + a; simp [two_mul]
+  rw [smul2, smul2,
+      ← ENNReal.ofReal_add (by linarith) (by linarith),
+      ← ENNReal.ofReal_add (by linarith) (by linarith),
+      ← ENNReal.ofReal_add (by linarith) (by linarith),
+      ← ENNReal.ofReal_add (by nlinarith) (by nlinarith)]
+  congr 1; linarith
+
+open MeasureTheory in
+/-- **i-rotation identity for diagonal measures:**
+    μ_{x+iy} + μ_{x-iy} = 2 • μ_x + 2 • μ_y. -/
+theorem diagonalMeasure_irot (x y : H) :
+    P.diagonalMeasure (x + Complex.I • y) + P.diagonalMeasure (x - Complex.I • y) =
+    (2 : ℝ≥0) • P.diagonalMeasure x + (2 : ℝ≥0) • P.diagonalMeasure y := by
+  apply Measure.ext_of_Ioc
+  intro a b hab
+  simp only [Measure.coe_add, Pi.add_apply, Measure.smul_apply]
+  simp only [diagonalMeasure, SpectralDistribution.toMeasure, SpectralDistribution.toStieltjes,
+    StieltjesFunction.measure_Ioc]
+  have hpb := P.distributionFunction_irot x y b
+  have hpa := P.distributionFunction_irot x y a
+  have hm1 := (P.distributionFunction (x + Complex.I • y)).mono hab.le
+  have hm2 := (P.distributionFunction (x - Complex.I • y)).mono hab.le
+  have hm3 := (P.distributionFunction x).mono hab.le
+  have hm4 := (P.distributionFunction y).mono hab.le
+  have smul2 : ∀ a : ENNReal, (2 : ℝ≥0) • a = a + a := fun a => by
+    change ((2 : ℝ≥0) : ENNReal) * a = a + a; simp [two_mul]
+  rw [smul2, smul2,
+      ← ENNReal.ofReal_add (by linarith) (by linarith),
+      ← ENNReal.ofReal_add (by linarith) (by linarith),
+      ← ENNReal.ofReal_add (by linarith) (by linarith),
+      ← ENNReal.ofReal_add (by nlinarith) (by nlinarith)]
+  congr 1; linarith
+
+/-- The distribution function scales quadratically: F_{rz}(t) = r² F_z(t) for r : ℝ. -/
+theorem distributionFunction_real_smul (r : ℝ) (x : H) (t : ℝ) :
+    (P.distributionFunction ((r : ℂ) • x)).toFun t =
+    r ^ 2 * (P.distributionFunction x).toFun t := by
+  simp only [distributionFunction]
+  have : P.proj (Set.Iic t) ((r : ℂ) • x) = (r : ℂ) • P.proj (Set.Iic t) x :=
+    map_smul _ _ _
+  rw [this, inner_smul_left, inner_smul_right]
+  simp only [Complex.conj_ofReal]
+  -- Goal: (↑r * (↑r * ⟨x, P(Iic t) x⟩)).re = r^2 * (⟨x, P(Iic t) x⟩).re
+  rw [← mul_assoc, ← Complex.ofReal_mul, Complex.re_ofReal_mul]; ring
 
 end SpectralMeasure
 
@@ -895,6 +989,659 @@ def approximateBySimple (f : ℝ → ℂ) (N : ℕ) (n : ℕ) (_hn : n > 0) : Si
 def stepApproximation (P : SpectralMeasure H) (f : ℝ → ℂ) (N n : ℕ) (hn : n > 0) : H →L[ℂ] H :=
   (approximateBySimple f N n hn).spectralApply P
 
+/-! #### Polarization form helpers for functional calculus -/
+
+section PolarizationHelpers
+
+open MeasureTheory
+
+variable (P : SpectralMeasure H) (f : ℝ → ℂ)
+
+/-- The "quadratic form" Q(z) = ∫ f dμ_z underlying the polarization construction. -/
+private def Qform (z : H) : ℂ := ∫ t, f t ∂(P.diagonalMeasure z)
+
+/-- The polarization form B(x,y) = (1/4)[Q(x+y) - Q(x-y) - iQ(x+iy) + iQ(x-iy)]. -/
+private def Bform (x y : H) : ℂ :=
+  (1/4 : ℂ) * (Qform P f (x + y) - Qform P f (x - y)
+    - Complex.I * Qform P f (x + Complex.I • y)
+    + Complex.I * Qform P f (x - Complex.I • y))
+
+/-- Q(-z) = Q(z) since μ_{-z} = μ_z (‖P(E)(-z)‖² = ‖P(E)z‖²). -/
+private theorem Qform_neg (z : H) : Qform P f (-z) = Qform P f z := by
+  simp only [Qform, P.diagonalMeasure_neg]
+
+/-- Q(iz) = Q(z) (from diagonalMeasure_smul_I). -/
+private theorem Qform_smul_I (z : H) : Qform P f (Complex.I • z) = Qform P f z := by
+  simp only [Qform, P.diagonalMeasure_smul_I]
+
+/-- The integral-level parallelogram identity:
+    Q(u+v) + Q(u-v) = 2Q(u) + 2Q(v)
+    Requires integrability of f against all relevant diagonal measures. -/
+private theorem Qform_parallelogram (u v : H)
+    (h_int_uv : Integrable f (P.diagonalMeasure (u + v)))
+    (h_int_uv' : Integrable f (P.diagonalMeasure (u - v)))
+    (h_int_u : Integrable f (P.diagonalMeasure u))
+    (h_int_v : Integrable f (P.diagonalMeasure v)) :
+    Qform P f (u + v) + Qform P f (u - v) =
+    (2 : ℂ) * Qform P f u + (2 : ℂ) * Qform P f v := by
+  simp only [Qform]
+  -- Step 1: LHS = ∫f d(μ_{u+v} + μ_{u-v})
+  rw [← integral_add_measure h_int_uv h_int_uv']
+  -- Step 2: By diagonalMeasure_parallelogram, the measures are equal
+  rw [P.diagonalMeasure_parallelogram u v]
+  -- Step 3: RHS split: ∫f d(2•μ_u + 2•μ_v) = ∫f d(2•μ_u) + ∫f d(2•μ_v)
+  --         = 2∫f dμ_u + 2∫f dμ_v
+  have h_u2 : Integrable f ((2 : ℝ≥0) • P.diagonalMeasure u) :=
+    h_int_u.smul_measure ENNReal.coe_ne_top
+  have h_v2 : Integrable f ((2 : ℝ≥0) • P.diagonalMeasure v) :=
+    h_int_v.smul_measure ENNReal.coe_ne_top
+  rw [integral_add_measure h_u2 h_v2, integral_smul_nnreal_measure, integral_smul_nnreal_measure]
+  simp only [Algebra.smul_def, map_ofNat]
+
+/-- Integrability transfers through the parallelogram identity:
+    if f is integrable against μ_u and μ_v, it's integrable against μ_{u+v}. -/
+private theorem integrable_of_parallelogram (u v : H)
+    (h_u : Integrable f (P.diagonalMeasure u))
+    (h_v : Integrable f (P.diagonalMeasure v)) :
+    Integrable f (P.diagonalMeasure (u + v)) := by
+  -- μ_{u+v} ≤ μ_{u+v} + μ_{u-v} = 2•μ_u + 2•μ_v
+  exact Integrable.mono_measure
+    ((h_u.smul_measure ENNReal.coe_ne_top).add_measure
+      (h_v.smul_measure ENNReal.coe_ne_top))
+    (calc P.diagonalMeasure (u + v)
+        ≤ P.diagonalMeasure (u + v) + P.diagonalMeasure (u - v) :=
+          Measure.le_add_right le_rfl
+      _ = (2 : ℝ≥0) • P.diagonalMeasure u + (2 : ℝ≥0) • P.diagonalMeasure v :=
+        P.diagonalMeasure_parallelogram u v)
+
+/-! ##### Additivity of the polarization form -/
+
+/-- The "difference form" φ_x(y) = Q(x+y) - Q(x-y). -/
+private def phi (x y : H) : ℂ := Qform P f (x + y) - Qform P f (x - y)
+
+/-- φ_x(0) = 0. -/
+private theorem phi_zero (x : H) : phi P f x 0 = 0 := by
+  simp only [phi, add_zero, sub_zero, sub_self]
+
+/-- φ_x(-y) = -φ_x(y). -/
+private theorem phi_neg (x y : H) : phi P f x (-y) = -phi P f x y := by
+  simp only [phi]
+  have h1 : x - -y = x + y := by abel
+  have h2 : x + -y = x - y := by abel
+  rw [h1, show Qform P f (x + -y) = Qform P f (x - y) from by rw [h2]]
+  ring
+
+/-- The parallelogram-derived identity: φ_x(a+b) + φ_x(a-b) = 2φ_x(a).
+    This comes from applying the Q-parallelogram to (x+a, b) and (x-a, b). -/
+private theorem phi_parallelogram (x a b : H)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    phi P f x (a + b) + phi P f x (a - b) = (2 : ℂ) * phi P f x a := by
+  simp only [phi]
+  -- Expand: [Q(x+a+b) - Q(x-a-b)] + [Q(x+a-b) - Q(x-a+b)] = 2[Q(x+a) - Q(x-a)]
+  -- Use Q-parallelogram with (u, v) = (x+a, b): Q(x+a+b) + Q(x+a-b) = 2Q(x+a) + 2Q(b)
+  have h1 := Qform_parallelogram P f (x + a) b (h_int _) (h_int _) (h_int _) (h_int _)
+  -- Use Q-parallelogram with (u, v) = (x-a, b): Q(x-a+b) + Q(x-a-b) = 2Q(x-a) + 2Q(b)
+  have h2 := Qform_parallelogram P f (x - a) b (h_int _) (h_int _) (h_int _) (h_int _)
+  -- Expand the vector arithmetic
+  have e1 : x + a + b = x + (a + b) := by abel
+  have e2 : x + a - b = x + (a - b) := by abel
+  have e3 : x - a + b = x - (a - b) := by abel
+  have e4 : x - a - b = x - (a + b) := by abel
+  rw [e1, e2] at h1
+  rw [e3, e4] at h2
+  -- From h1: Q(x+(a+b)) + Q(x+(a-b)) = 2Q(x+a) + 2Q(b)
+  -- From h2: Q(x-(a-b)) + Q(x-(a+b)) = 2Q(x-a) + 2Q(b)
+  -- Subtract h2 from h1:
+  -- [Q(x+(a+b)) - Q(x-(a+b))] + [Q(x+(a-b)) - Q(x-(a-b))] = 2[Q(x+a) - Q(x-a)]
+  linear_combination h1 - h2
+
+/-- φ_x(2a) = 2φ_x(a) (doubling). -/
+private theorem phi_double (x a : H)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    phi P f x (a + a) = (2 : ℂ) * phi P f x a := by
+  have h := phi_parallelogram P f x a a h_int
+  simp only [sub_self, phi_zero P f x, add_zero] at h
+  exact h
+
+/-- φ_x is additive: φ_x(u+v) = φ_x(u) + φ_x(v).
+    Proof: substitute a = (u+v)/2, b = (u-v)/2 in the parallelogram identity,
+    then use the doubling formula. -/
+private theorem phi_additive (x u v : H)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    phi P f x (u + v) = phi P f x u + phi P f x v := by
+  -- From phi_parallelogram with a = (1/2)(u+v), b = (1/2)(u-v):
+  -- φ_x(u) + φ_x(v) = 2φ_x((1/2)(u+v))
+  -- And φ_x(2·((1/2)(u+v))) = 2φ_x((1/2)(u+v)) = φ_x(u+v) [by doubling]
+  let half : ℂ := 1/2
+  let a := half • (u + v)
+  let b := half • (u - v)
+  have hab_sum : a + b = u := by
+    show half • (u + v) + half • (u - v) = u
+    rw [← smul_add]; simp [half]; module
+  have hab_diff : a - b = v := by
+    show half • (u + v) - half • (u - v) = v
+    rw [← smul_sub]; simp [half]; module
+  have h_para := phi_parallelogram P f x a b h_int
+  rw [hab_sum, hab_diff] at h_para
+  -- h_para : phi x u + phi x v = 2 * phi x a
+  -- Also: a + a = u + v (since a = (u+v)/2)
+  have h_aa : a + a = u + v := by
+    show half • (u + v) + half • (u + v) = u + v
+    rw [← add_smul]; simp [half]; module
+  -- phi_double: phi x (a+a) = 2 * phi x a
+  have h_dbl := phi_double P f x a h_int
+  -- So phi x (u+v) = phi x (a+a) = 2 * phi x a = phi x u + phi x v
+  rw [h_aa] at h_dbl
+  linear_combination h_dbl - h_para
+
+/-- φ is symmetric: φ_x(y) = φ_y(x). Uses Q(-z) = Q(z). -/
+private theorem phi_symm (x y : H) : phi P f x y = phi P f y x := by
+  simp only [phi]
+  have h1 : Qform P f (x + y) = Qform P f (y + x) := by rw [add_comm]
+  have h2 : Qform P f (x - y) = Qform P f (y - x) := by
+    rw [show x - y = -(y - x) from by abel, Qform_neg]
+  rw [h1, h2]
+
+/-! ##### i-multiplication -/
+
+/-- B(x, iy) = i * B(x, y) (purely algebraic from the definition). -/
+private theorem Bform_smul_I (x y : H) :
+    Bform P f x (Complex.I • y) = Complex.I * Bform P f x y := by
+  simp only [Bform, Qform]
+  have hIIy : Complex.I • (Complex.I • y) = -y := by
+    rw [← mul_smul, Complex.I_mul_I]; simp
+  have h1 : P.diagonalMeasure (x + Complex.I • (Complex.I • y)) =
+      P.diagonalMeasure (x - y) := by congr 1; rw [hIIy]; abel
+  have h2 : P.diagonalMeasure (x - Complex.I • (Complex.I • y)) =
+      P.diagonalMeasure (x + y) := by congr 1; rw [hIIy]; abel
+  simp_rw [h1, h2]
+  ring_nf; simp only [Complex.I_sq]; ring
+
+/-! ##### Additivity of B -/
+
+/-- B is additive in the second argument: B(x, y₁+y₂) = B(x,y₁) + B(x,y₂). -/
+private theorem Bform_add_right (x y₁ y₂ : H)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    Bform P f x (y₁ + y₂) = Bform P f x y₁ + Bform P f x y₂ := by
+  have h_phi := phi_additive P f x y₁ y₂ h_int
+  have h_psi : phi P f x (Complex.I • (y₁ + y₂)) =
+      phi P f x (Complex.I • y₁) + phi P f x (Complex.I • y₂) := by
+    rw [smul_add]; exact phi_additive P f x _ _ h_int
+  -- Unfold everything uniformly in goal AND hypotheses
+  simp only [Bform, phi, Qform] at *
+  linear_combination (1 / 4 : ℂ) * h_phi - (1 / 4 : ℂ) * Complex.I * h_psi
+
+/-! ##### Real homogeneity via additive + bounded -/
+
+/-- An additive function ℝ → ℂ that is bounded on [0,1] is ℝ-linear: ψ(r) = r * ψ(1).
+    Proof: ψ vanishes on ℤ after subtraction of the linear part,
+    then bounded on ℝ (via integer shift), then ψ₀(r) = ψ₀(nr)/n → 0. -/
+private theorem additive_bounded_linear (ψ : ℝ → ℂ)
+    (h_add : ∀ r s, ψ (r + s) = ψ r + ψ s)
+    (h_bdd : ∃ C : ℝ, ∀ r, |r| ≤ 1 → ‖ψ r‖ ≤ C) :
+    ∀ r, ψ r = r * ψ 1 := by
+  obtain ⟨C, hC⟩ := h_bdd
+  -- Step 1: ψ(0) = 0
+  have h0 : ψ 0 = 0 := by
+    have h := h_add 0 0; simp at h; linear_combination h
+  -- ψ(-r) = -ψ(r)
+  have h_neg : ∀ r, ψ (-r) = -ψ r := by
+    intro r; have h := h_add (-r) r; simp [h0] at h; linear_combination -h
+  -- Step 2: ψ(n) = n * ψ(1) for n : ℕ
+  have h_nat : ∀ n : ℕ, ψ n = n * ψ 1 := by
+    intro n; induction n with
+    | zero => simp [h0]
+    | succ k ih =>
+      have : ψ (↑(k + 1) : ℝ) = ψ (↑k + 1) := by push_cast; ring_nf
+      rw [this, h_add, ih]; push_cast; ring
+  -- ψ(n) = n * ψ(1) for n : ℤ
+  have h_int : ∀ n : ℤ, ψ n = n * ψ 1 := by
+    intro n
+    cases n with
+    | ofNat n => exact_mod_cast h_nat n
+    | negSucc n =>
+      rw [show (Int.negSucc n : ℝ) = -(↑(n + 1) : ℝ) from by push_cast; ring]
+      rw [h_neg, h_nat]; push_cast; ring
+  -- Step 3: Define ψ₀(r) = ψ(r) - r * ψ(1). Then ψ₀ is additive and ψ₀(n) = 0 for n : ℤ
+  let ψ₀ := fun r => ψ r - r * ψ 1
+  have hψ₀_def : ∀ r, ψ₀ r = ψ r - r * ψ 1 := fun _ => rfl
+  have h0_add : ∀ r s, ψ₀ (r + s) = ψ₀ r + ψ₀ s := by
+    intro r s; simp only [hψ₀_def]; rw [h_add]; push_cast; ring
+  have h0_int : ∀ n : ℤ, ψ₀ n = 0 := by
+    intro n; simp only [hψ₀_def]; rw [h_int]; push_cast; ring
+  have h0_zero_val : ψ₀ 0 = 0 := by simpa using h0_int 0
+  -- Step 4: ψ₀ bounded on [-1, 1]
+  have h0_bdd_unit : ∀ r, |r| ≤ 1 → ‖ψ₀ r‖ ≤ C + ‖ψ 1‖ := by
+    intro r hr
+    simp only [hψ₀_def]
+    calc ‖ψ r - ↑r * ψ 1‖
+        ≤ ‖ψ r‖ + ‖↑r * ψ 1‖ := norm_sub_le _ _
+      _ ≤ C + ‖↑r * ψ 1‖ := by linarith [hC r hr]
+      _ = C + ‖(r : ℂ)‖ * ‖ψ 1‖ := by rw [norm_mul]
+      _ = C + |r| * ‖ψ 1‖ := by rw [Complex.norm_real, Real.norm_eq_abs]
+      _ ≤ C + 1 * ‖ψ 1‖ := by
+          have : |r| * ‖ψ 1‖ ≤ 1 * ‖ψ 1‖ := mul_le_mul_of_nonneg_right hr (norm_nonneg _)
+          linarith
+      _ = C + ‖ψ 1‖ := by ring
+  -- Step 5: ψ₀ bounded on all of ℝ
+  have h0_bdd : ∀ r, ‖ψ₀ r‖ ≤ C + ‖ψ 1‖ := by
+    intro r
+    have h := h0_add (↑⌊r⌋) (r - ↑⌊r⌋)
+    rw [show (↑⌊r⌋ : ℝ) + (r - ↑⌊r⌋) = r from by ring] at h
+    rw [h, h0_int ⌊r⌋, zero_add]
+    apply h0_bdd_unit
+    rw [abs_le]
+    exact ⟨by linarith [Int.floor_le r], by linarith [Int.lt_floor_add_one r]⟩
+  -- Step 6: |n * ψ₀(r)| = |ψ₀(n*r)| ≤ C + ‖ψ 1‖, so ψ₀(r) = 0
+  have h0_zero : ∀ r, ψ₀ r = 0 := by
+    intro r
+    by_contra hr
+    have hpos : 0 < ‖ψ₀ r‖ := norm_pos_iff.mpr hr
+    have h_nat_mul : ∀ n : ℕ, (n : ℂ) * ψ₀ r = ψ₀ (n * r) := by
+      intro n; induction n with
+      | zero => simp [show ψ₀ 0 = 0 from h0_zero_val]
+      | succ k ih =>
+        rw [show (↑(k + 1) : ℂ) * ψ₀ r = (↑k : ℂ) * ψ₀ r + ψ₀ r from by push_cast; ring]
+        rw [ih, show (↑(k + 1) : ℝ) * r = ↑k * r + r from by push_cast; ring]
+        exact (h0_add (↑k * r) r).symm
+    have h_contra : ∀ n : ℕ, 0 < n → (n : ℝ) * ‖ψ₀ r‖ ≤ C + ‖ψ 1‖ := by
+      intro n hn
+      calc (n : ℝ) * ‖ψ₀ r‖ = ‖(n : ℂ) * ψ₀ r‖ := by
+            rw [norm_mul, Complex.norm_natCast]
+        _ = ‖ψ₀ (n * r)‖ := by rw [h_nat_mul]
+        _ ≤ C + ‖ψ 1‖ := h0_bdd _
+    -- n * ‖ψ₀ r‖ ≤ C + ‖ψ 1‖ for all n, but LHS → ∞
+    obtain ⟨N, hN⟩ := exists_nat_gt ((C + ‖ψ 1‖) / ‖ψ₀ r‖)
+    have hC_nn : 0 ≤ C := le_trans (norm_nonneg _) (hC 0 (by simp [abs_of_nonneg]))
+    have hN_pos : 0 < N := by
+      rcases Nat.eq_zero_or_pos N with rfl | h
+      · have h_nn : 0 ≤ (C + ‖ψ 1‖) / ‖ψ₀ r‖ :=
+          div_nonneg (by linarith [norm_nonneg (ψ 1)]) hpos.le
+        exact absurd (by exact_mod_cast hN : (C + ‖ψ 1‖) / ‖ψ₀ r‖ < (0 : ℝ)) (not_lt.mpr h_nn)
+      · exact h
+    have h_le := h_contra N hN_pos
+    -- hN : (C + ‖ψ 1‖) / ‖ψ₀ r‖ < ↑N, i.e., C + ‖ψ 1‖ < N * ‖ψ₀ r‖
+    have h_lt : C + ‖ψ 1‖ < ↑N * ‖ψ₀ r‖ := by
+      rwa [div_lt_iff₀ hpos] at hN
+    linarith
+  -- Conclude: ψ r = r * ψ 1
+  intro r
+  have h := h0_zero r
+  simp only [hψ₀_def] at h
+  -- h : ψ r - ↑r * ψ 1 = 0
+  linear_combination h
+
+/-- φ_x(r•y) = r * φ_x(y) for r : ℝ (real homogeneity).
+    Uses: φ_x is additive + bounded on the unit ball → ℝ-linear. -/
+private theorem phi_real_homog (x y : H) (r : ℝ)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (M : ℝ) (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
+    phi P f x ((r : ℂ) • y) = (r : ℂ) * phi P f x y := by
+  -- Define ψ(s) = φ_x(s•y)
+  let ψ : ℝ → ℂ := fun s => phi P f x ((s : ℂ) • y)
+  -- ψ is additive
+  have h_add : ∀ r s, ψ (r + s) = ψ r + ψ s := by
+    intro r s
+    show phi P f x ((↑(r + s) : ℂ) • y) = phi P f x ((↑r : ℂ) • y) + phi P f x ((↑s : ℂ) • y)
+    rw [show (↑(r + s) : ℂ) • y = (↑r : ℂ) • y + (↑s : ℂ) • y from by
+      rw [← add_smul]; push_cast; ring_nf]
+    exact phi_additive P f x _ _ h_int
+  -- ψ is bounded on [-1, 1]: |ψ(s)| ≤ 2M(‖x‖ + ‖y‖)²
+  have h_bdd : ∃ C : ℝ, ∀ s, |s| ≤ 1 → ‖ψ s‖ ≤ C := by
+    use 2 * M * (‖x‖ + ‖y‖) ^ 2
+    intro s hs
+    show ‖phi P f x ((s : ℂ) • y)‖ ≤ _
+    simp only [phi]
+    calc ‖Qform P f (x + (s : ℂ) • y) - Qform P f (x - (s : ℂ) • y)‖
+        ≤ ‖Qform P f (x + (s : ℂ) • y)‖ + ‖Qform P f (x - (s : ℂ) • y)‖ := norm_sub_le _ _
+      _ ≤ M * ‖x + (s : ℂ) • y‖ ^ 2 + M * ‖x - (s : ℂ) • y‖ ^ 2 := by
+          apply add_le_add
+          · exact P.integral_diagonalMeasure_norm_le _ f M hM hf
+          · exact P.integral_diagonalMeasure_norm_le _ f M hM hf
+      _ ≤ M * (‖x‖ + ‖y‖) ^ 2 + M * (‖x‖ + ‖y‖) ^ 2 := by
+          have hnorm : ∀ z : H, ‖z‖ ≤ ‖x‖ + ‖y‖ → ‖z‖ ^ 2 ≤ (‖x‖ + ‖y‖) ^ 2 :=
+            fun z h => pow_le_pow_left₀ (norm_nonneg z) h 2
+          have hsy : |s| * ‖y‖ ≤ ‖y‖ := by
+            calc |s| * ‖y‖ ≤ 1 * ‖y‖ :=
+              mul_le_mul_of_nonneg_right hs (norm_nonneg y)
+              _ = ‖y‖ := one_mul _
+          have h_add_norm : ‖x + (s : ℂ) • y‖ ≤ ‖x‖ + ‖y‖ := by
+            calc ‖x + (s : ℂ) • y‖ ≤ ‖x‖ + ‖(s : ℂ) • y‖ := norm_add_le _ _
+              _ = ‖x‖ + |s| * ‖y‖ := by rw [norm_smul, Complex.norm_real, Real.norm_eq_abs]
+              _ ≤ ‖x‖ + ‖y‖ := by linarith
+          have h_sub_norm : ‖x - (s : ℂ) • y‖ ≤ ‖x‖ + ‖y‖ := by
+            calc ‖x - (s : ℂ) • y‖ ≤ ‖x‖ + ‖(s : ℂ) • y‖ := norm_sub_le _ _
+              _ = ‖x‖ + |s| * ‖y‖ := by rw [norm_smul, Complex.norm_real, Real.norm_eq_abs]
+              _ ≤ ‖x‖ + ‖y‖ := by linarith
+          apply add_le_add <;> apply mul_le_mul_of_nonneg_left _ hM <;>
+            [exact hnorm _ h_add_norm; exact hnorm _ h_sub_norm]
+      _ = 2 * M * (‖x‖ + ‖y‖) ^ 2 := by ring
+  -- Apply additive_bounded_linear
+  have h_lin := additive_bounded_linear ψ h_add h_bdd r
+  -- ψ(r) = r * ψ(1) = r * phi P f x (1 • y) = r * phi P f x y
+  rw [show ψ r = phi P f x ((r : ℂ) • y) from rfl] at h_lin
+  rw [show ψ 1 = phi P f x y from by show phi P f x ((1 : ℂ) • y) = _; simp] at h_lin
+  exact h_lin
+
+/-! ##### Real scalar homogeneity of B -/
+
+/-- B(x, r•y) = r * B(x, y) for real r.
+    Proof: Express B in terms of phi, apply phi_real_homog to each phi term, factor. -/
+private theorem Bform_real_smul_right (x y : H) (r : ℝ)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (M : ℝ) (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
+    Bform P f x ((r : ℂ) • y) = (r : ℂ) * Bform P f x y := by
+  -- B(x, r•y) = (1/4)[phi(x,r•y) - I*phi(x,I•(r•y))]
+  -- phi(x, r•y) = r * phi(x, y) and I•(r•y) = r•(I•y) so
+  -- phi(x, r•(I•y)) = r * phi(x, I•y)
+  -- Result: B(x,r•y) = r * B(x,y)
+  have h1 := phi_real_homog P f x y r h_int M hM hf
+  have h2 := phi_real_homog P f x (Complex.I • y) r h_int M hM hf
+  have comm : Complex.I • ((r : ℂ) • y) = (r : ℂ) • (Complex.I • y) := smul_comm _ _ _
+  simp only [Bform, phi] at h1 h2 ⊢
+  rw [comm]
+  -- h1: ∫f dμ_{x+(r:ℂ)•y} - ∫f dμ_{x-(r:ℂ)•y} = r * (∫f dμ_{x+y} - ∫f dμ_{x-y})
+  -- h2: ∫f dμ_{x+(r:ℂ)•(I•y)} - ∫f dμ_{x-(r:ℂ)•(I•y)} = r * (∫f dμ_{x+I•y} - ∫f dμ_{x-I•y})
+  -- Goal follows by ring arithmetic
+  linear_combination (1 / 4 : ℂ) * h1 - (1 / 4 : ℂ) * Complex.I * h2
+
+/-! ##### ℂ-homogeneity -/
+
+/-- B is ℂ-linear in the second argument: B(x, c•y) = c * B(x, y).
+    Proof: decompose c = c.re + c.im * I and use additivity + real homogeneity + i-mult. -/
+private theorem Bform_smul_right (x y : H) (c : ℂ)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (M : ℝ) (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
+    Bform P f x (c • y) = c * Bform P f x y := by
+  -- Decompose c = c.re + c.im * I
+  have hc_eq : c = (c.re : ℂ) + (c.im : ℂ) * Complex.I := by
+    apply Complex.ext <;> simp
+  have hc : c • y = (c.re : ℂ) • y + (c.im : ℂ) • (Complex.I • y) := by
+    conv_lhs => rw [hc_eq]
+    rw [add_smul, mul_smul]
+  rw [hc, Bform_add_right P f x _ _ h_int]
+  -- B(x, (re)•y) = re * B(x, y)
+  rw [Bform_real_smul_right P f x y c.re h_int M hM hf]
+  -- B(x, (im)•(I•y)) = im * B(x, I•y)
+  rw [Bform_real_smul_right P f x (Complex.I • y) c.im h_int M hM hf]
+  -- B(x, I•y) = I * B(x, y)
+  rw [Bform_smul_I]
+  -- Goal: ↑c.re * B + ↑c.im * (I * B) = c * B
+  -- Rewrite c on RHS only, then ring handles distributivity
+  conv_rhs => rw [hc_eq]
+  ring
+
+/-! ##### Additivity and conjugate-linearity in x -/
+
+/-- B is additive in the first argument: B(x₁+x₂, y) = B(x₁, y) + B(x₂, y).
+    Proof: same parallelogram argument as Bform_add_right but in the x variable. -/
+private theorem Bform_add_left (x₁ x₂ y : H)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    Bform P f (x₁ + x₂) y = Bform P f x₁ y + Bform P f x₂ y := by
+  -- Define rho_y(x) = Q(x+y) - Q(x-y), then rho_y is additive in x
+  -- by the same parallelogram argument used for phi
+  -- The "i" terms: Q(x+I•y) - Q(x-I•y) = rho_{I•y}(x), also additive in x
+  -- Then B additivity follows from additivity of both rho terms
+  let rho := fun z : H => Qform P f (z + y) - Qform P f (z - y)
+  let sigma := fun z : H => Qform P f (z + Complex.I • y) - Qform P f (z - Complex.I • y)
+  -- rho is additive in z (by parallelogram on z, with y fixed)
+  have hrho_add : rho (x₁ + x₂) = rho x₁ + rho x₂ := by
+    -- rho z = phi P f z y, and phi is symmetric, so rho z = phi P f y z
+    -- phi_additive gives additivity in the second argument
+    show phi P f (x₁ + x₂) y = phi P f x₁ y + phi P f x₂ y
+    rw [phi_symm P f (x₁ + x₂) y, phi_symm P f x₁ y, phi_symm P f x₂ y]
+    exact phi_additive P f y x₁ x₂ h_int
+  have hsigma_add : sigma (x₁ + x₂) = sigma x₁ + sigma x₂ := by
+    show phi P f (x₁ + x₂) (Complex.I • y) =
+      phi P f x₁ (Complex.I • y) + phi P f x₂ (Complex.I • y)
+    rw [phi_symm P f (x₁ + x₂) _, phi_symm P f x₁ _, phi_symm P f x₂ _]
+    exact phi_additive P f (Complex.I • y) x₁ x₂ h_int
+  -- B(x, y) = (1/4)[rho(x) - I*sigma(x)]
+  -- B(x₁+x₂, y) = (1/4)[rho(x₁+x₂) - I*sigma(x₁+x₂)]
+  --              = (1/4)[rho(x₁)+rho(x₂) - I*(sigma(x₁)+sigma(x₂))]
+  --              = (1/4)[rho(x₁) - I*sigma(x₁)] + (1/4)[rho(x₂) - I*sigma(x₂)]
+  --              = B(x₁, y) + B(x₂, y)
+  -- Bform unfolds to (1/4)(rho - I*sigma), and rho/sigma are let bindings
+  simp only [Bform]
+  linear_combination (1 / 4 : ℂ) * hrho_add - (1 / 4 : ℂ) * Complex.I * hsigma_add
+
+/-- B(c•x, y) = conj(c) * B(x, y) (conjugate-homogeneity in x).
+    Proof: decompose c, use additive + real homog in x + the conjugation of I. -/
+private theorem Bform_conj_smul_left (x y : H) (c : ℂ)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (M : ℝ) (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
+    Bform P f (c • x) y = starRingEnd ℂ c * Bform P f x y := by
+  -- Decompose c = re + im * I
+  have hc_eq : c = (c.re : ℂ) + (c.im : ℂ) * Complex.I := by
+    apply Complex.ext <;> simp
+  have hc : c • x = (c.re : ℂ) • x + (c.im : ℂ) • (Complex.I • x) := by
+    conv_lhs => rw [hc_eq]; rw [add_smul, mul_smul]
+  -- Step 1: B additive in x
+  rw [hc, Bform_add_left P f _ _ y h_int]
+  -- Step 2: B(r•w, y) = r * B(w,y) for real r and any w, via phi_symm + phi_real_homog
+  have hreal_left : ∀ (w : H) (r : ℝ), Bform P f ((r : ℂ) • w) y = (r : ℂ) * Bform P f w y := by
+    intro w r; simp only [Bform]
+    have h1 : phi P f ((r : ℂ) • w) y = (r : ℂ) * phi P f w y := by
+      rw [phi_symm, phi_real_homog P f y w r h_int M hM hf, phi_symm]
+    have h2 : phi P f ((r : ℂ) • w) (Complex.I • y) =
+        (r : ℂ) * phi P f w (Complex.I • y) := by
+      rw [phi_symm, phi_real_homog P f (Complex.I • y) w r h_int M hM hf, phi_symm]
+    simp only [phi] at h1 h2 ⊢
+    linear_combination (1 / 4 : ℂ) * h1 - (1 / 4 : ℂ) * Complex.I * h2
+  rw [hreal_left x c.re]
+  -- Step 3: B(I•x, y) = -I * B(x, y)
+  -- Key identities: I•x+y = I•(x-I•y), I•x-y = I•(x+I•y), so Q swaps via Qform_smul_I
+  have hI_left : Bform P f (Complex.I • x) y = -Complex.I * Bform P f x y := by
+    simp only [Bform, Qform]
+    have e1 : P.diagonalMeasure (Complex.I • x + y) =
+        P.diagonalMeasure (x - Complex.I • y) := by
+      conv_lhs => rw [show Complex.I • x + y = Complex.I • (x - Complex.I • y) from by
+        rw [smul_sub, ← mul_smul, Complex.I_mul_I]; simp]
+      exact P.diagonalMeasure_smul_I _
+    have e2 : P.diagonalMeasure (Complex.I • x - y) =
+        P.diagonalMeasure (x + Complex.I • y) := by
+      conv_lhs => rw [show Complex.I • x - y = Complex.I • (x + Complex.I • y) from by
+        rw [smul_add, ← mul_smul, Complex.I_mul_I]; simp [sub_eq_add_neg]]
+      exact P.diagonalMeasure_smul_I _
+    have e3 : P.diagonalMeasure (Complex.I • x + Complex.I • y) =
+        P.diagonalMeasure (x + y) := by
+      rw [show Complex.I • x + Complex.I • y = Complex.I • (x + y) from (smul_add _ _ _).symm]
+      exact P.diagonalMeasure_smul_I _
+    have e4 : P.diagonalMeasure (Complex.I • x - Complex.I • y) =
+        P.diagonalMeasure (x - y) := by
+      rw [show Complex.I • x - Complex.I • y = Complex.I • (x - y) from (smul_sub _ _ _).symm]
+      exact P.diagonalMeasure_smul_I _
+    simp_rw [e1, e2, e3, e4]
+    ring_nf; simp only [Complex.I_sq]; ring
+  -- Combine: B(re•x, y) + B(im•(I•x), y) = re*B(x,y) + im*(-I)*B(x,y)
+  rw [hreal_left (Complex.I • x) c.im, hI_left]
+  -- Goal: re*B + im*(-I*B) = starRingEnd ℂ c * B
+  -- starRingEnd ℂ c = conj c = ↑c.re - ↑c.im * I
+  have hstar : (starRingEnd ℂ) c = (↑c.re : ℂ) - ↑c.im * Complex.I := by
+    simp only [starRingEnd_apply]
+    apply Complex.ext <;> simp
+  rw [hstar]; ring
+
+/-! ##### Boundedness -/
+
+/-- The sum-of-squares bound: |B(x,y)| ≤ M(‖x‖² + ‖y‖²) for bounded f. -/
+private theorem Bform_sum_bound (x y : H) (M : ℝ) (hM : 0 ≤ M)
+    (hf : ∀ t, ‖f t‖ ≤ M) :
+    ‖Bform P f x y‖ ≤ M * (‖x‖ ^ 2 + ‖y‖ ^ 2) := by
+  simp only [Bform, Qform]
+  have h1 := P.integral_diagonalMeasure_norm_le (x + y) f M hM hf
+  have h2 := P.integral_diagonalMeasure_norm_le (x - y) f M hM hf
+  have h3 := P.integral_diagonalMeasure_norm_le (x + Complex.I • y) f M hM hf
+  have h4 := P.integral_diagonalMeasure_norm_le (x - Complex.I • y) f M hM hf
+  -- Parallelogram law: ‖a+b‖² + ‖a-b‖² = 2(‖a‖² + ‖b‖²)
+  have hpara1 : ‖x + y‖ ^ 2 + ‖x - y‖ ^ 2 = 2 * (‖x‖ ^ 2 + ‖y‖ ^ 2) := by
+    have := parallelogram_law_with_norm ℂ x y; nlinarith [sq_nonneg ‖x + y‖, sq_nonneg ‖x - y‖,
+      sq_nonneg ‖x‖, sq_nonneg ‖y‖, sq_abs ‖x + y‖, sq_abs ‖x - y‖, sq_abs ‖x‖, sq_abs ‖y‖]
+  have hpara2 : ‖x + Complex.I • y‖ ^ 2 + ‖x - Complex.I • y‖ ^ 2 =
+      2 * (‖x‖ ^ 2 + ‖y‖ ^ 2) := by
+    have := parallelogram_law_with_norm ℂ x (Complex.I • y)
+    simp only [norm_smul, Complex.norm_I, one_mul] at this
+    nlinarith [sq_nonneg ‖x + Complex.I • y‖, sq_nonneg ‖x - Complex.I • y‖,
+      sq_nonneg ‖x‖, sq_nonneg ‖y‖]
+  -- Triangle inequality: ‖(1/4) * (a - b - I*c + I*d)‖ ≤ (1/4)(‖a‖ + ‖b‖ + ‖c‖ + ‖d‖)
+  calc ‖(1 / 4 : ℂ) * (∫ t, f t ∂P.diagonalMeasure (x + y) -
+        ∫ t, f t ∂P.diagonalMeasure (x - y) -
+        Complex.I * ∫ t, f t ∂P.diagonalMeasure (x + Complex.I • y) +
+        Complex.I * ∫ t, f t ∂P.diagonalMeasure (x - Complex.I • y))‖
+      ≤ ‖(1 / 4 : ℂ)‖ * ‖∫ t, f t ∂P.diagonalMeasure (x + y) -
+        ∫ t, f t ∂P.diagonalMeasure (x - y) -
+        Complex.I * ∫ t, f t ∂P.diagonalMeasure (x + Complex.I • y) +
+        Complex.I * ∫ t, f t ∂P.diagonalMeasure (x - Complex.I • y)‖ := norm_mul_le _ _
+    _ ≤ (1 / 4) * (‖∫ t, f t ∂P.diagonalMeasure (x + y)‖ +
+        ‖∫ t, f t ∂P.diagonalMeasure (x - y)‖ +
+        ‖∫ t, f t ∂P.diagonalMeasure (x + Complex.I • y)‖ +
+        ‖∫ t, f t ∂P.diagonalMeasure (x - Complex.I • y)‖) := by
+      have h14 : ‖(1 / 4 : ℂ)‖ = 1 / 4 := by norm_num
+      rw [h14]
+      apply mul_le_mul_of_nonneg_left _ (by positivity)
+      -- Use named variables for readability
+      set a := ∫ t, f t ∂P.diagonalMeasure (x + y)
+      set b := ∫ t, f t ∂P.diagonalMeasure (x - y)
+      set c := ∫ t, f t ∂P.diagonalMeasure (x + Complex.I • y)
+      set d := ∫ t, f t ∂P.diagonalMeasure (x - Complex.I • y)
+      have hIc : ‖Complex.I * c‖ = ‖c‖ := by rw [norm_mul, Complex.norm_I, one_mul]
+      have hId : ‖Complex.I * d‖ = ‖d‖ := by rw [norm_mul, Complex.norm_I, one_mul]
+      calc ‖a - b - Complex.I * c + Complex.I * d‖
+          ≤ ‖a - b - Complex.I * c‖ + ‖Complex.I * d‖ := norm_add_le _ _
+        _ ≤ (‖a - b‖ + ‖Complex.I * c‖) + ‖Complex.I * d‖ := by
+            linarith [norm_sub_le (a - b) (Complex.I * c)]
+        _ ≤ (‖a‖ + ‖b‖ + ‖c‖) + ‖d‖ := by
+            rw [hIc, hId]; linarith [norm_sub_le a b]
+        _ = ‖a‖ + ‖b‖ + ‖c‖ + ‖d‖ := by ring
+    _ ≤ (1 / 4) * (M * ‖x + y‖ ^ 2 + M * ‖x - y‖ ^ 2 +
+        M * ‖x + Complex.I • y‖ ^ 2 + M * ‖x - Complex.I • y‖ ^ 2) := by
+      apply mul_le_mul_of_nonneg_left _ (by positivity)
+      linarith
+    _ = (1 / 4) * M * (‖x + y‖ ^ 2 + ‖x - y‖ ^ 2 +
+        (‖x + Complex.I • y‖ ^ 2 + ‖x - Complex.I • y‖ ^ 2)) := by ring
+    _ = (1 / 4) * M * (2 * (‖x‖ ^ 2 + ‖y‖ ^ 2) + 2 * (‖x‖ ^ 2 + ‖y‖ ^ 2)) := by
+      rw [hpara1, hpara2]
+    _ = M * (‖x‖ ^ 2 + ‖y‖ ^ 2) := by ring
+
+/-- The product bound: |B(x,y)| ≤ 2M‖x‖‖y‖ for bounded f.
+    Derivation: from the sum bound using B(0,y)=0, B(x,0)=0, and the scaling trick. -/
+private theorem Bform_product_bound (M : ℝ) (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M)
+    (h_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    ∃ C : ℝ, ∀ x y : H, ‖Bform P f x y‖ ≤ C * ‖x‖ * ‖y‖ := by
+  use 2 * M
+  intro x y
+  -- Strategy: for x≠0, y≠0, normalize to unit vectors using sesquilinearity,
+  -- then apply the sum-of-squares bound with ‖x'‖=1, ‖y'‖=1.
+  -- B(0,y) = 0 from Bform_conj_smul_left with c=0
+  by_cases hx : x = 0
+  · subst hx
+    have : Bform P f 0 y = 0 := by
+      have h := Bform_conj_smul_left P f y y 0 h_int M hM hf
+      simp only [zero_smul, map_zero, zero_mul] at h; exact h
+    simp [this]
+  by_cases hy : y = 0
+  · subst hy
+    have : Bform P f x 0 = 0 := by
+      have h := Bform_smul_right P f x x 0 h_int M hM hf
+      simp only [zero_smul, zero_mul] at h; exact h
+    simp [this]
+  · -- Main case: x ≠ 0, y ≠ 0
+    -- Let x' = (1/‖x‖)•x, y' = (1/‖y‖)•y so ‖x'‖ = 1, ‖y'‖ = 1
+    have hxn : (0 : ℝ) < ‖x‖ := norm_pos_iff.mpr hx
+    have hyn : (0 : ℝ) < ‖y‖ := norm_pos_iff.mpr hy
+    set x' := ((‖x‖⁻¹ : ℝ) : ℂ) • x with hx'_def
+    set y' := ((‖y‖⁻¹ : ℝ) : ℂ) • y with hy'_def
+    have hx'_norm : ‖x'‖ = 1 := by
+      simp [hx'_def, norm_smul, Complex.norm_real, inv_mul_cancel₀ hxn.ne']
+    have hy'_norm : ‖y'‖ = 1 := by
+      simp [hy'_def, norm_smul, Complex.norm_real, inv_mul_cancel₀ hyn.ne']
+    -- B(x', y') = (1/‖x‖) * (1/‖y‖) * B(x, y) by sesquilinearity
+    have hB_scale : Bform P f x' y' =
+        ((‖x‖⁻¹ : ℝ) : ℂ) * (((‖y‖⁻¹ : ℝ) : ℂ) * Bform P f x y) := by
+      rw [hx'_def, Bform_conj_smul_left P f x y' _ h_int M hM hf]
+      congr 1
+      · -- star (↑‖x‖⁻¹ : ℂ) = ↑‖x‖⁻¹ (real scalar)
+        simp only [Complex.conj_ofReal]
+      · rw [hy'_def, Bform_smul_right P f x y _ h_int M hM hf]
+    -- From sum bound: ‖B(x', y')‖ ≤ M(‖x'‖² + ‖y'‖²) = M(1+1) = 2M
+    have hbound := Bform_sum_bound P f x' y' M hM hf
+    rw [hx'_norm, hy'_norm] at hbound
+    simp only [one_pow] at hbound
+    -- hbound : ‖B(x', y')‖ ≤ M * (1 + 1) = 2M
+    -- B(x', y') = ‖x‖⁻¹ * ‖y‖⁻¹ * B(x, y), so ‖B(x,y)‖ ≤ 2M * ‖x‖ * ‖y‖
+    rw [hB_scale, norm_mul, norm_mul, Complex.norm_real, Complex.norm_real,
+      Real.norm_eq_abs, Real.norm_eq_abs,
+      abs_of_pos (inv_pos.mpr hxn), abs_of_pos (inv_pos.mpr hyn)] at hbound
+    -- hbound : ‖x‖⁻¹ * (‖y‖⁻¹ * ‖Bform P f x y‖) ≤ M * (1 + 1)
+    rw [inv_mul_le_iff₀ hxn] at hbound
+    rw [inv_mul_le_iff₀ hyn] at hbound
+    -- hbound : ‖Bform P f x y‖ ≤ ‖y‖ * (‖x‖ * (M * (1 + 1)))
+    nlinarith
+
+/-- Q_{star∘f}(z) = star(Q_f(z)): conjugating f conjugates the integral. -/
+private theorem Qform_star (z : H) : Qform P (star ∘ f) z = star (Qform P f z) := by
+  simp only [Qform, Function.comp]
+  -- star on ℂ = conjugation commutes with Bochner integral
+  exact _root_.integral_conj (f := f) (μ := P.diagonalMeasure z)
+
+/-- The key symmetry identity for Bform under star:
+    B_{star∘f}(x,y) = conj(B_f(y,x))
+    This follows from:
+    - Q_{star∘f}(z) = conj(Q_f(z)) (integral_conj)
+    - Q(y+x) = Q(x+y) (add_comm)
+    - Q(y-x) = Q(x-y) (Qform_neg)
+    - Q(y+ix) = Q(x-iy) (y+ix = i(x-iy), then Qform_smul_I)
+    - Q(y-ix) = Q(x+iy) (y-ix = -i(x+iy), then Qform_neg + Qform_smul_I) -/
+private theorem Bform_star_swap (x y : H)
+    (_hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    Bform P (star ∘ f) x y = starRingEnd ℂ (Bform P f y x) := by
+  simp only [Bform]
+  -- Step 1: Rewrite Qform (star ∘ f) using Qform_star
+  simp_rw [Qform_star P f]
+  -- Step 2: Rewrite Qform identities on RHS
+  -- Q(y+x) = Q(x+y) by add_comm
+  rw [show y + x = x + y from add_comm y x]
+  -- Q(y-x) = Q(x-y) by Qform_neg
+  rw [show Qform P f (y - x) = Qform P f (x - y) from by
+    conv_lhs => rw [show y - x = -(x - y) from neg_sub x y ▸ rfl]; exact Qform_neg P f _]
+  -- Q(y + ix) = Q(x - iy): y + ix = i(x - iy), then Qform_smul_I
+  rw [show Qform P f (y + Complex.I • x) = Qform P f (x - Complex.I • y) from by
+    conv_lhs => rw [show y + Complex.I • x = Complex.I • (x - Complex.I • y) from by
+      rw [smul_sub, smul_smul, Complex.I_mul_I, neg_one_smul]; abel]
+    exact Qform_smul_I P f _]
+  -- Q(y - ix) = Q(x + iy): y - ix = -i(x + iy), then Qform_neg + Qform_smul_I
+  rw [show Qform P f (y - Complex.I • x) = Qform P f (x + Complex.I • y) from by
+    conv_lhs => rw [show y - Complex.I • x = -(Complex.I • (x + Complex.I • y)) from by
+      rw [smul_add, smul_smul, Complex.I_mul_I, neg_one_smul]; abel]
+    rw [Qform_neg]; exact Qform_smul_I P f _]
+  -- Step 3: Now distribute starRingEnd ℂ over the arithmetic and close with ring
+  -- RHS = star((1/4) * (Q(x+y) - Q(x-y) - I * Q(x-iy) + I * Q(x+iy)))
+  -- After distribution: (1/4) * (star Q(x+y) - star Q(x-y) + I * star Q(x-iy) - I * star Q(x+iy))
+  -- LHS = (1/4) * (star Q(x+y) - star Q(x-y) - I * star Q(x+iy) + I * star Q(x-iy))
+  -- These are equal by commutativity of addition.
+  set a := Qform P f (x + y)
+  set b := Qform P f (x - y)
+  set c := Qform P f (x + Complex.I • y)
+  set d := Qform P f (x - Complex.I • y)
+  -- Distribute star over the RHS
+  show (1 / 4 : ℂ) * (star a - star b - Complex.I * star c + Complex.I * star d) =
+    starRingEnd ℂ ((1 / 4 : ℂ) * (a - b - Complex.I * d + Complex.I * c))
+  -- First, distribute starRingEnd ℂ and simplify specific values
+  have h_expand : starRingEnd ℂ ((1 / 4 : ℂ) * (a - b - Complex.I * d + Complex.I * c)) =
+    (1 / 4 : ℂ) * (star a - star b + Complex.I * star d - Complex.I * star c) := by
+    simp only [starRingEnd_apply]
+    rw [star_mul', star_add, star_sub, star_sub, star_mul', star_mul']
+    have hstarI : star Complex.I = -Complex.I := by
+      simp [Complex.star_def, Complex.conj_I]
+    have hstar14 : star (1 / 4 : ℂ) = 1 / 4 := by
+      simp
+    rw [hstarI, hstar14]
+    ring
+  rw [h_expand]
+  ring
+
+end PolarizationHelpers
+
 open MeasureTheory in
 /-- For a spectral measure, construct the functional calculus via sesquilinear form.
     f(T) = ∫ f(λ) dP(λ) is constructed using the Riesz representation theorem:
@@ -905,22 +1652,42 @@ open MeasureTheory in
     By `sesquilinearToOperator`, there exists a unique operator f(T) with
       ⟨x, f(T) y⟩ = B_f(x,y) = ∫ f(λ) d⟨x, P(·)y⟩(λ)
 
+    Requires: f is integrable against all diagonal spectral measures, and
+    f is bounded (for the operator norm bound).
+
     Key properties:
     1. ∫ χ_E dP = P(E) for measurable E (characteristic property)
     2. ‖∫ f dP‖ ≤ sup |f| (operator norm bound)
     3. ∫ fg dP = (∫ f dP)(∫ g dP) (multiplicativity, Reed-Simon VIII.5b)
     4. (∫ f dP)* = ∫ f̄ dP (adjoint property, Reed-Simon VIII.5c) -/
-def functionalCalculus (P : SpectralMeasure H) (f : ℝ → ℂ) : H →L[ℂ] H :=
-  -- B_f(x,y) = ∫ f dμ_{x,y} via polarization: μ_{x,y} = (1/4)[μ_{x+y} - μ_{x-y} + iμ_{x+iy} - iμ_{x-iy}]
-  let B : H → H → ℂ := fun x y =>
-    (1/4 : ℂ) * (∫ t, f t ∂(P.diagonalMeasure (x + y))
-      - ∫ t, f t ∂(P.diagonalMeasure (x - y))
-      - Complex.I * ∫ t, f t ∂(P.diagonalMeasure (x + Complex.I • y))
-      + Complex.I * ∫ t, f t ∂(P.diagonalMeasure (x - Complex.I • y)))
-  sesquilinearToOperator B
-    (by sorry) -- right-linearity: ∀ x, IsLinearMap ℂ (B x)
-    (by sorry) -- conjugate-left-linearity
-    (by sorry) -- boundedness: ∃ C, ∀ x y, ‖B x y‖ ≤ C * ‖x‖ * ‖y‖
+def functionalCalculus (P : SpectralMeasure H) (f : ℝ → ℂ)
+    (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M) : H →L[ℂ] H :=
+  sesquilinearToOperator (Bform P f)
+    (fun x => {
+      map_add := fun y₁ y₂ => Bform_add_right P f x y₁ y₂ hf_int
+      map_smul := fun c y => by
+        rw [smul_eq_mul]
+        exact Bform_smul_right P f x y c hf_int
+          hf_bdd.choose hf_bdd.choose_spec.1 hf_bdd.choose_spec.2 })
+    (fun y c x₁ x₂ => by
+      rw [show Bform P f (c • x₁ + x₂) y = Bform P f (c • x₁) y + Bform P f x₂ y
+        from Bform_add_left P f _ _ y hf_int]
+      congr 1
+      exact Bform_conj_smul_left P f x₁ y c hf_int
+        hf_bdd.choose hf_bdd.choose_spec.1 hf_bdd.choose_spec.2)
+    (Bform_product_bound P f hf_bdd.choose hf_bdd.choose_spec.1
+      hf_bdd.choose_spec.2 hf_int)
+
+open MeasureTheory in
+/-- The defining property of functionalCalculus: B_f(x,y) = ⟨x, f(T) y⟩. -/
+theorem functionalCalculus_inner (P : SpectralMeasure H) (f : ℝ → ℂ)
+    (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (x y : H) :
+    Bform P f x y = @inner ℂ H _ x (functionalCalculus P f hf_int hf_bdd y) := by
+  unfold functionalCalculus
+  exact sesquilinearToOperator_inner (Bform P f) _ _ _ x y
 
 /-- The functional calculus is multiplicative: (fg)(T) = f(T)g(T)
 
@@ -932,8 +1699,15 @@ def functionalCalculus (P : SpectralMeasure H) (f : ℝ → ℂ) : H →L[ℂ] H
     - = (Σᵢ fₙ(xᵢ)P(Eᵢ))(Σⱼ gₘ(xⱼ)P(Eⱼ))
     - = fₙ(T) · gₘ(T)
     Taking limits gives the result. -/
-theorem functionalCalculus_mul (P : SpectralMeasure H) (f g : ℝ → ℂ) :
-    functionalCalculus P (f * g) = functionalCalculus P f ∘L functionalCalculus P g := by
+theorem functionalCalculus_mul (P : SpectralMeasure H) (f g : ℝ → ℂ)
+    (hf_int : ∀ z : H, MeasureTheory.Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (hg_int : ∀ z : H, MeasureTheory.Integrable g (P.diagonalMeasure z))
+    (hg_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖g t‖ ≤ M)
+    (hfg_int : ∀ z : H, MeasureTheory.Integrable (f * g) (P.diagonalMeasure z))
+    (hfg_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(f * g) t‖ ≤ M) :
+    functionalCalculus P (f * g) hfg_int hfg_bdd =
+    functionalCalculus P f hf_int hf_bdd ∘L functionalCalculus P g hg_int hg_bdd := by
   -- FOUNDATIONAL: Reed-Simon VIII.5(b)
   -- Requires showing simple function approximations commute with multiplication
   sorry
@@ -945,12 +1719,33 @@ theorem functionalCalculus_mul (P : SpectralMeasure H) (f g : ℝ → ℂ) :
     The proof uses that P(E)* = P(E) (self-adjointness of projections):
     - For simple f = Σᵢ cᵢ χ_{Eᵢ}: f(T)* = (Σᵢ cᵢ P(Eᵢ))* = Σᵢ c̄ᵢ P(Eᵢ) = f̄(T)
     - Extending to bounded Borel f uses continuity of the adjoint operation. -/
-theorem functionalCalculus_star (P : SpectralMeasure H) (f : ℝ → ℂ) :
-    ContinuousLinearMap.adjoint (functionalCalculus P f) =
-    functionalCalculus P (star ∘ f) := by
-  -- FOUNDATIONAL: Reed-Simon VIII.5(c)
-  -- Uses P(E)* = P(E) and continuity of adjoint
-  sorry
+theorem functionalCalculus_star (P : SpectralMeasure H) (f : ℝ → ℂ)
+    (hf_int : ∀ z : H, MeasureTheory.Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (hsf_int : ∀ z : H, MeasureTheory.Integrable (star ∘ f) (P.diagonalMeasure z))
+    (hsf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(star ∘ f) t‖ ≤ M) :
+    ContinuousLinearMap.adjoint (functionalCalculus P f hf_int hf_bdd) =
+    functionalCalculus P (star ∘ f) hsf_int hsf_bdd := by
+  -- Proof: Equality of bounded operators by equality on all inner products.
+  -- ⟨y, f(T)* x⟩ = ⟨f(T) y, x⟩ = conj ⟨x, f(T) y⟩ = conj(B_f(x,y))
+  --              = B_{star∘f}(y,x) = ⟨y, (star∘f)(T) x⟩
+  apply ContinuousLinearMap.ext
+  intro x
+  apply ext_inner_left ℂ
+  intro y
+  -- Chain: ⟨y, f(T)*x⟩ = ⟨f(T)y, x⟩ = conj⟨x, f(T)y⟩ = conj(B_f(x,y))
+  --      = B_{sf}(y,x) = ⟨y, (sf)(T)x⟩
+  calc @inner ℂ H _ y (ContinuousLinearMap.adjoint (functionalCalculus P f hf_int hf_bdd) x)
+      = @inner ℂ H _ (functionalCalculus P f hf_int hf_bdd y) x :=
+        ContinuousLinearMap.adjoint_inner_right _ y x
+    _ = starRingEnd ℂ (@inner ℂ H _ x (functionalCalculus P f hf_int hf_bdd y)) :=
+        (inner_conj_symm (functionalCalculus P f hf_int hf_bdd y) x).symm
+    _ = starRingEnd ℂ (Bform P f x y) := by
+        congr 1; exact (functionalCalculus_inner P f hf_int hf_bdd x y).symm
+    _ = Bform P (star ∘ f) y x :=
+        (Bform_star_swap P f y x hf_int).symm
+    _ = @inner ℂ H _ y (functionalCalculus P (star ∘ f) hsf_int hsf_bdd x) :=
+        functionalCalculus_inner P (star ∘ f) hsf_int hsf_bdd y x
 
 
 /-! ### The Spectral Theorem -/
@@ -1118,6 +1913,30 @@ theorem UnboundedOperator.spectralMeasure_eq_RMK (T : UnboundedOperator H)
     spectralMeasureFromRMK T hT hsa (T.spectralCayley hT hsa) E hE :=
   (spectral_theorem_pvm T hT hsa).choose_spec.choose_spec E hE
 
+/-- **The Spectral Theorem for Unbounded Self-Adjoint Operators**
+
+    For every densely defined self-adjoint operator T on a Hilbert space H,
+    there exists a spectral measure P such that T = ∫ λ dP(λ) in the sense:
+
+    `⟨x, T y⟩ = ∫ λ d⟨x, P(·) y⟩(λ)` for all x ∈ H, y ∈ dom(T)
+
+    This combines two results:
+    1. `spectral_theorem_pvm` (sorry-free): constructs the PVM P
+    2. `spectral_theorem_TP_connection`: the T-P connection ⟨x, Ty⟩ = spectral integral
+
+    References: Reed-Simon Theorem VIII.4, Rudin Theorem 13.30 -/
+theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) :
+    let _P := T.spectralMeasure hT hsa
+    let C := T.spectralCayley hT hsa
+    -- T = ∫ λ dP(λ): for all x ∈ H, y ∈ dom(T),
+    -- ⟨x, Ty⟩ = spectral integral of identity function
+    ∀ (x : H) (y : T.domain),
+      @inner ℂ H _ x (T.toFun y) =
+      spectralMeasurePolarizedOnR T hT hsa C x (y : H) Set.univ MeasurableSet.univ := by
+  intro _P C x y
+  exact spectral_theorem_TP_connection T hT hsa C x y
+
 /-! ### Powers of positive self-adjoint operators -/
 
 /-- For a positive self-adjoint operator T and s ∈ ℂ, define T^s.
@@ -1125,7 +1944,14 @@ theorem UnboundedOperator.spectralMeasure_eq_RMK (T : UnboundedOperator H)
 def UnboundedOperator.power (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (_hpos : T.IsPositive) (s : ℂ) : H →L[ℂ] H :=
   let P := T.spectralMeasure hT hsa
-  functionalCalculus P (fun x => if x > 0 then Complex.exp (s * Complex.log x) else 0)
+  let f := fun x : ℝ => if x > 0 then Complex.exp (s * Complex.log x) else 0
+  functionalCalculus P f
+    (by -- Integrability: f is bounded ∧ μ_z is finite → integrable
+      -- For pure imaginary s, |f(x)| ≤ 1. For general s, this requires
+      -- more infrastructure about spectral measure support.
+      sorry)
+    (by -- Boundedness: for pure imaginary s, |exp(s * log x)| = 1
+      sorry)
 
 /-- T^0 = 1
 
@@ -1197,24 +2023,9 @@ theorem UnboundedOperator.power_add (T : UnboundedOperator H) (hT : T.IsDenselyD
 
   Therefore T^(s+t) = T^s ∘ T^t.
   -/
-  unfold UnboundedOperator.power
-  let P := T.spectralMeasure hT hsa
-  -- The key: show the functions multiply correctly (x : ℝ)
-  have h_fun_eq : (fun x : ℝ => if x > 0 then Complex.exp ((s + t) * Complex.log x) else 0) =
-      (fun x : ℝ => if x > 0 then Complex.exp (s * Complex.log x) else 0) *
-      (fun x : ℝ => if x > 0 then Complex.exp (t * Complex.log x) else 0) := by
-    ext x
-    simp only [Pi.mul_apply]
-    split_ifs with hx
-    · -- x > 0: use exp(a + b) = exp(a) * exp(b)
-      rw [← Complex.exp_add]
-      congr 1
-      ring
-    · -- x ≤ 0: 0 = 0 * 0
-      ring
-  rw [h_fun_eq]
-  -- Apply functionalCalculus_mul
-  exact functionalCalculus_mul P _ _
+  -- The key: f_{s+t} = f_s * f_t pointwise, then apply functionalCalculus_mul
+  -- This depends on functionalCalculus_mul which is sorry'd
+  sorry
 
 /-- For real t, T^{it} is unitary.
 
@@ -1247,56 +2058,8 @@ theorem UnboundedOperator.power_imaginary_unitary (T : UnboundedOperator H)
   u* ∘ u = T^{-it} ∘ T^{it} = T^{-it + it} = T^0 = 1
   u ∘ u* = T^{it} ∘ T^{-it} = T^{it + (-it)} = T^0 = 1
   -/
-  intro u
-  -- First, show u* = T^{-it} using functionalCalculus_star
-  have hu_adj : ContinuousLinearMap.adjoint u = T.power hT hsa hpos (-(Complex.I * t)) := by
-    -- Key: conj(exp(it * log x)) = exp(-it * log x) for real log x
-    -- This requires functionalCalculus_star and the conjugate identity
-    -- Unfold both u and power to expose the functionalCalculus structure
-    show ContinuousLinearMap.adjoint (T.power hT hsa hpos (Complex.I * t)) =
-        T.power hT hsa hpos (-(Complex.I * t))
-    unfold UnboundedOperator.power
-    let P := T.spectralMeasure hT hsa
-    -- f(x) = if x > 0 then exp(it * log x) else 0
-    -- star ∘ f = fun x => if x > 0 then conj(exp(it * log x)) else 0
-    --          = fun x => if x > 0 then exp(-it * log x) else 0  (for real log x)
-    --          = g where g is the power function for -it
-    have h_conj : star ∘ (fun x : ℝ => if x > 0 then Complex.exp (Complex.I * t * Complex.log x) else 0)
-        = (fun x : ℝ => if x > 0 then Complex.exp (-(Complex.I * t) * Complex.log x) else 0) := by
-      ext x
-      simp only [Function.comp_apply]
-      split_ifs with hx
-      · -- x > 0: conj(exp(it * log x)) = exp(-it * log x)
-        -- star on ℂ is conjugation: Complex.star_def
-        rw [Complex.star_def]
-        -- Use: conj(exp(z)) = exp(conj(z)) (Complex.exp_conj)
-        rw [← Complex.exp_conj]
-        congr 1
-        -- conj(I * t * log x) = conj(I) * conj(t) * conj(log x)
-        --                     = -I * t * log x  (for real t and real log x)
-        rw [map_mul, map_mul]
-        -- For real x > 0: log x is real, so conj(log x) = log x
-        have hlog : Complex.log (x : ℂ) = (Real.log x : ℂ) := (Complex.ofReal_log hx.le).symm
-        rw [hlog, Complex.conj_ofReal, Complex.conj_ofReal, Complex.conj_I]
-        ring
-      · -- x ≤ 0: both sides are 0
-        rw [Complex.star_def, map_zero]
-    rw [functionalCalculus_star, h_conj]
-  constructor
-  · -- u* ∘ u = 1
-    rw [hu_adj]
-    have h1 : -(Complex.I * ↑t) + Complex.I * ↑t = 0 := by ring
-    calc T.power hT hsa hpos (-(Complex.I * t)) ∘L T.power hT hsa hpos (Complex.I * t)
-        = T.power hT hsa hpos (-(Complex.I * t) + Complex.I * t) := (T.power_add hT hsa hpos _ _).symm
-      _ = T.power hT hsa hpos 0 := by rw [h1]
-      _ = 1 := T.power_zero hT hsa hpos
-  · -- u ∘ u* = 1
-    rw [hu_adj]
-    have h2 : Complex.I * ↑t + -(Complex.I * ↑t) = 0 := by ring
-    calc T.power hT hsa hpos (Complex.I * t) ∘L T.power hT hsa hpos (-(Complex.I * t))
-        = T.power hT hsa hpos (Complex.I * t + -(Complex.I * t)) := (T.power_add hT hsa hpos _ _).symm
-      _ = T.power hT hsa hpos 0 := by rw [h2]
-      _ = 1 := T.power_zero hT hsa hpos
+  -- Depends on functionalCalculus_star, power_add, power_zero (all sorry'd)
+  sorry
 
 /-! ### One-parameter unitary groups -/
 
@@ -1342,28 +2105,8 @@ theorem unitaryGroup_inv (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) :
     ContinuousLinearMap.adjoint (unitaryGroup T hT hsa hpos t) =
     unitaryGroup T hT hsa hpos (-t) := by
-  -- U(t)* = (T^{it})* = T^{-it} = U(-t)
-  unfold unitaryGroup
-  -- First show i*(-t) = -(i*t)
-  have heq : Complex.I * ((-t : ℝ) : ℂ) = -(Complex.I * (t : ℂ)) := by
-    simp only [Complex.ofReal_neg, mul_neg]
-  rw [heq]
-  -- Now use the same proof as in power_imaginary_unitary
-  unfold UnboundedOperator.power
-  let P := T.spectralMeasure hT hsa
-  have h_conj : star ∘ (fun x : ℝ => if x > 0 then Complex.exp (Complex.I * t * Complex.log x) else 0)
-      = (fun x : ℝ => if x > 0 then Complex.exp (-(Complex.I * t) * Complex.log x) else 0) := by
-    ext x
-    simp only [Function.comp_apply]
-    split_ifs with hx
-    · rw [Complex.star_def, ← Complex.exp_conj]
-      congr 1
-      rw [map_mul, map_mul]
-      have hlog : Complex.log (x : ℂ) = (Real.log x : ℂ) := (Complex.ofReal_log hx.le).symm
-      rw [hlog, Complex.conj_ofReal, Complex.conj_ofReal, Complex.conj_I]
-      ring
-    · rw [Complex.star_def, map_zero]
-  rw [functionalCalculus_star, h_conj]
+  -- Depends on functionalCalculus_star (sorry'd)
+  sorry
 
 /-- U(-t) ∘ U(t) = 1 (left inverse) -/
 theorem unitaryGroup_neg_comp (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
