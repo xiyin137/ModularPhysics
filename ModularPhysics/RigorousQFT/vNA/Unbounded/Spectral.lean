@@ -7,11 +7,10 @@ import ModularPhysics.RigorousQFT.vNA.Unbounded.Basic
 import ModularPhysics.RigorousQFT.vNA.Spectral.CayleyTransform
 import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralViaCayleyRMK
 import ModularPhysics.RigorousQFT.vNA.Spectral.SigmaAdditivity
-import ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC.Basic
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralStieltjes
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralIntegral
-import ModularPhysics.RigorousQFT.vNA.Spectral.TPConnection
 import Mathlib.MeasureTheory.Integral.Bochner.Basic
+import Mathlib.MeasureTheory.Function.SimpleFuncDenseLp
 import Mathlib.MeasureTheory.Integral.Bochner.ContinuousLinearMap
 import Mathlib.MeasureTheory.Measure.Regular
 import Mathlib.Topology.Algebra.Module.Basic
@@ -875,6 +874,103 @@ theorem distributionFunction_real_smul (r : ℝ) (x : H) (t : ℝ) :
   -- Goal: (↑r * (↑r * ⟨x, P(Iic t) x⟩)).re = r^2 * (⟨x, P(Iic t) x⟩).re
   rw [← mul_assoc, ← Complex.ofReal_mul, Complex.re_ofReal_mul]; ring
 
+/-! ### Diagonal measure equals inner product with projection -/
+
+/-- The spectral inner product measure: E ↦ ENNReal.ofReal(⟨z, P(E)z⟩.re).
+    This is a σ-additive measure that equals the diagonal spectral measure. -/
+noncomputable def spectralInnerMeasure (z : H) : MeasureTheory.Measure ℝ :=
+  MeasureTheory.Measure.ofMeasurable
+    (fun E _ => ENNReal.ofReal ((@inner ℂ H _ z (P.proj E z)).re))
+    (by simp [P.empty])
+    (fun E hE_meas hE_disj => by
+      -- Goal (after β-reduction):
+      --   ofReal(⟨z, P(⋃ₙ Eₙ)z⟩.re) = ∑' n, ofReal(⟨z, P(Eₙ)z⟩.re)
+      show ENNReal.ofReal ((@inner ℂ H _ z (P.proj (⋃ n, E n) z)).re) =
+        ∑' n, ENNReal.ofReal ((@inner ℂ H _ z (P.proj (E n) z)).re)
+      -- All terms are nonneg
+      have h_nonneg : ∀ n, 0 ≤ (@inner ℂ H _ z (P.proj (E n) z)).re :=
+        fun n => P.inner_proj_nonneg _ (hE_meas n) z
+      -- σ-additivity: P(⋃ₙ Eₙ)z = lim ∑_{n<N} P(Eₙ)z  in H
+      have h_sigma := P.sigma_additive E hE_meas
+        (fun i j hij => hE_disj hij) z
+      -- Compose with continuous (inner z ·).re : H → ℝ
+      have h_real : Tendsto (fun N => ∑ i ∈ Finset.range N,
+            (@inner ℂ H _ z (P.proj (E i) z)).re)
+          atTop (nhds ((@inner ℂ H _ z (P.proj (⋃ n, E n) z)).re)) := by
+        have hcont : Continuous (fun y : H => (@inner ℂ H _ z y).re) := by fun_prop
+        have h := hcont.continuousAt.tendsto.comp h_sigma
+        simp only [Function.comp_def] at h
+        exact h.congr (fun N => by
+          rw [inner_sum]
+          simp only [← Complex.coe_reAddGroupHom, map_sum])
+      -- Compose with ENNReal.ofReal : ℝ → ENNReal (continuous)
+      have h_ennreal : Tendsto (fun N => ∑ i ∈ Finset.range N,
+            ENNReal.ofReal ((@inner ℂ H _ z (P.proj (E i) z)).re))
+          atTop (nhds (ENNReal.ofReal ((@inner ℂ H _ z
+            (P.proj (⋃ n, E n) z)).re))) := by
+        have := ENNReal.continuous_ofReal.continuousAt.tendsto.comp h_real
+        simp only [Function.comp_def] at this
+        exact this.congr (fun N => by
+          exact ENNReal.ofReal_sum_of_nonneg (fun i _ => h_nonneg i))
+      -- Partial sums are monotone in ENNReal
+      have h_mono : Monotone (fun N => ∑ i ∈ Finset.range N,
+            ENNReal.ofReal ((@inner ℂ H _ z (P.proj (E i) z)).re)) :=
+        fun _ _ hab => Finset.sum_le_sum_of_subset (Finset.range_mono hab)
+      -- tsum = ⨆ of partial sums = limit by monotone convergence
+      rw [ENNReal.tsum_eq_iSup_nat, iSup_eq_of_tendsto h_mono h_ennreal])
+
+/-- The spectral inner measure applied to a measurable set. -/
+theorem spectralInnerMeasure_apply (z : H) (E : Set ℝ) (hE : MeasurableSet E) :
+    P.spectralInnerMeasure z E = ENNReal.ofReal ((@inner ℂ H _ z (P.proj E z)).re) := by
+  exact MeasureTheory.Measure.ofMeasurable_apply E hE
+
+/-- The spectral inner measure is a finite measure. -/
+instance spectralInnerMeasure_isFiniteMeasure (z : H) :
+    MeasureTheory.IsFiniteMeasure (P.spectralInnerMeasure z) := by
+  constructor
+  rw [P.spectralInnerMeasure_apply z Set.univ MeasurableSet.univ, P.univ,
+    ContinuousLinearMap.one_apply]
+  exact ENNReal.ofReal_lt_top
+
+open MeasureTheory in
+/-- The diagonal measure of Iic t equals the spectral inner measure of Iic t.
+    This is the key step for showing the two measures are equal. -/
+theorem diagonalMeasure_Iic_eq (z : H) (t : ℝ) :
+    P.diagonalMeasure z (Set.Iic t) = P.spectralInnerMeasure z (Set.Iic t) := by
+  rw [P.spectralInnerMeasure_apply z _ measurableSet_Iic]
+  -- diagonalMeasure = distributionFunction.toMeasure = StieltjesFunction.measure
+  simp only [diagonalMeasure, SpectralDistribution.toMeasure]
+  -- Apply StieltjesFunction.measure_Iic with the tendsto at -∞
+  have h_tendsto : Tendsto (P.distributionFunction z).toStieltjes atBot
+      (nhds (0 : ℝ)) :=
+    (P.distributionFunction z).tendsto_neg_infty
+  have h_eq := (P.distributionFunction z).toStieltjes.measure_Iic h_tendsto t
+  rw [h_eq, sub_zero]
+  -- Now: ofReal(F_z(t)) = ofReal(⟨z, P(Iic t)z⟩.re)
+  -- F_z(t) = (inner z (P(Iic t) z)).re by definition of distributionFunction
+  rfl
+
+open MeasureTheory in
+/-- **The diagonal measure equals the spectral inner product measure.**
+    This is the key infrastructure lemma: for any spectral measure P and vector z,
+    μ_z(E) = ‖P(E)z‖² = ⟨z, P(E)z⟩.re for all measurable E. -/
+theorem diagonalMeasure_eq_spectralInnerMeasure (z : H) :
+    P.diagonalMeasure z = P.spectralInnerMeasure z := by
+  -- Both are finite measures on ℝ agreeing on Iic intervals → equal by ext_of_Iic
+  exact Measure.ext_of_Iic _ _ (P.diagonalMeasure_Iic_eq z)
+
+/-- **The core connection**: μ_z(E).toReal = ⟨z, P(E)z⟩.re = ‖P(E)z‖² for measurable E.
+    This connects the diagonal spectral measure to the spectral projections. -/
+theorem diagonalMeasure_apply (z : H) (E : Set ℝ) (hE : MeasurableSet E) :
+    (P.diagonalMeasure z E).toReal = (@inner ℂ H _ z (P.proj E z)).re := by
+  rw [P.diagonalMeasure_eq_spectralInnerMeasure z, P.spectralInnerMeasure_apply z E hE,
+    ENNReal.toReal_ofReal (P.inner_proj_nonneg E hE z)]
+
+/-- Variant: μ_z(E).toReal = ‖P(E)z‖² for measurable E. -/
+theorem diagonalMeasure_apply_norm_sq (z : H) (E : Set ℝ) (hE : MeasurableSet E) :
+    (P.diagonalMeasure z E).toReal = ‖P.proj E z‖ ^ 2 := by
+  rw [P.diagonalMeasure_apply z E hE, ← P.norm_sq_eq_inner E hE z]
+
 end SpectralMeasure
 
 /-! ### Functional calculus -/
@@ -1632,7 +1728,7 @@ private theorem Bform_star_swap (x y : H)
     simp only [starRingEnd_apply]
     rw [star_mul', star_add, star_sub, star_sub, star_mul', star_mul']
     have hstarI : star Complex.I = -Complex.I := by
-      simp [Complex.star_def, Complex.conj_I]
+      simp [Complex.conj_I]
     have hstar14 : star (1 / 4 : ℂ) = 1 / 4 := by
       simp
     rw [hstarI, hstar14]
@@ -1640,7 +1736,239 @@ private theorem Bform_star_swap (x y : H)
   rw [h_expand]
   ring
 
+/-! ##### Measure decomposition for Bform_comp_proj -/
+
+/-- Key measure identity: μ_{u+P(F)v}(E) = μ_u(E\F) + μ_{u+v}(E∩F).
+    This follows from the Pythagorean theorem:
+    P(E)(u + P(F)v) = P(E\F)u + P(E∩F)(u + v)
+    and these two terms are orthogonal (disjoint sets → orthogonal ranges). -/
+private theorem diagonalMeasure_comp_proj_eq (F : Set ℝ) (hF : MeasurableSet F)
+    (u v : H) (E : Set ℝ) (hE : MeasurableSet E) :
+    (P.diagonalMeasure (u + P.proj F v) E).toReal =
+    (P.diagonalMeasure u (E \ F)).toReal + (P.diagonalMeasure (u + v) (E ∩ F)).toReal := by
+  -- Step 1: P(E)(u + P(F)v) = P(E)u + P(E∩F)v
+  have hPE_decomp : P.proj E (u + P.proj F v) = P.proj E u + P.proj (E ∩ F) v := by
+    rw [map_add, ← ContinuousLinearMap.comp_apply, P.inter E F hE hF]
+  -- Step 2: P(E)u = P(E\F)u + P(E∩F)u (decompose E = (E\F) ∪ (E∩F))
+  have hEdiff : E \ F ∪ (E ∩ F) = E := Set.diff_union_inter E F
+  have hEdisj : Disjoint (E \ F) (E ∩ F) :=
+    Set.disjoint_sdiff_left.mono_right Set.inter_subset_right
+  have hPE_u : P.proj E u = P.proj (E \ F) u + P.proj (E ∩ F) u := by
+    have h := P.additive_disjoint (E \ F) (E ∩ F) (hE.diff hF) (hE.inter hF) hEdisj
+    rw [hEdiff] at h; rw [h]; simp
+  -- Step 3: P(E)(u + P(F)v) = P(E\F)u + (P(E∩F)u + P(E∩F)v)
+  --                          = P(E\F)u + P(E∩F)(u+v)
+  have hPE_sum : P.proj E (u + P.proj F v) = P.proj (E \ F) u + P.proj (E ∩ F) (u + v) := by
+    rw [hPE_decomp, hPE_u, map_add]; abel
+  -- Step 4: These two terms are orthogonal (E\F and E∩F are disjoint)
+  have horth : @inner ℂ H _ (P.proj (E \ F) u) (P.proj (E ∩ F) (u + v)) = 0 := by
+    -- ⟨P(E\F)u, P(E∩F)(u+v)⟩ = ⟨u, P(E\F)* P(E∩F)(u+v)⟩ = ⟨u, P(E\F)P(E∩F)(u+v)⟩
+    -- P(E\F)P(E∩F) = P((E\F)∩(E∩F)) = P(∅) = 0
+    have hinter_empty : (E \ F) ∩ (E ∩ F) = ∅ :=
+      (Set.disjoint_sdiff_left.mono_right Set.inter_subset_right).inter_eq
+    calc @inner ℂ H _ (P.proj (E \ F) u) (P.proj (E ∩ F) (u + v))
+        = @inner ℂ H _ u ((P.proj (E \ F)).adjoint (P.proj (E ∩ F) (u + v))) :=
+          (ContinuousLinearMap.adjoint_inner_right _ _ _).symm
+      _ = @inner ℂ H _ u (P.proj (E \ F) (P.proj (E ∩ F) (u + v))) := by
+          rw [P.isSelfAdj _ (hE.diff hF)]
+      _ = @inner ℂ H _ u ((P.proj (E \ F) ∘L P.proj (E ∩ F)) (u + v)) := rfl
+      _ = @inner ℂ H _ u (P.proj ((E \ F) ∩ (E ∩ F)) (u + v)) := by
+          rw [← P.inter _ _ (hE.diff hF) (hE.inter hF)]
+      _ = 0 := by rw [hinter_empty, P.empty]; simp
+  -- Step 5: Pythagorean theorem: ‖a + b‖² = ‖a‖² + ‖b‖² when ⟨a,b⟩ = 0
+  have hpyth := norm_add_sq_eq_norm_sq_add_norm_sq_of_inner_eq_zero _ _ horth
+  -- Step 6: Convert to diagonal measure
+  rw [P.diagonalMeasure_apply_norm_sq _ E hE, hPE_sum]
+  rw [show ‖P.proj (E \ F) u + P.proj (E ∩ F) (u + v)‖ ^ 2 =
+    ‖P.proj (E \ F) u‖ ^ 2 + ‖P.proj (E ∩ F) (u + v)‖ ^ 2 from by rw [sq, sq, sq, hpyth]]
+  rw [← P.diagonalMeasure_apply_norm_sq u (E \ F) (hE.diff hF),
+      ← P.diagonalMeasure_apply_norm_sq (u + v) (E ∩ F) (hE.inter hF)]
+
+/-- The Qform integral decomposes: ∫f dμ_{u+P(F)v} = ∫_{ℝ\F} f dμ_u + ∫_F f dμ_{u+v}.
+    This is the integral-level consequence of diagonalMeasure_comp_proj_eq. -/
+private theorem Qform_comp_proj_eq (F : Set ℝ) (hF : MeasurableSet F)
+    (u v : H) (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    Qform P f (u + P.proj F v) =
+    ∫ t in (Set.univ \ F), f t ∂(P.diagonalMeasure u) +
+    ∫ t in F, f t ∂(P.diagonalMeasure (u + v)) := by
+  simp only [Qform]
+  -- The measures agree on all measurable sets by diagonalMeasure_comp_proj_eq
+  -- So the integrals agree
+  -- μ_{u+P(F)v} = μ_u|_{ℝ\F} + μ_{u+v}|_F  (as measures)
+  -- We prove this by showing the measures are equal, then use integral equality
+  have h_meas_eq : P.diagonalMeasure (u + P.proj F v) =
+      (P.diagonalMeasure u).restrict (Set.univ \ F) +
+      (P.diagonalMeasure (u + v)).restrict F := by
+    ext E hE
+    simp only [MeasureTheory.Measure.add_apply,
+        MeasureTheory.Measure.restrict_apply hE]
+    -- Both sides are ENNReal, use toReal injectivity (all values finite)
+    haveI := P.diagonalMeasure_isFiniteMeasure (u + P.proj F v)
+    haveI := P.diagonalMeasure_isFiniteMeasure u
+    haveI := P.diagonalMeasure_isFiniteMeasure (u + v)
+    have h_finite_lhs := MeasureTheory.measure_lt_top (P.diagonalMeasure (u + P.proj F v)) E
+    have h_finite_rhs1 := MeasureTheory.measure_lt_top (P.diagonalMeasure u) (E ∩ (Set.univ \ F))
+    have h_finite_rhs2 := MeasureTheory.measure_lt_top (P.diagonalMeasure (u + v)) (E ∩ F)
+    rw [← ENNReal.toReal_eq_toReal_iff' h_finite_lhs.ne (ENNReal.add_lt_top.mpr
+        ⟨h_finite_rhs1, h_finite_rhs2⟩).ne,
+        ENNReal.toReal_add h_finite_rhs1.ne h_finite_rhs2.ne]
+    have h_sets : E ∩ (Set.univ \ F) = E \ F := by ext t; simp [Set.mem_diff]
+    rw [h_sets, diagonalMeasure_comp_proj_eq P F hF u v E hE]
+  rw [h_meas_eq]
+  exact integral_add_measure ((hf_int _).restrict) ((hf_int _).restrict)
+
+/-- **Key lemma for functionalCalculus_mul**: Bform P f x (P(F)y) = Bform P (f · χ_F) x y.
+    Proof: Each of the 4 polarization terms has a common "remainder" ∫_{ℝ\F} f dμ_x,
+    and the polarization coefficients (1, -1, -i, +i) sum to 0. -/
+private theorem Bform_comp_proj (F : Set ℝ) (hF : MeasurableSet F)
+    (x y : H) (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    Bform P f x (P.proj F y) = Bform P (fun t => f t * F.indicator (fun _ => 1) t) x y := by
+  simp only [Bform]
+  -- Apply Qform_comp_proj_eq to each of the 4 terms
+  -- For the substitutions: P(F)y, P(F)(-y) = -(P(F)y), P(F)(iy), P(F)(-iy) = -(P(F)(iy))
+  have h1 := Qform_comp_proj_eq P f F hF x y hf_int
+  have h2 : Qform P f (x + P.proj F (-y)) =
+      ∫ t in (Set.univ \ F), f t ∂(P.diagonalMeasure x) +
+      ∫ t in F, f t ∂(P.diagonalMeasure (x + (-y))) :=
+    Qform_comp_proj_eq P f F hF x (-y) hf_int
+  have h3 : Qform P f (x + P.proj F (Complex.I • y)) =
+      ∫ t in (Set.univ \ F), f t ∂(P.diagonalMeasure x) +
+      ∫ t in F, f t ∂(P.diagonalMeasure (x + Complex.I • y)) :=
+    Qform_comp_proj_eq P f F hF x (Complex.I • y) hf_int
+  have h4 : Qform P f (x + P.proj F (-(Complex.I • y))) =
+      ∫ t in (Set.univ \ F), f t ∂(P.diagonalMeasure x) +
+      ∫ t in F, f t ∂(P.diagonalMeasure (x + -(Complex.I • y))) :=
+    Qform_comp_proj_eq P f F hF x (-(Complex.I • y)) hf_int
+  -- Rewrite: P(F)(-y) = -(P(F)y), etc.
+  rw [map_neg] at h2; rw [map_neg] at h4
+  -- Rewrite goal to match h1-h4 and eliminate Qform terms
+  have e1 : x - P.proj F y = x + -(P.proj F y) := sub_eq_add_neg _ _
+  have e2 : Complex.I • P.proj F y = P.proj F (Complex.I • y) := (map_smul _ _ _).symm
+  -- First rewrite goal structure, then substitute the decompositions
+  conv_lhs => rw [e1, e2]
+  -- After e2, the 4th term is x - P.proj F (Complex.I • y); rewrite sub to add neg
+  have e3 : x - P.proj F (Complex.I • y) = x + -(P.proj F (Complex.I • y)) := sub_eq_add_neg _ _
+  conv_lhs => rw [e3]
+  rw [h1, h2, h3, h4]
+  -- Rewrite: x + (-y) = x - y, x + -(I•y) = x - I•y
+  have : x + -y = x - y := by abel
+  rw [this]
+  have : x + -(Complex.I • y) = x - Complex.I • y := by abel
+  rw [this]
+  -- The remainders ∫_{ℝ\F} f dμ_x cancel via (1 - 1 - i + i) = 0
+  -- And the set integrals equal indicator integrals
+  have h_ind : ∀ z : H, ∫ t in F, f t ∂(P.diagonalMeasure z) =
+      ∫ t, (fun t => f t * F.indicator (fun _ => 1) t) t ∂(P.diagonalMeasure z) := by
+    intro z
+    rw [← MeasureTheory.integral_indicator hF]
+    congr 1; ext t
+    simp only [Set.indicator]; split_ifs <;> ring
+  simp_rw [h_ind]
+  -- Unfold Qform on the RHS so ring can match
+  simp only [Qform]
+  ring
+
 end PolarizationHelpers
+
+/-! ### Indicator-Projection Lemmas -/
+
+/-- For a spectral measure, ⟨z, P(F)z⟩ has zero imaginary part.
+    Proof: P(F) self-adjoint + idempotent gives ⟨z, P(F)z⟩ = ⟨P(F)z, P(F)z⟩ = ‖P(F)z‖² ∈ ℝ. -/
+theorem SpectralMeasure.inner_proj_real (P : SpectralMeasure H)
+    (z : H) (F : Set ℝ) (hF : MeasurableSet F) :
+    (@inner ℂ H _ z (P.proj F z)).im = 0 := by
+  -- conj ⟨z, P(F)z⟩ = ⟨P(F)z, z⟩ = ⟨P(F)†z, z⟩ = ⟨z, P(F)z⟩
+  -- So conj w = w, hence im w = 0
+  suffices hconj : starRingEnd ℂ (@inner ℂ H _ z (P.proj F z)) =
+      @inner ℂ H _ z (P.proj F z) by
+    exact Complex.conj_eq_iff_im.mp hconj
+  rw [inner_conj_symm]  -- Goal: ⟨P(F)z, z⟩ = ⟨z, P(F)z⟩
+  have h := ContinuousLinearMap.adjoint_inner_left (P.proj F) z z
+  -- h : ⟨P(F)†z, z⟩ = ⟨z, P(F)z⟩
+  rw [P.isSelfAdj F hF] at h
+  -- h : ⟨P(F)z, z⟩ = ⟨z, P(F)z⟩
+  exact h
+
+open MeasureTheory in
+/-- For an indicator function, the Qform equals the inner product with the projection.
+    Proof: ∫ χ_F dμ_z = μ_z(F).toReal = ⟨z, P(F)z⟩.re = ⟨z, P(F)z⟩ (since P(F) self-adjoint). -/
+theorem SpectralMeasure.Qform_indicator_eq_inner (P : SpectralMeasure H)
+    (F : Set ℝ) (hF : MeasurableSet F) (z : H) :
+    Qform P (Set.indicator F (fun _ => (1 : ℂ))) z = @inner ℂ H _ z (P.proj F z) := by
+  simp only [Qform]
+  -- Step 1: ∫ χ_F dμ_z = ↑(μ_z(F).toReal) via integral_indicator_const
+  have h_eq : ∫ t, Set.indicator F (fun _ => (1 : ℂ)) t ∂(P.diagonalMeasure z) =
+      ↑(P.diagonalMeasure z F).toReal := by
+    rw [integral_indicator_const _ hF, Measure.real]
+    simp [Algebra.smul_def]
+  rw [h_eq]
+  -- Step 2: μ_z(F).toReal = ⟨z, P(F)z⟩.re
+  rw [P.diagonalMeasure_apply z F hF]
+  -- Step 3: ↑(⟨z, P(F)z⟩.re) = ⟨z, P(F)z⟩ (P(F) self-adjoint → inner product is real)
+  apply Complex.ext
+  · exact Complex.ofReal_re _
+  · rw [Complex.ofReal_im]; exact (P.inner_proj_real z F hF).symm
+
+omit [CompleteSpace H] in
+/-- The polarization identity for a continuous linear map A on a Hilbert space:
+    (1/4)(⟨x+y, A(x+y)⟩ - ⟨x-y, A(x-y)⟩ - i⟨x+iy, A(x+iy)⟩ + i⟨x-iy, A(x-iy)⟩) = ⟨x, Ay⟩.
+    This is the standard identity relating quadratic forms to sesquilinear forms. -/
+theorem inner_polarization_clm (A : H →L[ℂ] H) (x y : H) :
+    (1/4 : ℂ) * (@inner ℂ H _ (x + y) (A (x + y)) - @inner ℂ H _ (x - y) (A (x - y))
+      - Complex.I * @inner ℂ H _ (x + Complex.I • y) (A (x + Complex.I • y))
+      + Complex.I * @inner ℂ H _ (x - Complex.I • y) (A (x - Complex.I • y))) =
+    @inner ℂ H _ x (A y) := by
+  -- Introduce abbreviations
+  set a := @inner ℂ H _ x (A x)
+  set b := @inner ℂ H _ x (A y)
+  set c := @inner ℂ H _ y (A x)
+  set d := @inner ℂ H _ y (A y)
+  -- Expand each of the 4 inner products
+  have h1 : @inner ℂ H _ (x + y) (A (x + y)) = a + b + c + d := by
+    rw [map_add]; simp only [inner_add_left, inner_add_right]; ring
+  have h2 : @inner ℂ H _ (x - y) (A (x - y)) = a - b - c + d := by
+    rw [map_sub]; simp only [inner_sub_left, inner_sub_right]; ring
+  -- For the Complex.I terms, expand and simplify conj(I) = -I, I² = -1
+  have hI_sq : Complex.I ^ 2 = (-1 : ℂ) := Complex.I_sq
+  have h3 : @inner ℂ H _ (x + Complex.I • y) (A (x + Complex.I • y)) =
+      a + Complex.I * b - Complex.I * c + d := by
+    rw [map_add, map_smul]
+    simp only [inner_add_left, inner_add_right, inner_smul_left, inner_smul_right, Complex.conj_I]
+    ring_nf; rw [hI_sq]; ring
+  have h4 : @inner ℂ H _ (x - Complex.I • y) (A (x - Complex.I • y)) =
+      a - Complex.I * b + Complex.I * c + d := by
+    rw [map_sub, map_smul]
+    simp only [inner_sub_left, inner_sub_right, inner_smul_left, inner_smul_right, Complex.conj_I]
+    ring_nf; rw [hI_sq]; ring
+  rw [h1, h2, h3, h4]; ring_nf; rw [hI_sq]; ring
+
+open MeasureTheory in
+/-- For an indicator function, the Bform equals the inner product with the projection:
+    Bform P χ_F x y = ⟨x, P(F) y⟩.
+    This combines `Qform_indicator_eq_inner` with the polarization identity. -/
+theorem SpectralMeasure.Bform_indicator_eq_inner (P : SpectralMeasure H)
+    (F : Set ℝ) (hF : MeasurableSet F) (x y : H) :
+    Bform P (Set.indicator F (fun _ => (1 : ℂ))) x y = @inner ℂ H _ x (P.proj F y) := by
+  -- Substitute Qform = inner product with projection
+  simp only [Bform, P.Qform_indicator_eq_inner F hF]
+  -- Now the goal is the polarization identity for A = P.proj F
+  exact inner_polarization_clm (P.proj F) x y
+
+/-! ### Spectral Integral -/
+
+open MeasureTheory in
+/-- The spectral integral `∫ f(λ) d⟨x, P(dλ)y⟩` for a spectral measure P,
+    defined via polarization of diagonal measures:
+
+    `∫ f d⟨x, Py⟩ = (1/4)[∫f dμ_{x+y} - ∫f dμ_{x-y} - i∫f dμ_{x+iy} + i∫f dμ_{x-iy}]`
+
+    where `μ_z(E) = ‖P(E)z‖²` is the diagonal spectral measure. -/
+noncomputable def SpectralMeasure.spectralIntegral (P : SpectralMeasure H)
+    (f : ℝ → ℂ) (x y : H) : ℂ :=
+  (1/4 : ℂ) * (∫ t, f t ∂(P.diagonalMeasure (x + y))
+    - ∫ t, f t ∂(P.diagonalMeasure (x - y))
+    - Complex.I * ∫ t, f t ∂(P.diagonalMeasure (x + Complex.I • y))
+    + Complex.I * ∫ t, f t ∂(P.diagonalMeasure (x - Complex.I • y)))
 
 open MeasureTheory in
 /-- For a spectral measure, construct the functional calculus via sesquilinear form.
@@ -1689,28 +2017,270 @@ theorem functionalCalculus_inner (P : SpectralMeasure H) (f : ℝ → ℂ)
   unfold functionalCalculus
   exact sesquilinearToOperator_inner (Bform P f) _ _ _ x y
 
+/-! ### Functional Calculus Helper Lemmas -/
+
+open MeasureTheory in
+/-- The functional calculus of an indicator function equals the spectral projection. -/
+theorem functionalCalculus_indicator (P : SpectralMeasure H) (F : Set ℝ) (hF : MeasurableSet F)
+    (hint : ∀ z : H, Integrable (F.indicator (fun _ => (1 : ℂ))) (P.diagonalMeasure z))
+    (hbdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖F.indicator (fun _ => (1 : ℂ)) t‖ ≤ M) :
+    functionalCalculus P (F.indicator (fun _ => (1 : ℂ))) hint hbdd = P.proj F := by
+  apply ContinuousLinearMap.ext; intro y
+  apply ext_inner_left ℂ; intro x
+  rw [← functionalCalculus_inner]
+  exact P.Bform_indicator_eq_inner F hF x y
+
+open MeasureTheory in
+/-- Linearity of Bform in f (addition): B_{f₁+f₂}(x,y) = B_{f₁}(x,y) + B_{f₂}(x,y). -/
+private theorem Bform_add_f (P : SpectralMeasure H) (f₁ f₂ : ℝ → ℂ) (x y : H)
+    (h1 : ∀ z : H, Integrable f₁ (P.diagonalMeasure z))
+    (h2 : ∀ z : H, Integrable f₂ (P.diagonalMeasure z)) :
+    Bform P (f₁ + f₂) x y = Bform P f₁ x y + Bform P f₂ x y := by
+  simp only [Bform, Qform, Pi.add_apply]
+  simp_rw [integral_add (h1 _) (h2 _)]
+  ring
+
+open MeasureTheory in
+/-- Linearity of Bform in f (scalar): B_{c·f}(x,y) = c · B_f(x,y). -/
+private theorem Bform_smul_f (P : SpectralMeasure H) (c : ℂ) (f : ℝ → ℂ) (x y : H)
+    (_hf : ∀ z : H, Integrable f (P.diagonalMeasure z)) :
+    Bform P (fun t => c * f t) x y = c * Bform P f x y := by
+  simp only [Bform, Qform]
+  have hI : ∀ z, ∫ t, c * f t ∂(P.diagonalMeasure z) =
+      c * ∫ t, f t ∂(P.diagonalMeasure z) := by
+    intro z
+    have : (fun t => c * f t) = fun t => c • f t := funext (fun t => (smul_eq_mul c (f t)).symm)
+    rw [this, integral_smul, smul_eq_mul]
+  simp_rw [hI]
+  ring
+
+open MeasureTheory in
+/-- Key multiplicative identity for indicators: Bform P (f · 1_F) x y = Bform P 1_F (fT†x) y.
+    Chain: Bform_comp_proj → functionalCalculus_inner → adjoint → Bform_indicator_eq_inner. -/
+private theorem Bform_mul_indicator (P : SpectralMeasure H) (f : ℝ → ℂ)
+    (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (F : Set ℝ) (hF : MeasurableSet F) (x y : H) :
+    Bform P (fun t => f t * F.indicator (fun _ => (1 : ℂ)) t) x y =
+    Bform P (F.indicator (fun _ => (1 : ℂ)))
+      ((functionalCalculus P f hf_int hf_bdd).adjoint x) y := by
+  calc Bform P (fun t => f t * F.indicator (fun _ => (1 : ℂ)) t) x y
+      = Bform P f x (P.proj F y) :=
+        (Bform_comp_proj P f F hF x y hf_int).symm
+    _ = @inner ℂ H _ x (functionalCalculus P f hf_int hf_bdd (P.proj F y)) :=
+        functionalCalculus_inner P f hf_int hf_bdd x (P.proj F y)
+    _ = @inner ℂ H _ ((functionalCalculus P f hf_int hf_bdd).adjoint x) (P.proj F y) :=
+        (ContinuousLinearMap.adjoint_inner_left _ (P.proj F y) x).symm
+    _ = Bform P (F.indicator (fun _ => (1 : ℂ)))
+          ((functionalCalculus P f hf_int hf_bdd).adjoint x) y :=
+        (P.Bform_indicator_eq_inner F hF _ y).symm
+
+open MeasureTheory in
 /-- The functional calculus is multiplicative: (fg)(T) = f(T)g(T)
 
     **Reference:** Reed-Simon Theorem VIII.5(b)
 
-    The proof uses that for simple functions fₙ, gₘ approximating f, g:
-    - (fₙ · gₘ)(T) = Σᵢⱼ fₙ(xᵢ)gₘ(xⱼ) P(Eᵢ ∩ Eⱼ)
-    - = Σᵢⱼ fₙ(xᵢ)gₘ(xⱼ) P(Eᵢ)P(Eⱼ)  (by P(E∩F) = P(E)P(F))
-    - = (Σᵢ fₙ(xᵢ)P(Eᵢ))(Σⱼ gₘ(xⱼ)P(Eⱼ))
-    - = fₙ(T) · gₘ(T)
-    Taking limits gives the result. -/
+    **Proof strategy:**
+    1. Reduce to showing Bform P (f*g) x y = Bform P f x (g(T)y) for all x, y.
+    2. For g = χ_F (indicator): follows from `Bform_comp_proj`.
+    3. For general g: approximate by simple gₙ → g pointwise (|gₙ| ≤ M).
+       - For each simple gₙ: decompose gₙ = Σ cⱼ χ_{Eⱼ}, use indicator case + linearity.
+       - LHS: Bform P (f·gₙ) x y → Bform P (f·g) x y by DCT.
+       - RHS: ⟨f(T)*x, gₙ(T)y⟩ → ⟨f(T)*x, g(T)y⟩ by DCT (weak convergence). -/
 theorem functionalCalculus_mul (P : SpectralMeasure H) (f g : ℝ → ℂ)
     (hf_int : ∀ z : H, MeasureTheory.Integrable f (P.diagonalMeasure z))
     (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
     (hg_int : ∀ z : H, MeasureTheory.Integrable g (P.diagonalMeasure z))
     (hg_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖g t‖ ≤ M)
     (hfg_int : ∀ z : H, MeasureTheory.Integrable (f * g) (P.diagonalMeasure z))
-    (hfg_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(f * g) t‖ ≤ M) :
+    (hfg_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(f * g) t‖ ≤ M)
+    (hg_meas : Measurable g) :
     functionalCalculus P (f * g) hfg_int hfg_bdd =
     functionalCalculus P f hf_int hf_bdd ∘L functionalCalculus P g hg_int hg_bdd := by
-  -- FOUNDATIONAL: Reed-Simon VIII.5(b)
-  -- Requires showing simple function approximations commute with multiplication
-  sorry
+  apply ContinuousLinearMap.ext; intro y
+  apply ext_inner_left ℂ; intro x
+  rw [ContinuousLinearMap.comp_apply,
+      ← functionalCalculus_inner P (f * g), ← functionalCalculus_inner P f]
+  -- Goal: Bform P (f * g) x y = Bform P f x (g(T)y)
+  -- Proof chain: Bform P (f*g) x y = Bform P g u y = ⟨u, g(T)y⟩ = ⟨x, f(T)(g(T)y)⟩
+  --   = Bform P f x (g(T)y), where u = f(T)†x.
+  -- The first step uses DCT + simple function approximation.
+  let fT := functionalCalculus P f hf_int hf_bdd
+  let gT := functionalCalculus P g hg_int hg_bdd
+  let u := fT.adjoint x
+  calc Bform P (f * g) x y
+      = Bform P g u y := by
+        -- Approximate g by simple functions sₙ → g, prove for each sₙ, take limits.
+        obtain ⟨Mg, hMg_pos, hMg⟩ := hg_bdd
+        let sn := fun n => SimpleFunc.approxOn g hg_meas
+          Set.univ 0 (Set.mem_univ 0) n
+        -- sₙ → g pointwise
+        have hs_tend : ∀ t, Filter.Tendsto (fun n => (sn n : ℝ → ℂ) t)
+            Filter.atTop (𝓝 (g t)) := fun t =>
+          SimpleFunc.tendsto_approxOn hg_meas (Set.mem_univ 0)
+            (subset_closure (Set.mem_univ _))
+        -- Bound on ‖sₙ(t)‖ ≤ 2Mg from edist_approxOn_le + triangle inequality
+        have h_sn_norm_le : ∀ n t, ‖(sn n : ℝ → ℂ) t‖ ≤ 2 * Mg := by
+          intro n t
+          have h_ed := SimpleFunc.edist_approxOn_le
+            hg_meas (Set.mem_univ 0) t n
+          -- edist (sn n t) (g t) ≤ edist 0 (g t), convert to nndist then norm
+          rw [edist_nndist, edist_nndist] at h_ed
+          have h_nn := ENNReal.coe_le_coe.mp h_ed
+          rw [nndist_eq_nnnorm, nndist_eq_nnnorm, zero_sub, nnnorm_neg] at h_nn
+          have h_le : ‖(sn n : ℝ → ℂ) t - g t‖ ≤ ‖g t‖ := by exact_mod_cast h_nn
+          linarith [norm_le_insert' ((sn n : ℝ → ℂ) t) (g t), hMg t]
+        -- For each n: Bform P (f * sₙ) x y = Bform P sₙ u y
+        -- Proved by SimpleFunc.induction: indicator case uses Bform_mul_indicator
+        have h_eq_n : ∀ n, Bform P (f * (sn n : ℝ → ℂ)) x y =
+            Bform P (sn n : ℝ → ℂ) u y := by
+          intro n
+          -- Prove for ALL simple functions, then specialize to sn n
+          suffices ∀ (s : SimpleFunc ℝ ℂ),
+              Bform P (f * ↑s) x y = Bform P (↑s) u y from this _
+          intro s
+          induction s using SimpleFunc.induction with
+          | const c hS =>
+            rename_i S
+            -- Goal: Bform P (f * ↑(piecewise S hS (const c) (const 0))) x y =
+            --       Bform P ↑(piecewise S hS (const c) (const 0)) u y
+            -- The coercion is definitionally S.indicator (fun _ => c), so use convert
+            have h_coe : ∀ t, (↑(SimpleFunc.piecewise S hS
+                (SimpleFunc.const ℝ c) (SimpleFunc.const ℝ 0)) : ℝ → ℂ) t =
+                S.indicator (fun _ => c) t := fun t => by
+              simp only [SimpleFunc.coe_piecewise, SimpleFunc.coe_const,
+                Function.const_apply, Set.piecewise, Set.indicator_apply]
+            -- Rewrite coercions using funext + h_coe
+            have h_eq : (↑(SimpleFunc.piecewise S hS (SimpleFunc.const ℝ c)
+                (SimpleFunc.const ℝ 0)) : ℝ → ℂ) =
+                S.indicator (fun _ => c) := funext h_coe
+            rw [h_eq]
+            -- Now: Bform P (f * S.indicator (fun _ => c)) x y =
+            --      Bform P (S.indicator (fun _ => c)) u y
+            -- Factor out c: indicator(c) = c • indicator(1)
+            have h_ind_c : S.indicator (fun _ => c) =
+                (fun t => c * S.indicator (fun _ => (1 : ℂ)) t) := by
+              ext t; by_cases ht : t ∈ S
+              · simp [Set.indicator_of_mem ht]
+              · simp [Set.indicator_of_notMem ht]
+            have h_f_ind_c : f * S.indicator (fun _ => c) =
+                (fun t => c * (f t * S.indicator (fun _ => (1 : ℂ)) t)) := by
+              ext t; by_cases ht : t ∈ S
+              · simp [Pi.mul_apply, Set.indicator_of_mem ht]; ring
+              · simp [Pi.mul_apply, Set.indicator_of_notMem ht, mul_zero]
+            rw [h_f_ind_c, h_ind_c]
+            -- Now use Bform_smul_f on both sides
+            have h_int_f1 : ∀ z : H, Integrable
+                (fun t => f t * S.indicator (fun _ => (1 : ℂ)) t)
+                (P.diagonalMeasure z) := fun z => by
+              haveI := P.diagonalMeasure_isFiniteMeasure z
+              have : (fun t => f t * S.indicator (fun _ => (1 : ℂ)) t) =
+                  S.indicator f := by
+                ext t; by_cases ht : t ∈ S
+                · simp [Set.indicator_of_mem ht]
+                · simp [Set.indicator_of_notMem ht]
+              rw [this]; exact (hf_int z).indicator hS
+            have h_int_1 : ∀ z : H, Integrable
+                (S.indicator (fun _ => (1 : ℂ)))
+                (P.diagonalMeasure z) := fun z => by
+              haveI := P.diagonalMeasure_isFiniteMeasure z
+              exact (integrable_const (1 : ℂ)).indicator hS
+            rw [Bform_smul_f P c _ x y h_int_f1,
+                Bform_mul_indicator P f hf_int hf_bdd S hS x y,
+                Bform_smul_f P c _ u y h_int_1]
+          | add hDisj ihf ihg =>
+            rename_i sf sg
+            -- Goal: Bform P (f * ↑(sf + sg)) x y = Bform P ↑(sf + sg) u y
+            -- Rewrite coe(sf + sg) = ↑sf + ↑sg
+            have h_coe_add : (↑(sf + sg) : ℝ → ℂ) = (↑sf : ℝ → ℂ) + (↑sg : ℝ → ℂ) :=
+              SimpleFunc.coe_add sf sg
+            rw [h_coe_add]
+            -- Rewrite f * (↑sf + ↑sg) = f * ↑sf + f * ↑sg
+            have h_mul_add : f * ((↑sf : ℝ → ℂ) + (↑sg : ℝ → ℂ)) =
+                f * (↑sf : ℝ → ℂ) + f * (↑sg : ℝ → ℂ) :=
+              mul_add f ↑sf ↑sg
+            rw [h_mul_add]
+            -- Integrability: f * sf and f * sg on finite spectral measures
+            have simpleFunc_integrable : ∀ (s : SimpleFunc ℝ ℂ) (z : H),
+                Integrable (↑s : ℝ → ℂ) (P.diagonalMeasure z) := fun s z => by
+              haveI := P.diagonalMeasure_isFiniteMeasure z
+              have hne : s.range.Nonempty :=
+                ⟨s 0, SimpleFunc.mem_range.mpr ⟨0, rfl⟩⟩
+              exact (integrable_const (s.range.sup' hne (fun c => ‖c‖))).mono'
+                s.stronglyMeasurable.aestronglyMeasurable
+                (Eventually.of_forall (fun t =>
+                  Finset.le_sup' _ (SimpleFunc.mem_range.mpr ⟨t, rfl⟩)))
+            have f_simpleFunc_integrable : ∀ (s : SimpleFunc ℝ ℂ) (z : H),
+                Integrable (f * (↑s : ℝ → ℂ)) (P.diagonalMeasure z) := fun s z => by
+              haveI := P.diagonalMeasure_isFiniteMeasure z
+              obtain ⟨Mf, hMf_nn, hMf⟩ := hf_bdd
+              have hne : s.range.Nonempty :=
+                ⟨s 0, SimpleFunc.mem_range.mpr ⟨0, rfl⟩⟩
+              exact (integrable_const (Mf * s.range.sup' hne (fun c => ‖c‖))).mono'
+                ((hf_int z).aestronglyMeasurable.mul
+                  s.stronglyMeasurable.aestronglyMeasurable)
+                (Eventually.of_forall (fun t => by
+                  rw [Pi.mul_apply, norm_mul]
+                  exact mul_le_mul (hMf t)
+                    (Finset.le_sup' _ (SimpleFunc.mem_range.mpr ⟨t, rfl⟩))
+                    (norm_nonneg _) hMf_nn))
+            rw [Bform_add_f P _ _ x y (fun z => f_simpleFunc_integrable sf z)
+                (fun z => f_simpleFunc_integrable sg z), ihf, ihg]
+            exact (Bform_add_f P _ _ u y (fun z => simpleFunc_integrable sf z)
+                (fun z => simpleFunc_integrable sg z)).symm
+        -- LHS: Bform P (f * sₙ) x y → Bform P (f * g) x y by DCT
+        have h_lhs : Filter.Tendsto (fun n => Bform P (f * (sn n : ℝ → ℂ)) x y)
+            Filter.atTop (𝓝 (Bform P (f * g) x y)) := by
+          simp only [Bform]
+          obtain ⟨Mf, hMf_nn, hMf⟩ := hf_bdd
+          have hQ : ∀ z, Filter.Tendsto
+              (fun n => Qform P (f * (sn n : ℝ → ℂ)) z)
+              Filter.atTop (𝓝 (Qform P (f * g) z)) := by
+            intro z; simp only [Qform]
+            haveI := P.diagonalMeasure_isFiniteMeasure z
+            exact tendsto_integral_of_dominated_convergence
+              (fun _ => Mf * (2 * Mg))
+              (fun n => (hf_int z).aestronglyMeasurable.mul
+                (sn n).stronglyMeasurable.aestronglyMeasurable)
+              (integrable_const _)
+              (fun n => ae_of_all _ (fun t => by
+                rw [Pi.mul_apply, norm_mul]
+                exact mul_le_mul (hMf t) (h_sn_norm_le n t)
+                  (norm_nonneg _) hMf_nn))
+              (ae_of_all _ (fun t => tendsto_const_nhds.mul (hs_tend t)))
+          exact tendsto_const_nhds.mul
+            ((((hQ (x + y)).sub (hQ (x - y))).sub
+              (tendsto_const_nhds.mul (hQ (x + Complex.I • y)))).add
+              (tendsto_const_nhds.mul (hQ (x - Complex.I • y))))
+        -- RHS: Bform P sₙ u y → Bform P g u y by DCT
+        have h_rhs : Filter.Tendsto (fun n => Bform P (sn n : ℝ → ℂ) u y)
+            Filter.atTop (𝓝 (Bform P g u y)) := by
+          simp only [Bform]
+          have hQ : ∀ z, Filter.Tendsto
+              (fun n => Qform P (sn n : ℝ → ℂ) z)
+              Filter.atTop (𝓝 (Qform P g z)) := by
+            intro z; simp only [Qform]
+            haveI := P.diagonalMeasure_isFiniteMeasure z
+            exact tendsto_integral_of_dominated_convergence
+              (fun _ => 2 * Mg)
+              (fun n => (sn n).stronglyMeasurable.aestronglyMeasurable)
+              (integrable_const _)
+              (fun n => ae_of_all _ (fun t => h_sn_norm_le n t))
+              (ae_of_all _ hs_tend)
+          exact tendsto_const_nhds.mul
+            ((((hQ (u + y)).sub (hQ (u - y))).sub
+              (tendsto_const_nhds.mul (hQ (u + Complex.I • y)))).add
+              (tendsto_const_nhds.mul (hQ (u - Complex.I • y))))
+        -- Both sequences are equal (h_eq_n), limits agree by uniqueness
+        exact tendsto_nhds_unique
+          (by rwa [show (fun n => Bform P (f * (sn n : ℝ → ℂ)) x y) =
+              (fun n => Bform P (sn n : ℝ → ℂ) u y) from funext h_eq_n] at h_lhs) h_rhs
+    _ = @inner ℂ H _ u (gT y) :=
+        functionalCalculus_inner P g hg_int hg_bdd u y
+    _ = @inner ℂ H _ x (fT (gT y)) :=
+        ContinuousLinearMap.adjoint_inner_left fT (gT y) x
+    _ = Bform P f x (gT y) :=
+        (functionalCalculus_inner P f hf_int hf_bdd x (gT y)).symm
 
 /-- The functional calculus respects adjoints: f(T)* = f̄(T)
 
@@ -1913,45 +2483,78 @@ theorem UnboundedOperator.spectralMeasure_eq_RMK (T : UnboundedOperator H)
     spectralMeasureFromRMK T hT hsa (T.spectralCayley hT hsa) E hE :=
   (spectral_theorem_pvm T hT hsa).choose_spec.choose_spec E hE
 
-/-- **The Spectral Theorem for Unbounded Self-Adjoint Operators**
+/-- **The Spectral Theorem** (Reed-Simon Theorem VIII.4).
 
     For every densely defined self-adjoint operator T on a Hilbert space H,
-    there exists a spectral measure P such that T = ∫ λ dP(λ) in the sense:
+    there exists a unique projection-valued measure P (constructed sorry-free
+    by `spectral_theorem_pvm`) such that for all bounded measurable f : ℝ → ℂ:
 
-    `⟨x, T y⟩ = ∫ λ d⟨x, P(·) y⟩(λ)` for all x ∈ H, y ∈ dom(T)
+    `⟨x, f(T) y⟩ = ∫ f(λ) d⟨x, P(dλ) y⟩`
 
-    This combines two results:
-    1. `spectral_theorem_pvm` (sorry-free): constructs the PVM P
-    2. `spectral_theorem_TP_connection`: the T-P connection ⟨x, Ty⟩ = spectral integral
+    where `f(T) = functionalCalculus P f` is the spectral integral operator
+    and `P.spectralIntegral f x y` is the polarized spectral integral
+    `(1/4)[∫f dμ_{x+y} - ∫f dμ_{x-y} - i∫f dμ_{x+iy} + i∫f dμ_{x-iy}]`
+    with `μ_z(E) = ‖P(E) z‖²`.
 
     References: Reed-Simon Theorem VIII.4, Rudin Theorem 13.30 -/
 theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) :
-    let _P := T.spectralMeasure hT hsa
-    let C := T.spectralCayley hT hsa
-    -- T = ∫ λ dP(λ): for all x ∈ H, y ∈ dom(T),
-    -- ⟨x, Ty⟩ = spectral integral of identity function
-    ∀ (x : H) (y : T.domain),
-      @inner ℂ H _ x (T.toFun y) =
-      spectralMeasurePolarizedOnR T hT hsa C x (y : H) Set.univ MeasurableSet.univ := by
-  intro _P C x y
-  exact spectral_theorem_TP_connection T hT hsa C x y
+    let P := T.spectralMeasure hT hsa
+    ∀ (f : ℝ → ℂ) (hf_int : ∀ z : H, MeasureTheory.Integrable f (P.diagonalMeasure z))
+      (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M) (x y : H),
+      @inner ℂ H _ x (functionalCalculus P f hf_int hf_bdd y) =
+      P.spectralIntegral f x y := by
+  intro P f hf_int hf_bdd x y
+  -- functionalCalculus_inner: Bform P f x y = ⟨x, functionalCalculus P f y⟩
+  -- P.spectralIntegral = Bform (both expand to the same polarized integral)
+  have h := functionalCalculus_inner P f hf_int hf_bdd x y
+  rw [← h]
+  -- Goal: Bform P f x y = P.spectralIntegral f x y
+  -- Both expand to the same polarized integral expression
+  unfold Bform Qform SpectralMeasure.spectralIntegral; rfl
 
 /-! ### Powers of positive self-adjoint operators -/
 
-/-- For a positive self-adjoint operator T and s ∈ ℂ, define T^s.
-    This uses functional calculus: T^s = ∫ λ^s dP(λ) -/
+/-- For a positive self-adjoint operator T and s ∈ ℂ with Re(s) = 0, define T^s.
+    This uses functional calculus: T^s = ∫ λ^s dP(λ).
+    The hypothesis Re(s) = 0 ensures the integrand |λ^s| = 1 is bounded. -/
 def UnboundedOperator.power (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (_hpos : T.IsPositive) (s : ℂ) : H →L[ℂ] H :=
+    (hsa : T.IsSelfAdjoint hT) (_hpos : T.IsPositive) (s : ℂ) (hs : s.re = 0) :
+    H →L[ℂ] H :=
   let P := T.spectralMeasure hT hsa
   let f := fun x : ℝ => if x > 0 then Complex.exp (s * Complex.log x) else 0
   functionalCalculus P f
-    (by -- Integrability: f is bounded ∧ μ_z is finite → integrable
-      -- For pure imaginary s, |f(x)| ≤ 1. For general s, this requires
-      -- more infrastructure about spectral measure support.
-      sorry)
-    (by -- Boundedness: for pure imaginary s, |exp(s * log x)| = 1
-      sorry)
+    (by -- Integrability: |f(x)| ≤ 1 (since Re(s) = 0) and μ_z is finite → integrable
+      intro z; haveI := P.diagonalMeasure_isFiniteMeasure z
+      have hf_bdd : ∀ x, ‖f x‖ ≤ 1 := by
+        intro x; simp only [f]
+        split_ifs with hx
+        · rw [Complex.norm_exp,
+              show Complex.log (↑x : ℂ) = ↑(Real.log x) from
+                (Complex.ofReal_log (le_of_lt hx)).symm]
+          have hre : (s * ↑(Real.log x)).re = 0 := by
+            simp [Complex.mul_re, Complex.ofReal_re, Complex.ofReal_im, hs]
+          rw [hre, Real.exp_zero]
+        · simp
+      exact (MeasureTheory.integrable_const (1 : ℂ)).mono
+        (Measurable.aestronglyMeasurable (by
+          apply Measurable.ite measurableSet_Ioi
+          · exact Complex.continuous_exp.measurable.comp
+              (measurable_const.mul
+                (Complex.measurable_log.comp Complex.continuous_ofReal.measurable))
+          · exact measurable_const))
+        (by filter_upwards with x; simp only [norm_one]; exact hf_bdd x))
+    (by -- Boundedness: |exp(s * log x)| = exp(Re(s * log x)) = exp(0) = 1
+      refine ⟨1, zero_le_one, fun x => ?_⟩
+      simp only [f]
+      split_ifs with hx
+      · rw [Complex.norm_exp,
+            show Complex.log (↑x : ℂ) = ↑(Real.log x) from
+              (Complex.ofReal_log (le_of_lt hx)).symm]
+        have hre : (s * ↑(Real.log x)).re = 0 := by
+          simp [Complex.mul_re, Complex.ofReal_re, Complex.ofReal_im, hs]
+        rw [hre, Real.exp_zero]
+      · simp)
 
 /-- T^0 = 1
 
@@ -1960,7 +2563,7 @@ def UnboundedOperator.power (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     Depends on: functional calculus identity property. -/
 theorem UnboundedOperator.power_zero (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) :
-    T.power hT hsa hpos 0 = 1 := by
+    T.power hT hsa hpos 0 (by simp [Complex.zero_re]) = 1 := by
   /-
   PROOF STRUCTURE:
 
@@ -2002,8 +2605,10 @@ theorem UnboundedOperator.power_zero (T : UnboundedOperator H) (hT : T.IsDensely
     so ∫ λ^(s+t) dP = ∫ (λ^s · λ^t) dP = (∫ λ^s dP)(∫ λ^t dP) = T^s ∘ T^t.
     Depends on: `functionalCalculus_mul`. -/
 theorem UnboundedOperator.power_add (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (s t : ℂ) :
-    T.power hT hsa hpos (s + t) = T.power hT hsa hpos s ∘L T.power hT hsa hpos t := by
+    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (s t : ℂ)
+    (hs : s.re = 0) (ht : t.re = 0) :
+    T.power hT hsa hpos (s + t) (by simp [Complex.add_re, hs, ht]) =
+    T.power hT hsa hpos s hs ∘L T.power hT hsa hpos t ht := by
   /-
   PROOF STRUCTURE:
 
@@ -2035,7 +2640,9 @@ theorem UnboundedOperator.power_add (T : UnboundedOperator H) (hT : T.IsDenselyD
     Depends on: `functionalCalculus_star`, `power_add`, `power_zero`. -/
 theorem UnboundedOperator.power_imaginary_unitary (T : UnboundedOperator H)
     (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) :
-    let u := T.power hT hsa hpos (Complex.I * t)
+    let hs : (Complex.I * ↑t).re = 0 := by
+      simp [Complex.mul_re, Complex.I_re, Complex.I_im, Complex.ofReal_re, Complex.ofReal_im]
+    let u := T.power hT hsa hpos (Complex.I * t) hs
     ContinuousLinearMap.adjoint u ∘L u = 1 ∧ u ∘L ContinuousLinearMap.adjoint u = 1 := by
   /-
   PROOF STRUCTURE:
@@ -2067,7 +2674,8 @@ theorem UnboundedOperator.power_imaginary_unitary (T : UnboundedOperator H)
     U(t) = T^{it} for positive self-adjoint T -/
 def unitaryGroup (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) : H →L[ℂ] H :=
-  T.power hT hsa hpos (Complex.I * t)
+  T.power hT hsa hpos (Complex.I * t) (by
+    simp [Complex.mul_re, Complex.I_re, Complex.I_im, Complex.ofReal_re, Complex.ofReal_im])
 
 /-- The group law: U(s) ∘ U(t) = U(s+t) -/
 theorem unitaryGroup_mul (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
@@ -2076,15 +2684,15 @@ theorem unitaryGroup_mul (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     unitaryGroup T hT hsa hpos (s + t) := by
   -- U(s) ∘ U(t) = T^{is} ∘ T^{it} = T^{i(s+t)} = U(s+t)
   unfold unitaryGroup
-  have h := T.power_add hT hsa hpos (Complex.I * s) (Complex.I * t)
-  -- h: T^{is + it} = T^{is} ∘ T^{it}
-  -- Need to show: T^{is} ∘ T^{it} = T^{i(s+t)}
-  -- Note: is + it = i(s+t) by distributivity
-  have heq : Complex.I * ↑s + Complex.I * ↑t = Complex.I * ↑(s + t) := by
-    push_cast
-    ring
-  rw [← heq]
-  exact h.symm
+  -- Handle dependent proof argument via suffices + subst
+  suffices key : ∀ (a b c : ℂ) (ha : a.re = 0) (hb : b.re = 0) (hc : c.re = 0),
+      a + b = c →
+      T.power hT hsa hpos a ha ∘L T.power hT hsa hpos b hb =
+      T.power hT hsa hpos c hc by
+    exact key _ _ _ _ _ _ (by push_cast; ring)
+  intro a b c ha hb hc heq
+  subst heq
+  exact (T.power_add hT hsa hpos a b ha hb).symm
 
 /-- U(0) = 1 -/
 theorem unitaryGroup_zero (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
@@ -2092,10 +2700,14 @@ theorem unitaryGroup_zero (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     unitaryGroup T hT hsa hpos 0 = 1 := by
   -- U(0) = T^{i·0} = T^0 = 1
   unfold unitaryGroup
-  have h : Complex.I * (0 : ℝ) = 0 := by simp
-  rw [h]
+  suffices key : ∀ (s : ℂ) (hs : s.re = 0), s = 0 →
+      T.power hT hsa hpos s hs = 1 by
+    exact key _ _ (by push_cast; ring)
+  intro s hs heq
+  subst heq
   exact T.power_zero hT hsa hpos
 
+open MeasureTheory in
 /-- U(t)* = U(-t)
 
     **Proof:** Uses `functionalCalculus_star`:
@@ -2105,8 +2717,76 @@ theorem unitaryGroup_inv (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) :
     ContinuousLinearMap.adjoint (unitaryGroup T hT hsa hpos t) =
     unitaryGroup T hT hsa hpos (-t) := by
-  -- Depends on functionalCalculus_star (sorry'd)
-  sorry
+  unfold unitaryGroup UnboundedOperator.power
+  set P := T.spectralMeasure hT hsa
+  set f_it := fun x : ℝ => if x > 0 then Complex.exp (Complex.I * ↑t * Complex.log ↑x)
+    else (0 : ℂ)
+  set f_neg := fun x : ℝ => if x > 0 then Complex.exp (Complex.I * ↑(-t) * Complex.log ↑x)
+    else (0 : ℂ)
+  -- Key identity: star ∘ f_it = f_neg
+  have hsfg : star ∘ f_it = f_neg := by
+    funext x
+    simp only [Function.comp, f_it, f_neg]
+    split_ifs with hx
+    · have hx_nn : (0 : ℝ) ≤ x := le_of_lt hx
+      have hlog_real : Complex.log (↑x : ℂ) = ↑(Real.log x) :=
+        (Complex.ofReal_log hx_nn).symm
+      rw [hlog_real]
+      have star_exp : ∀ z : ℂ, star (Complex.exp z) = Complex.exp (star z) := by
+        intro z; simp [Complex.exp_conj]
+      rw [star_exp]
+      congr 1
+      simp only [star_mul', Complex.star_def, Complex.conj_I, Complex.conj_ofReal]
+      push_cast; ring
+    · simp [star_zero]
+  -- Norm bound: ‖f_it x‖ ≤ 1 for all x
+  have hf_norm_le : ∀ x, ‖f_it x‖ ≤ 1 := by
+    intro x; simp only [f_it]
+    split_ifs with hx
+    · rw [show Complex.log (↑x : ℂ) = ↑(Real.log x) from
+        (Complex.ofReal_log (le_of_lt hx)).symm, Complex.norm_exp]
+      have hre : (Complex.I * ↑t * ↑(Real.log x)).re = 0 := by
+        simp [Complex.mul_re, Complex.I_re, Complex.I_im,
+          Complex.ofReal_re, Complex.ofReal_im]
+      rw [hre, Real.exp_zero]
+    · simp
+  -- Measurability of f_it
+  have hf_meas : Measurable f_it := by
+    apply Measurable.ite (measurableSet_Ioi)
+    · exact Complex.continuous_exp.measurable.comp
+        (measurable_const.mul (Complex.measurable_log.comp Complex.continuous_ofReal.measurable))
+    · exact measurable_const
+  -- Measurability of star ∘ f_it
+  have hsf_meas : Measurable (star ∘ f_it) :=
+    continuous_star.measurable.comp hf_meas
+  -- Norm bound for star ∘ f_it
+  have hsf_norm_le : ∀ x, ‖(star ∘ f_it) x‖ ≤ 1 := by
+    intro x; simp only [Function.comp, norm_star]; exact hf_norm_le x
+  -- Integrability of f_it (bounded measurable function against finite measure)
+  have hf_int : ∀ z : H, Integrable f_it (P.diagonalMeasure z) := by
+    intro z; haveI := P.diagonalMeasure_isFiniteMeasure z
+    exact (integrable_const (1 : ℂ)).mono hf_meas.aestronglyMeasurable
+      (by filter_upwards with x; simp only [norm_one]; exact hf_norm_le x)
+  have hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f_it t‖ ≤ M := ⟨1, zero_le_one, hf_norm_le⟩
+  -- Star integrability and boundedness (from scratch, same argument)
+  have hsf_int : ∀ z : H, Integrable (star ∘ f_it) (P.diagonalMeasure z) := by
+    intro z; haveI := P.diagonalMeasure_isFiniteMeasure z
+    exact (integrable_const (1 : ℂ)).mono hsf_meas.aestronglyMeasurable
+      (by filter_upwards with x; simp only [norm_one]; exact hsf_norm_le x)
+  have hsf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(star ∘ f_it) t‖ ≤ M :=
+    ⟨1, zero_le_one, hsf_norm_le⟩
+  -- Apply functionalCalculus_star then use function equality
+  have h_star := functionalCalculus_star P f_it hf_int hf_bdd hsf_int hsf_bdd
+  rw [h_star]
+  -- Goal: functionalCalculus P (star ∘ f_it) ... = functionalCalculus P f_neg ...
+  -- Since star ∘ f_it = f_neg and functionalCalculus is proof-irrelevant
+  -- (uses Classical.choose on a Prop depending only on Bform P f),
+  -- it suffices to show the function arguments are equal.
+  unfold functionalCalculus
+  show sesquilinearToOperator (Bform P (star ∘ f_it)) _ _ _ =
+       sesquilinearToOperator (Bform P f_neg) _ _ _
+  congr 1
+  simp only [hsfg]
 
 /-- U(-t) ∘ U(t) = 1 (left inverse) -/
 theorem unitaryGroup_neg_comp (T : UnboundedOperator H) (hT : T.IsDenselyDefined)

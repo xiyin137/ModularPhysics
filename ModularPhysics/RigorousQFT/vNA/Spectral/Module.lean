@@ -4,7 +4,8 @@ Released under Apache 2.0 license.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.vNA.Spectral.CayleyTransform
-import ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC
+import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralViaCayleyRMK
+import ModularPhysics.RigorousQFT.vNA.Spectral.SigmaAdditivity
 
 /-!
 # Spectral Theory Module (vNA/Spectral/)
@@ -12,17 +13,18 @@ import ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC
 This module re-exports the spectral theory infrastructure.
 Note: This is separate from `vNA/Unbounded/Spectral.lean` which contains
 the main `SpectralMeasure` structure and theorems. This folder contains
-supporting infrastructure for the Cayley transform approach.
+supporting infrastructure for the RMK-based spectral construction.
 
 1. **CayleyTransform** - The bijection between unbounded self-adjoint operators and
    unitary operators. Key definitions:
    - `CayleyTransform` - U = (T-i)(T+i)⁻¹
    - `cayleyMap` - The map λ ↦ (λ-i)/(λ+i) from ℝ to S¹
 
-2. **FunctionalCalculusFromCFC** - Connection to Mathlib's continuous functional
-   calculus infrastructure. Key definitions:
-   - `UnboundedCFC` - f(T) via Cayley transform
-   - `spectralProjection` - P(E) for Borel sets E
+2. **SpectralViaCayleyRMK** - Spectral measure construction via Riesz-Markov-Kakutani
+   (sorry-free). Key definitions:
+   - `spectralMeasureFromRMK` - P(E) for Borel sets E
+
+3. **SigmaAdditivity** - σ-additivity of spectral projections (sorry-free)
 
 ## Mathematical Background
 
@@ -32,11 +34,11 @@ where P is a projection-valued measure.
 
 Our approach uses:
 1. The Cayley transform to reduce to bounded (unitary) operators
-2. Mathlib's CFC infrastructure for bounded normal operators
-3. Pullback via the inverse Cayley map
+2. Riesz-Markov-Kakutani representation theorem for spectral measures
+3. Sesquilinear form approach for functional calculus f(T)
 
 ## References
 
 * Reed-Simon, "Methods of Modern Mathematical Physics I", Chapter VIII
-* Mathlib's Analysis.CStarAlgebra.ContinuousFunctionalCalculus
+* Rudin, "Functional Analysis", Chapter 13
 -/
