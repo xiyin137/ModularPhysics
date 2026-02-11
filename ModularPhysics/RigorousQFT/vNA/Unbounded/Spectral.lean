@@ -8,6 +8,8 @@ import ModularPhysics.RigorousQFT.vNA.Spectral.CayleyTransform
 import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralViaCayleyRMK
 import ModularPhysics.RigorousQFT.vNA.Spectral.SigmaAdditivity
 import ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC.Basic
+import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralStieltjes
+import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralIntegral
 import Mathlib.MeasureTheory.Integral.Bochner.Basic
 import Mathlib.MeasureTheory.Measure.Regular
 import Mathlib.Topology.Algebra.Module.Basic
@@ -418,6 +420,367 @@ theorem proj_sum_norm_le_sup {n : ℕ} (c : Fin n → ℂ) (E : Fin n → Set �
     _ = |M| * ‖x‖ := by rw [Real.sqrt_mul (sq_nonneg M), Real.sqrt_sq_eq_abs, Real.sqrt_sq (norm_nonneg x)]
     _ = M * ‖x‖ := by rw [abs_of_nonneg hM_pos]
 
+/-! ### Distribution function and diagonal measure -/
+
+/-- ⟨x, P(E)x⟩ is real and non-negative (uses idempotence and self-adjointness). -/
+theorem inner_proj_nonneg (E : Set ℝ) (hE : MeasurableSet E) (x : H) :
+    0 ≤ (@inner ℂ H _ x (P.proj E x)).re := by
+  rw [← P.norm_sq_eq_inner E hE x]; exact sq_nonneg _
+
+/-- ⟨x, P(E)x⟩.re ≤ ‖x‖² for any spectral projection. -/
+theorem inner_proj_le_norm_sq (E : Set ℝ) (x : H) :
+    (@inner ℂ H _ x (P.proj E x)).re ≤ ‖x‖^2 := by
+  by_cases hE : MeasurableSet E
+  · rw [← P.norm_sq_eq_inner E hE x]
+    exact sq_le_sq' (by linarith [norm_nonneg (P.proj E x), norm_nonneg x]) (P.proj_norm_le E x)
+  · rw [P.proj_nonmeasurable E hE, ContinuousLinearMap.zero_apply, inner_zero_right,
+        Complex.zero_re]
+    exact sq_nonneg _
+
+/-- For decreasing measurable sets with intersection S, P(E_n)x → P(S)x.
+    Proof: σ-additivity on the difference sets gives a convergent telescoping sum. -/
+theorem proj_decreasing_tendsto_meas (x : H) (E : ℕ → Set ℝ) (S : Set ℝ)
+    (hE_meas : ∀ i, MeasurableSet (E i)) (hS_meas : MeasurableSet S)
+    (hE_dec : ∀ n, E (n + 1) ⊆ E n) (hS_eq : ⋂ n, E n = S)
+    (hS_sub : ∀ n, S ⊆ E n) :
+    Tendsto (fun n => P.proj (E n) x) atTop (nhds (P.proj S x)) := by
+  -- Define difference sets F_k = E_k \ E_{k+1}
+  set F : ℕ → Set ℝ := fun k => E k \ E (k + 1) with hF_def
+  have hF_meas : ∀ k, MeasurableSet (F k) := fun k => (hE_meas k).diff (hE_meas (k + 1))
+  -- F_k are pairwise disjoint
+  have hF_disj : ∀ i j, i ≠ j → Disjoint (F i) (F j) := by
+    intro i j hij
+    apply Set.disjoint_left.mpr
+    intro z hz hzj
+    rcases lt_or_gt_of_ne hij with h | h
+    · exact hz.2 (decreasing_chain_le hE_dec (show i + 1 ≤ j by omega) hzj.1)
+    · exact hzj.2 (decreasing_chain_le hE_dec (show j + 1 ≤ i by omega) hz.1)
+  -- Finite additivity: P(E_k)x = P(E_{k+1})x + P(F_k)x
+  have htelesc : ∀ k, P.proj (E k) x = P.proj (E (k + 1)) x + P.proj (F k) x := by
+    intro k
+    have h := P.additive_disjoint (E (k + 1)) (F k) (hE_meas _) (hF_meas k)
+      (Set.disjoint_left.mpr fun z hz ⟨_, hzd⟩ => hzd hz)
+    rw [Set.union_diff_cancel (hE_dec k)] at h
+    have hx := congrFun (congrArg DFunLike.coe h) x
+    simp only [ContinuousLinearMap.add_apply] at hx
+    exact hx
+  -- Telescoping: ∑_{k<n} P(F_k)x = P(E_0)x - P(E_n)x
+  have htelesc_sum : ∀ n, ∑ k ∈ Finset.range n, P.proj (F k) x =
+      P.proj (E 0) x - P.proj (E n) x := by
+    intro n; induction n with
+    | zero => simp
+    | succ m ih =>
+      rw [Finset.sum_range_succ, ih, (sub_eq_of_eq_add (htelesc m)).symm]
+      abel
+  -- P(E_n)x = P(E_0)x - ∑_{k<n} P(F_k)x
+  have hEn_eq : ∀ n, P.proj (E n) x =
+      P.proj (E 0) x - ∑ k ∈ Finset.range n, P.proj (F k) x := by
+    intro n; rw [htelesc_sum n]; abel
+  -- ⋃_k F_k = E_0 \ S
+  have hF_union : ⋃ k, F k = E 0 \ S := by
+    ext z; simp only [Set.mem_iUnion, Set.mem_diff]
+    constructor
+    · rintro ⟨k, hzk, hzk'⟩
+      exact ⟨decreasing_chain_le hE_dec (Nat.zero_le k) hzk,
+             fun hzS => hzk' (hS_sub (k + 1) hzS)⟩
+    · rintro ⟨hz0, hzS⟩
+      rw [← hS_eq] at hzS
+      simp only [Set.mem_iInter] at hzS
+      push_neg at hzS
+      obtain ⟨m, hm⟩ := hzS
+      haveI : DecidablePred (fun m => z ∉ E m) := Classical.decPred _
+      have hexists : ∃ m, z ∉ E m := ⟨m, hm⟩
+      set k := Nat.find hexists
+      have hk_spec : z ∉ E k := Nat.find_spec hexists
+      have hk_pos : k ≠ 0 := fun hk0 => by rw [hk0] at hk_spec; exact hk_spec hz0
+      have hk_prev : z ∈ E (k - 1) := by
+        by_contra hc; exact Nat.find_min hexists (by omega) hc
+      exact ⟨k - 1, hk_prev, by rwa [show k - 1 + 1 = k from by omega]⟩
+  -- E_0 = S ∪ (E_0 \ S), so P(E_0)x = P(S)x + P(E_0\S)x
+  have hE0_decomp : P.proj (E 0) x = P.proj S x + P.proj (E 0 \ S) x := by
+    have h := P.additive_disjoint S (E 0 \ S) hS_meas ((hE_meas 0).diff hS_meas)
+      (Set.disjoint_left.mpr fun _ hzS ⟨_, hzd⟩ => hzd hzS)
+    rw [Set.union_diff_cancel (hS_sub 0)] at h
+    have hx := congrFun (congrArg DFunLike.coe h) x
+    simp only [ContinuousLinearMap.add_apply] at hx
+    exact hx
+  -- σ-additivity: ∑ P(F_k)x → P(E_0 \ S)x
+  have hF_sigma := P.sigma_additive F hF_meas hF_disj x
+  rw [hF_union] at hF_sigma
+  -- P(E_n)x = P(E_0)x - ∑ P(F_k)x → P(E_0)x - P(E_0\S)x = P(S)x
+  have h_sub := tendsto_const_nhds (x := P.proj (E 0) x) |>.sub hF_sigma
+  have h_eq : P.proj (E 0) x - P.proj (E 0 \ S) x = P.proj S x :=
+    sub_eq_iff_eq_add.mpr hE0_decomp
+  rw [h_eq] at h_sub
+  exact h_sub.congr (fun n => (hEn_eq n).symm)
+
+/-- The spectral distribution function for a SpectralMeasure.
+    F_x(t) = ⟨x, P(Iic t) x⟩ = ‖P(Iic t) x‖² -/
+def distributionFunction (x : H) : SpectralDistribution where
+  toFun := fun t => (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re
+  mono := by
+    intro a b hab; dsimp
+    rw [← P.norm_sq_eq_inner _ measurableSet_Iic, ← P.norm_sq_eq_inner _ measurableSet_Iic]
+    exact sq_le_sq'
+      (by linarith [norm_nonneg (P.proj (Set.Iic a) x), norm_nonneg (P.proj (Set.Iic b) x)])
+      (P.monotone _ _ measurableSet_Iic measurableSet_Iic (Set.Iic_subset_Iic.mpr hab) x)
+  right_continuous := by
+    intro t
+    -- Step 1: Sequential convergence P(Iic(t + 1/(n+1)))x → P(Iic t)x
+    set E := fun n : ℕ => Set.Iic (t + 1 / ((↑n : ℝ) + 1))
+    have hE_dec : ∀ n, E (n + 1) ⊆ E n := by
+      intro n; simp only [E]; apply Set.Iic_subset_Iic.mpr
+      have h1 : (0 : ℝ) < (↑n : ℝ) + 1 := by positivity
+      linarith [one_div_le_one_div_of_le h1 (by push_cast; linarith : (↑n : ℝ) + 1 ≤ ↑(n + 1) + 1)]
+    have hE_inter : ⋂ n, E n = Set.Iic t := by
+      ext s; simp only [Set.mem_iInter, Set.mem_Iic, E]
+      refine ⟨fun h => ?_, fun hs n => le_add_of_le_of_nonneg hs (by positivity)⟩
+      by_contra hst; push_neg at hst
+      obtain ⟨n, hn⟩ := exists_nat_gt (1 / (s - t))
+      have hpos : (0 : ℝ) < s - t := sub_pos.mpr hst
+      have h1 : 1 < (↑n : ℝ) * (s - t) := by rwa [div_lt_iff₀ hpos] at hn
+      have h2 : (s - t) * ((↑n : ℝ) + 1) ≤ 1 :=
+        (le_div_iff₀ (by positivity : (0:ℝ) < ↑n + 1)).mp (by linarith [h n])
+      nlinarith [mul_comm (s - t) (↑n : ℝ)]
+    have hconv := P.proj_decreasing_tendsto_meas x E (Set.Iic t)
+      (fun _ => measurableSet_Iic) measurableSet_Iic hE_dec hE_inter
+      (fun n => Set.Iic_subset_Iic.mpr (le_add_of_nonneg_right (by positivity)))
+    -- Compose with continuous map y ↦ ⟨x, y⟩.re
+    have hcont : Continuous (fun y : H => (@inner ℂ H _ x y).re) := by fun_prop
+    have hseq : Tendsto (fun n : ℕ => (@inner ℂ H _ x (P.proj (E n) x)).re)
+        atTop (nhds ((@inner ℂ H _ x (P.proj (Set.Iic t) x)).re)) :=
+      hcont.continuousAt.tendsto.comp hconv
+    -- Step 2: ContinuousWithinAt from monotonicity + sequential convergence
+    rw [Metric.continuousWithinAt_iff]
+    intro ε hε
+    rw [Metric.tendsto_atTop] at hseq
+    obtain ⟨N, hN⟩ := hseq ε hε
+    refine ⟨1 / ((↑N : ℝ) + 1), by positivity, fun s hs hds => ?_⟩
+    have hst : t ≤ s := hs
+    have hsd : s < t + 1 / ((↑N : ℝ) + 1) := by
+      rw [Real.dist_eq, abs_lt] at hds; linarith [hds.2]
+    -- f(t) ≤ f(s) ≤ f(t + 1/(N+1)) by monotonicity
+    have h_lo : (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re ≤
+        (@inner ℂ H _ x (P.proj (Set.Iic s) x)).re := by
+      rw [← P.norm_sq_eq_inner _ measurableSet_Iic, ← P.norm_sq_eq_inner _ measurableSet_Iic]
+      have := P.monotone _ _ measurableSet_Iic measurableSet_Iic (Set.Iic_subset_Iic.mpr hst) x
+      nlinarith [norm_nonneg (P.proj (Set.Iic t) x)]
+    have h_hi : (@inner ℂ H _ x (P.proj (Set.Iic s) x)).re ≤
+        (@inner ℂ H _ x (P.proj (E N) x)).re := by
+      rw [← P.norm_sq_eq_inner _ measurableSet_Iic, ← P.norm_sq_eq_inner _ measurableSet_Iic]
+      have := P.monotone _ _ measurableSet_Iic measurableSet_Iic (Set.Iic_subset_Iic.mpr hsd.le) x
+      nlinarith [norm_nonneg (P.proj (Set.Iic s) x)]
+    -- |f(s) - f(t)| = f(s) - f(t) ≤ f(N) - f(t) < ε
+    rw [Real.dist_eq, abs_of_nonneg (by linarith)]
+    have hNN := hN N le_rfl; rw [Real.dist_eq] at hNN
+    have h_nn : 0 ≤ (@inner ℂ H _ x (P.proj (E N) x)).re -
+        (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re := by linarith
+    rw [abs_of_nonneg h_nn] at hNN
+    linarith
+  nonneg := fun t => P.inner_proj_nonneg _ measurableSet_Iic x
+  bound := ‖x‖^2
+  bound_nonneg := sq_nonneg _
+  le_bound := fun t => P.inner_proj_le_norm_sq _ x
+  tendsto_neg_infty := by
+    -- P(Iic(-n))x → P(∅)x = 0 via proj_decreasing_tendsto_meas
+    set f := fun t : ℝ => (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re
+    have f_mono : Monotone f := by
+      intro a b hab; simp only [f]
+      rw [← P.norm_sq_eq_inner _ measurableSet_Iic, ← P.norm_sq_eq_inner _ measurableSet_Iic]
+      have := P.monotone _ _ measurableSet_Iic measurableSet_Iic (Set.Iic_subset_Iic.mpr hab) x
+      nlinarith [norm_nonneg (P.proj (Set.Iic a) x)]
+    set E := fun n : ℕ => Set.Iic (-(↑n : ℝ))
+    have hE_dec : ∀ n, E (n + 1) ⊆ E n := by
+      intro n; simp only [E]; apply Set.Iic_subset_Iic.mpr; push_cast; linarith
+    have hE_inter : ⋂ n, E n = ∅ := by
+      ext s; simp only [Set.mem_iInter, Set.mem_Iic, Set.mem_empty_iff_false, E]
+      constructor
+      · intro h; obtain ⟨n, hn⟩ := exists_nat_gt (-s); linarith [h n]
+      · intro h; exact h.elim
+    have hconv := P.proj_decreasing_tendsto_meas x E ∅
+      (fun _ => measurableSet_Iic) MeasurableSet.empty hE_dec hE_inter
+      (fun _ => Set.empty_subset _)
+    rw [P.empty, ContinuousLinearMap.zero_apply] at hconv
+    have hcont : Continuous (fun y : H => (@inner ℂ H _ x y).re) := by fun_prop
+    have hseq : Tendsto (fun n : ℕ => f (-(↑n : ℝ))) atTop (nhds 0) := by
+      have := hcont.continuousAt.tendsto.comp hconv
+      simp only [inner_zero_right, Complex.zero_re, Function.comp_def] at this
+      exact this
+    rw [tendsto_order]
+    constructor
+    · intro a' ha'
+      rw [Filter.eventually_atBot]
+      exact ⟨0, fun s _ => lt_of_lt_of_le ha' (P.inner_proj_nonneg _ measurableSet_Iic x)⟩
+    · intro a' ha'
+      rw [Filter.eventually_atBot]
+      have hexN : ∃ N : ℕ, f (-(↑N : ℝ)) < a' := by
+        by_contra h; push_neg at h
+        exact absurd (ge_of_tendsto' hseq h) (not_le.mpr ha')
+      obtain ⟨N, hN⟩ := hexN
+      exact ⟨-(↑N : ℝ), fun s hs => lt_of_le_of_lt (f_mono hs) hN⟩
+  tendsto_pos_infty := by
+    -- P(Iic(n))x → P(ℝ)x = x via complement
+    set f := fun t : ℝ => (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re
+    have f_mono : Monotone f := by
+      intro a b hab; simp only [f]
+      rw [← P.norm_sq_eq_inner _ measurableSet_Iic, ← P.norm_sq_eq_inner _ measurableSet_Iic]
+      have := P.monotone _ _ measurableSet_Iic measurableSet_Iic (Set.Iic_subset_Iic.mpr hab) x
+      nlinarith [norm_nonneg (P.proj (Set.Iic a) x)]
+    set G := fun n : ℕ => Set.Ioi (↑n : ℝ)
+    have hG_dec : ∀ n, G (n + 1) ⊆ G n := by
+      intro n; simp only [G]; apply Set.Ioi_subset_Ioi; push_cast; linarith
+    have hG_inter : ⋂ n, G n = ∅ := by
+      ext s; simp only [Set.mem_iInter, Set.mem_Ioi, Set.mem_empty_iff_false, G]
+      constructor
+      · intro h; obtain ⟨n, hn⟩ := exists_nat_gt s; linarith [h n]
+      · intro h; exact h.elim
+    have hG_conv := P.proj_decreasing_tendsto_meas x G ∅
+      (fun _ => measurableSet_Ioi) MeasurableSet.empty hG_dec hG_inter
+      (fun _ => Set.empty_subset _)
+    rw [P.empty, ContinuousLinearMap.zero_apply] at hG_conv
+    -- P(Iic n)x = x - P(Ioi n)x by finite additivity
+    have h_decomp : ∀ n : ℕ, P.proj (Set.Iic (↑n : ℝ)) x + P.proj (Set.Ioi (↑n : ℝ)) x = x := by
+      intro n
+      have h := P.additive_disjoint (Set.Iic (↑n : ℝ)) (Set.Ioi (↑n : ℝ))
+        measurableSet_Iic measurableSet_Ioi
+        (Set.disjoint_left.mpr fun z hz hzoi =>
+          not_lt.mpr (Set.mem_Iic.mp hz) (Set.mem_Ioi.mp hzoi))
+      rw [Set.Iic_union_Ioi, P.univ] at h
+      have hx := congrFun (congrArg DFunLike.coe h) x
+      simp only [ContinuousLinearMap.add_apply] at hx
+      simpa using hx.symm
+    -- P(Iic n)x → x
+    have hconv : Tendsto (fun n : ℕ => P.proj (Set.Iic (↑n : ℝ)) x) atTop (nhds x) := by
+      have heq : (fun (n : ℕ) => P.proj (Set.Iic (↑n : ℝ)) x) = fun n => x - P.proj (G n) x := by
+        ext n; simp only [G]; exact eq_sub_iff_add_eq.mpr (h_decomp n)
+      rw [heq]; simpa [sub_zero] using tendsto_const_nhds (x := x) |>.sub hG_conv
+    -- Compose with continuous inner product to get f(n) → ‖x‖²
+    have hcont : Continuous (fun y : H => (@inner ℂ H _ x y).re) := by fun_prop
+    have hseq : Tendsto (fun n : ℕ => f (↑n : ℝ)) atTop (nhds (‖x‖^2)) := by
+      have h1 := hcont.continuousAt.tendsto.comp hconv
+      simp only [Function.comp_def] at h1
+      have hlim : (@inner ℂ H _ x x).re = ‖x‖ ^ 2 := by
+        have h := P.norm_sq_eq_inner Set.univ MeasurableSet.univ x
+        rw [P.univ] at h; simp only [ContinuousLinearMap.one_apply] at h
+        exact h.symm
+      rwa [hlim] at h1
+    rw [tendsto_order]
+    constructor
+    · intro a' ha'
+      rw [Filter.eventually_atTop]
+      have hexN : ∃ N : ℕ, a' < f ↑N := by
+        by_contra h; push_neg at h
+        exact absurd (le_of_tendsto' hseq h) (not_le.mpr ha')
+      obtain ⟨N, hN⟩ := hexN
+      exact ⟨↑N, fun s hs => lt_of_lt_of_le hN (f_mono hs)⟩
+    · intro a' ha'
+      rw [Filter.eventually_atTop]
+      exact ⟨0, fun s _ => lt_of_le_of_lt (P.inner_proj_le_norm_sq _ x) ha'⟩
+
+open MeasureTheory in
+/-- The diagonal spectral measure μ_{x,x} for a vector x. -/
+def diagonalMeasure (x : H) : MeasureTheory.Measure ℝ :=
+  (P.distributionFunction x).toMeasure
+
+/-! #### Distribution function identities -/
+
+/-- The distribution function of -z equals that of z.
+    F_{-z}(t) = ⟨-z, P(Iic t)(-z)⟩.re = ‖P(Iic t)(-z)‖² = ‖P(Iic t)z‖² = F_z(t). -/
+theorem distributionFunction_neg (x : H) (t : ℝ) :
+    (P.distributionFunction (-x)).toFun t = (P.distributionFunction x).toFun t := by
+  simp only [distributionFunction]
+  have : P.proj (Set.Iic t) (-x) = -(P.proj (Set.Iic t) x) := map_neg _ _
+  rw [this, inner_neg_left, inner_neg_right, neg_neg]
+
+/-- The parallelogram identity for distribution functions:
+    F_{x+y}(t) + F_{x-y}(t) = 2F_x(t) + 2F_y(t).
+    This follows from the parallelogram law for the inner product ⟨z, P(E)z⟩. -/
+theorem distributionFunction_parallelogram (x y : H) (t : ℝ) :
+    (P.distributionFunction (x + y)).toFun t + (P.distributionFunction (x - y)).toFun t =
+    2 * (P.distributionFunction x).toFun t + 2 * (P.distributionFunction y).toFun t := by
+  simp only [distributionFunction]
+  -- Let A = P(Iic t), which is self-adjoint
+  set A := P.proj (Set.Iic t)
+  -- Expand ⟨x+y, A(x+y)⟩ + ⟨x-y, A(x-y)⟩
+  have hlin_add : A (x + y) = A x + A y := map_add A x y
+  have hlin_sub : A (x - y) = A x - A y := map_sub A x y
+  -- ⟨x+y, A(x+y)⟩ = ⟨x+y, Ax+Ay⟩ = ⟨x,Ax⟩ + ⟨x,Ay⟩ + ⟨y,Ax⟩ + ⟨y,Ay⟩
+  -- ⟨x-y, A(x-y)⟩ = ⟨x-y, Ax-Ay⟩ = ⟨x,Ax⟩ - ⟨x,Ay⟩ - ⟨y,Ax⟩ + ⟨y,Ay⟩
+  -- Sum = 2⟨x,Ax⟩ + 2⟨y,Ay⟩
+  have h1 : @inner ℂ H _ (x + y) (A (x + y)) = @inner ℂ H _ x (A x) + @inner ℂ H _ x (A y) +
+      @inner ℂ H _ y (A x) + @inner ℂ H _ y (A y) := by
+    rw [hlin_add]; simp [inner_add_left, inner_add_right]; ring
+  have h2 : @inner ℂ H _ (x - y) (A (x - y)) = @inner ℂ H _ x (A x) - @inner ℂ H _ x (A y) -
+      @inner ℂ H _ y (A x) + @inner ℂ H _ y (A y) := by
+    rw [hlin_sub]; simp [inner_sub_left, inner_sub_right]; ring
+  have h3 : (@inner ℂ H _ (x + y) (A (x + y))).re + (@inner ℂ H _ (x - y) (A (x - y))).re =
+      2 * (@inner ℂ H _ x (A x)).re + 2 * (@inner ℂ H _ y (A y)).re := by
+    rw [h1, h2]; simp only [Complex.add_re, Complex.sub_re]; ring
+  exact h3
+
+/-- The i-rotation identity for distribution functions:
+    F_{x+iy}(t) + F_{x-iy}(t) = 2F_x(t) + 2F_y(t).
+    This follows from |i|² = 1 and the parallelogram identity. -/
+theorem distributionFunction_irot (x y : H) (t : ℝ) :
+    (P.distributionFunction (x + Complex.I • y)).toFun t +
+    (P.distributionFunction (x - Complex.I • y)).toFun t =
+    2 * (P.distributionFunction x).toFun t + 2 * (P.distributionFunction y).toFun t := by
+  -- This is just the parallelogram identity with z = i·y, noting that F_{iz}(t) = F_z(t)
+  have h := P.distributionFunction_parallelogram x (Complex.I • y) t
+  -- Need: F_{iy}(t) = F_y(t)
+  -- ⟨iy, A(iy)⟩ = conj(i)·i·⟨y,Ay⟩ = |i|²⟨y,Ay⟩ = ⟨y,Ay⟩
+  have h_iy : (P.distributionFunction (Complex.I • y)).toFun t =
+      (P.distributionFunction y).toFun t := by
+    simp only [distributionFunction]
+    have : P.proj (Set.Iic t) (Complex.I • y) = Complex.I • P.proj (Set.Iic t) y :=
+      map_smul _ _ _
+    rw [this, inner_smul_left, inner_smul_right]
+    simp [Complex.conj_I, Complex.normSq_I, mul_comm]
+  rw [h_iy] at h; exact h
+
+/-- Diagonal measure of -z equals that of z: μ_{-z} = μ_z. -/
+theorem diagonalMeasure_neg (x : H) :
+    P.diagonalMeasure (-x) = P.diagonalMeasure x := by
+  simp only [diagonalMeasure, SpectralDistribution.toMeasure]
+  congr 1
+  ext t  -- StieltjesFunction extensionality (has @[ext])
+  exact P.distributionFunction_neg x t
+
+/-- The diagonal measure is a finite measure with total mass = ‖x‖². -/
+instance diagonalMeasure_isFiniteMeasure (x : H) :
+    MeasureTheory.IsFiniteMeasure (P.diagonalMeasure x) :=
+  show MeasureTheory.IsFiniteMeasure (P.distributionFunction x).toMeasure from inferInstance
+
+/-- The total mass of the diagonal measure equals ‖x‖². -/
+theorem diagonalMeasure_univ (x : H) :
+    (P.diagonalMeasure x) Set.univ = ENNReal.ofReal (‖x‖ ^ 2) := by
+  simp only [diagonalMeasure, SpectralDistribution.toMeasure, SpectralDistribution.toStieltjes]
+  rw [StieltjesFunction.measure_univ _
+    (P.distributionFunction x).tendsto_neg_infty
+    (P.distributionFunction x).tendsto_pos_infty]
+  -- Goal: ofReal(bound - 0) = ofReal(‖x‖^2), where bound = ‖x‖^2
+  simp only [sub_zero, distributionFunction]
+
+/-- The total mass of the diagonal measure as a real number. -/
+theorem diagonalMeasure_real_univ (x : H) :
+    (P.diagonalMeasure x).real Set.univ = ‖x‖ ^ 2 := by
+  simp only [MeasureTheory.Measure.real, P.diagonalMeasure_univ x,
+    ENNReal.toReal_ofReal (sq_nonneg ‖x‖)]
+
+/-! #### Integral bounds -/
+
+open MeasureTheory in
+/-- For bounded f, the integral against the diagonal measure is bounded:
+    ‖∫ f dμ_z‖ ≤ M * ‖z‖² when ‖f‖_∞ ≤ M. -/
+theorem integral_diagonalMeasure_norm_le (x : H) (f : ℝ → ℂ) (M : ℝ)
+    (hM : 0 ≤ M) (hf : ∀ t, ‖f t‖ ≤ M) :
+    ‖∫ t, f t ∂(P.diagonalMeasure x)‖ ≤ M * ‖x‖ ^ 2 := by
+  have hfm := P.diagonalMeasure_isFiniteMeasure x
+  calc ‖∫ t, f t ∂(P.diagonalMeasure x)‖
+      ≤ M * (P.diagonalMeasure x).real Set.univ :=
+        norm_integral_le_of_norm_le_const (Filter.Eventually.of_forall hf)
+    _ = M * ‖x‖ ^ 2 := by rw [P.diagonalMeasure_real_univ x]
+
 end SpectralMeasure
 
 /-! ### Functional calculus -/
@@ -532,226 +895,32 @@ def approximateBySimple (f : ℝ → ℂ) (N : ℕ) (n : ℕ) (_hn : n > 0) : Si
 def stepApproximation (P : SpectralMeasure H) (f : ℝ → ℂ) (N n : ℕ) (hn : n > 0) : H →L[ℂ] H :=
   (approximateBySimple f N n hn).spectralApply P
 
-/-- The step approximations form a Cauchy sequence in operator norm for bounded f.
-    This is the key convergence result needed for the functional calculus.
+open MeasureTheory in
+/-- For a spectral measure, construct the functional calculus via sesquilinear form.
+    f(T) = ∫ f(λ) dP(λ) is constructed using the Riesz representation theorem:
 
-    The bound comes from: if |f(x)| ≤ M for all x, then
-    ‖∫ fₙ dP - ∫ fₘ dP‖ ≤ ‖fₙ - fₘ‖_∞ · ‖P(ℝ)‖ = ‖fₙ - fₘ‖_∞
-    since P(ℝ) = 1 and the projections have norm ≤ 1.
+    The sesquilinear form B_f(x,y) = ∫ f dμ_{x,y} (where μ_{x,y} is the complex spectral
+    measure, constructed via polarization of diagonal measures) is bounded:
+      |B_f(x,y)| ≤ ‖f‖_∞ · ‖x‖ · ‖y‖
+    By `sesquilinearToOperator`, there exists a unique operator f(T) with
+      ⟨x, f(T) y⟩ = B_f(x,y) = ∫ f(λ) d⟨x, P(·)y⟩(λ)
 
-    For uniformly continuous f, the simple function approximations fₙ converge
-    uniformly, so the sequence is Cauchy. -/
-theorem stepApproximation_cauchy (P : SpectralMeasure H) (f : ℝ → ℂ)
-    (hf_bdd : ∃ M : ℝ, ∀ x, ‖f x‖ ≤ M)
-    (hf_cont : Continuous f) :
-    ∀ ε > 0, ∃ N₀ : ℕ, ∀ N₁ N₂ n₁ n₂ : ℕ, N₁ ≥ N₀ → N₂ ≥ N₀ → n₁ ≥ N₀ → n₂ ≥ N₀ →
-      ∀ (hn₁ : n₁ > 0) (hn₂ : n₂ > 0),
-        ‖stepApproximation P f N₁ n₁ hn₁ - stepApproximation P f N₂ n₂ hn₂‖ < ε := by
-  intro ε hε
-  obtain ⟨M, hM⟩ := hf_bdd
-  /-
-  PROOF using sesquilinear form bound and operator norm characterization.
-
-  **Key insight:** For bounded f with ‖f‖_∞ ≤ M, each step approximation satisfies
-    ‖stepApproximation P f N n hn‖ ≤ M
-  This uses `proj_sum_norm_le_sup` applied to disjoint intervals.
-
-  **Strategy:**
-  1. For continuous bounded f on [-N, N], step function inner products converge
-     to ∫ f dμ_{x,y} where μ_{x,y}(E) = ⟨x, P(E) y⟩
-  2. By Cauchy-Schwarz: |⟨x, T_{N,n} y⟩| ≤ M · ‖x‖ · ‖y‖ for all N, n
-  3. The difference ‖T₁ - T₂‖ in operator norm is controlled by sup_‖x‖=‖y‖=1 |⟨x, (T₁-T₂)y⟩|
-
-  The intervals [k/n, (k+1)/n) are disjoint, so by `proj_sum_norm_le_sup`:
-    ‖stepApproximation P f N n hn x‖ ≤ M · ‖x‖
-
-  For the Cauchy property, we use that both approximations converge to the same
-  limit (the spectral integral) as N, n → ∞. The convergence follows from:
-  - Uniform continuity of f on compact sets (Heine-Cantor)
-  - Riemann sum convergence to the integral
-  - The sesquilinear form bound |⟨x, Ty⟩| ≤ M‖x‖‖y‖ gives operator norm bound
-
-  FOUNDATIONAL: Full proof requires uniform continuity → Riemann sum convergence.
-  -/
-  use max 1 (Nat.ceil (4 * (max M 0 + 1) / ε))
-  intro N₁ N₂ n₁ n₂ hN₁ hN₂ hn₁ hn₂ hpos₁ hpos₂
-  sorry
-
-/-- The limit of step approximations exists for bounded continuous functions.
-    This follows from completeness of B(H) and the Cauchy property. -/
-theorem stepApproximation_converges (P : SpectralMeasure H) (f : ℝ → ℂ)
-    (hf_bdd : ∃ M : ℝ, ∀ x, ‖f x‖ ≤ M)
-    (hf_cont : Continuous f) :
-    ∃ T : H →L[ℂ] H, ∀ ε > 0, ∃ N₀ : ℕ, ∀ N n : ℕ, N ≥ N₀ → n ≥ N₀ → ∀ (hn : n > 0),
-      ‖stepApproximation P f N n hn - T‖ < ε := by
-  /-
-  PROOF STRUCTURE:
-
-  **Step 1: Extract a Cauchy sequence from the net**
-  Define u : ℕ → (H →L[ℂ] H) by u(k) = stepApproximation P f k k (pos k).
-  By stepApproximation_cauchy with N₁ = N₂ = n₁ = n₂ = k, u is Cauchy.
-
-  **Step 2: Apply completeness**
-  The space H →L[ℂ] H is complete (since H is complete, CompleteSpace follows).
-  By cauchySeq_tendsto_of_complete, there exists T with u(k) → T.
-
-  **Step 3: Extend to the general case**
-  For any N, n ≥ N₀, show ‖stepApproximation P f N n hn - T‖ < ε by triangle inequality:
-    ‖step(N,n) - T‖ ≤ ‖step(N,n) - step(k,k)‖ + ‖step(k,k) - T‖ < ε/2 + ε/2 = ε
-  for large enough k.
-  -/
-  -- The key step: extract convergence along the diagonal sequence
-  have hcauchy := stepApproximation_cauchy P f hf_bdd hf_cont
-  -- Define the diagonal sequence u(k) = step(k, k)
-  -- For k ≥ 1, we have k > 0 so the approximation is defined
-  let u : ℕ → (H →L[ℂ] H) := fun k =>
-    if hk : k > 0 then stepApproximation P f k k hk else 0
-  -- Show u is Cauchy in the operator norm
-  have hu_cauchy : CauchySeq u := by
-    rw [Metric.cauchySeq_iff]
-    intro ε hε
-    obtain ⟨N₀, hN₀⟩ := hcauchy ε hε
-    use max N₀ 1
-    intro m hm n hn
-    simp only [u, dist_eq_norm]
-    have hm₀ : m > 0 := Nat.lt_of_lt_of_le Nat.one_pos (le_of_max_le_right hm)
-    have hn₀ : n > 0 := Nat.lt_of_lt_of_le Nat.one_pos (le_of_max_le_right hn)
-    simp only [hm₀, hn₀, ↓reduceDIte]
-    have hmN : m ≥ N₀ := le_of_max_le_left hm
-    have hnN : n ≥ N₀ := le_of_max_le_left hn
-    exact hN₀ m n m n hmN hnN hmN hnN hm₀ hn₀
-  -- B(H) is complete (automatic from H being a CompleteSpace)
-  obtain ⟨T, hT⟩ := cauchySeq_tendsto_of_complete hu_cauchy
-  use T
-  -- Now prove the general convergence
-  intro ε hε
-  -- Get N₁ from the Cauchy property for ε/3
-  have hε3 : ε / 3 > 0 := by linarith
-  obtain ⟨N₁, hN₁⟩ := hcauchy (ε / 3) hε3
-  -- Get N₂ from the sequence convergence to T
-  rw [Metric.tendsto_atTop] at hT
-  obtain ⟨N₂, hN₂⟩ := hT (ε / 3) hε3
-  -- Use N₀ = max of both
-  use max (max N₁ N₂) 1
-  intro N n hN hn hpos
-  -- Show ‖step(N,n) - T‖ < ε via triangle inequality
-  have hN₁' : N ≥ N₁ := le_trans (le_max_left _ _) (le_trans (le_max_left _ _) hN)
-  have hn₁' : n ≥ N₁ := le_trans (le_max_left _ _) (le_trans (le_max_left _ _) hn)
-  -- Pick k = max N n ≥ max N₁ N₂
-  let k := max N n
-  have hk₀ : k > 0 := Nat.lt_of_lt_of_le hpos (le_max_right N n)
-  have hkN₁ : k ≥ N₁ := le_trans hN₁' (le_max_left N n)
-  have hkN₂ : k ≥ N₂ := by
-    have : N ≥ N₂ := le_trans (le_max_right _ _) (le_trans (le_max_left _ _) hN)
-    exact le_trans this (le_max_left N n)
-  -- Triangle inequality: ‖step(N,n) - T‖ ≤ ‖step(N,n) - step(k,k)‖ + ‖step(k,k) - T‖
-  calc ‖stepApproximation P f N n hpos - T‖
-      ≤ ‖stepApproximation P f N n hpos - stepApproximation P f k k hk₀‖ +
-        ‖stepApproximation P f k k hk₀ - T‖ := norm_sub_le_norm_sub_add_norm_sub _ _ _
-    _ < ε / 3 + ε / 3 := by
-        apply add_lt_add
-        -- First term: Cauchy bound
-        · exact hN₁ N k n k hN₁' hkN₁ hn₁' hkN₁ hpos hk₀
-        -- Second term: sequence convergence to T
-        · have huk : u k = stepApproximation P f k k hk₀ := by simp [u, hk₀]
-          rw [← huk]
-          exact hN₂ k hkN₂
-    _ < ε := by linarith
-
-/-- The spectral integral as the limit of step function approximations.
-    For bounded continuous f, we define ∫ f dP as the limit of Σₖ f(xₖ) P(Eₖ)
-    where {Eₖ} is a partition that refines as n → ∞. -/
-def spectralIntegralLimit (P : SpectralMeasure H) (f : ℝ → ℂ)
-    (hf_bdd : ∃ M : ℝ, ∀ x, ‖f x‖ ≤ M) (hf_cont : Continuous f) : H →L[ℂ] H :=
-  (stepApproximation_converges P f hf_bdd hf_cont).choose
-
-/-- For a spectral measure, construct the functional calculus.
-    f(T) = ∫ f(λ) dP(λ) is defined as a limit of simple function approximations.
-
-    For a step function f = Σᵢ cᵢ χ_{Eᵢ}, we have f(T) = Σᵢ cᵢ P(Eᵢ).
-    General bounded Borel functions are approximated by step functions.
-
-    The spectral integral satisfies:
-    1. ∫ χ_E dP = P(E) for measurable E
-    2. ∫ (Σ cᵢ χ_{Eᵢ}) dP = Σ cᵢ P(Eᵢ) (linearity for simple functions)
-    3. ‖∫ f dP‖ ≤ sup |f| on supp(P) (operator norm bound)
-    4. ∫ fg dP = (∫ f dP) ∘ (∫ g dP) (multiplicativity)
-    5. ∫ f̄ dP = (∫ f dP)* (adjoint property)
-
-    For bounded Borel f, we approximate by simple functions and take limits.
-    The limit exists in operator norm by property 3.
-
-    The construction proceeds by:
-    1. If f is bounded and continuous, use `spectralIntegralLimit`
-    2. For general bounded Borel f, approximate by continuous functions
-    3. The limit is independent of the approximation sequence
-
-    The defining property is: ⟨x, (∫ f dP) y⟩ = ∫ f(λ) d⟨x, P(·)y⟩(λ) -/
+    Key properties:
+    1. ∫ χ_E dP = P(E) for measurable E (characteristic property)
+    2. ‖∫ f dP‖ ≤ sup |f| (operator norm bound)
+    3. ∫ fg dP = (∫ f dP)(∫ g dP) (multiplicativity, Reed-Simon VIII.5b)
+    4. (∫ f dP)* = ∫ f̄ dP (adjoint property, Reed-Simon VIII.5c) -/
 def functionalCalculus (P : SpectralMeasure H) (f : ℝ → ℂ) : H →L[ℂ] H :=
-  -- For arbitrary bounded Borel f, we construct via step function approximation.
-  -- The key insight is that the step approximations converge for any bounded f,
-  -- not just continuous f (though continuity simplifies the proof).
-  --
-  -- We define as the limit of step approximations on [-N, N] with partition size n:
-  -- ∫ f dP = lim_{N,n→∞} Σₖ f(k/n) P([k/n, (k+1)/n) ∩ [-N, N])
-  --
-  -- For the general case, we use Classical.choose on the existence statement.
-  -- The existence is guaranteed by:
-  -- 1. Step approximations are Cauchy in operator norm (bounded by ‖f‖_∞)
-  -- 2. B(H) is complete, so the limit exists
-  Classical.choose <| by
-    /-
-    EXISTENCE of the spectral integral operator.
-
-    For a general bounded Borel function f, the spectral integral ∫ f dP exists by:
-
-    **Method 1 (for continuous f):**
-    Use `stepApproximation_converges` which gives convergence in operator norm.
-
-    **Method 2 (for general bounded Borel f):**
-    The sesquilinear form B(x,y) = ∫ f(λ) d⟨x, P(·)y⟩(λ) is bounded:
-      |B(x,y)| ≤ ‖f‖_∞ · |μ_{x,y}|(ℝ) ≤ ‖f‖_∞ · ‖x‖ · ‖y‖
-    By `sesquilinear_to_operator`, there exists unique T with B(x,y) = ⟨x, Ty⟩.
-
-    **Method 3 (approximation):**
-    Approximate f by continuous functions fₙ → f in L∞ (using e.g. convolution).
-    Then ∫ fₙ dP → ∫ f dP in operator norm.
-
-    For the rigorous implementation, we use Method 2 which works for all bounded f.
-    -/
-    have h_exists : ∃ T : H →L[ℂ] H, ∀ ε > 0, ∃ N₀ : ℕ, ∀ N n : ℕ, N ≥ N₀ → n ≥ N₀ →
-        ∀ (hn : n > 0), ‖stepApproximation P f N n hn - T‖ < ε := by
-      /-
-      PROOF using sesquilinear_to_operator.
-
-      **Step 1: Uniform bound on step approximation inner products**
-      For any step approximation T_{N,n}, and any x, y ∈ H:
-        |⟨x, T_{N,n} y⟩| ≤ M · ‖x‖ · ‖y‖
-      where M = sup|f|. This uses:
-        |⟨x, T_{N,n} y⟩| = |Σₖ f(k/n) ⟨x, P(Iₖ) y⟩|
-                        ≤ M · Σₖ |⟨x, P(Iₖ) y⟩|
-                        ≤ M · (Σₖ ‖P(Iₖ)x‖²)^{1/2} · (Σₖ ‖P(Iₖ)y‖²)^{1/2}
-                        ≤ M · ‖x‖ · ‖y‖
-      The last step uses Σₖ ‖P(Iₖ)x‖² ≤ ‖x‖² (Pythagorean for orthogonal projections).
-
-      **Step 2: Define the sesquilinear form**
-      For bounded continuous f, the inner products ⟨x, T_{N,n} y⟩ converge as Riemann sums.
-      Define B_f(x, y) = lim_{N,n→∞} ⟨x, T_{N,n} y⟩.
-      By the uniform bound, |B_f(x, y)| ≤ M · ‖x‖ · ‖y‖.
-
-      **Step 3: Apply sesquilinear_to_operator**
-      B_f is sesquilinear (linear in y, conjugate-linear in x) and bounded.
-      By sesquilinear_to_operator, there exists unique T with B_f(x, y) = ⟨x, Ty⟩.
-
-      **Step 4: Show convergence in operator norm**
-      For ε > 0, choose N₀ large so that for N, n ≥ N₀:
-        |⟨x, T_{N,n} y⟩ - ⟨x, T y⟩| < ε · ‖x‖ · ‖y‖
-      This implies ‖T_{N,n} - T‖ ≤ ε.
-
-      FOUNDATIONAL: The convergence of Riemann sums requires measure-theoretic integration.
-      -/
-      sorry
-    exact h_exists
+  -- B_f(x,y) = ∫ f dμ_{x,y} via polarization: μ_{x,y} = (1/4)[μ_{x+y} - μ_{x-y} + iμ_{x+iy} - iμ_{x-iy}]
+  let B : H → H → ℂ := fun x y =>
+    (1/4 : ℂ) * (∫ t, f t ∂(P.diagonalMeasure (x + y))
+      - ∫ t, f t ∂(P.diagonalMeasure (x - y))
+      - Complex.I * ∫ t, f t ∂(P.diagonalMeasure (x + Complex.I • y))
+      + Complex.I * ∫ t, f t ∂(P.diagonalMeasure (x - Complex.I • y)))
+  sesquilinearToOperator B
+    (by sorry) -- right-linearity: ∀ x, IsLinearMap ℂ (B x)
+    (by sorry) -- conjugate-left-linearity
+    (by sorry) -- boundedness: ∃ C, ∀ x y, ‖B x y‖ ≤ C * ‖x‖ * ‖y‖
 
 /-- The functional calculus is multiplicative: (fg)(T) = f(T)g(T)
 
@@ -783,55 +952,6 @@ theorem functionalCalculus_star (P : SpectralMeasure H) (f : ℝ → ℂ) :
   -- Uses P(E)* = P(E) and continuity of adjoint
   sorry
 
-/-! ### Spectral Integral Characterization -/
-
-/-- For continuous bounded f, functionalCalculus equals spectralIntegralLimit. -/
-theorem functionalCalculus_eq_limit (P : SpectralMeasure H) (f : C(ℝ, ℂ))
-    (hf_bdd : ∃ M : ℝ, ∀ x, ‖f x‖ ≤ M) :
-    functionalCalculus P f = spectralIntegralLimit P f hf_bdd f.continuous := by
-  -- Both are defined as limits of the same step approximations
-  -- functionalCalculus uses Classical.choose on an existence proof
-  -- spectralIntegralLimit uses stepApproximation_converges.choose
-  -- Since the limit is unique, they must be equal
-  ext x
-  apply ext_inner_left ℂ
-  intro y
-  -- Get the convergence properties from both definitions
-  have hconv := (stepApproximation_converges P f hf_bdd f.continuous).choose_spec
-  -- The functionalCalculus is defined via the same limit
-  -- The key is showing uniqueness of the limit
-  sorry
-
-/-
-NOTE: The following theorems compare the step-approximation functional calculus
-with the CFC-based `UnboundedCFC`. They are commented out because they depend on
-`spectralProjection` and `UnboundedCFC` from FunctionalCalculusFromCFC.lean,
-which has unproven sorrys. Once the CFC approach is completed (sorry-free),
-these theorems can be uncommented to establish the equivalence.
-
-For now, we focus on the RMK-based spectral theorem which is completely sorry-free.
-
-/-- **The Spectral Integral Characterization (Reed-Simon VIII.5)**
-
-    The functional calculus via step approximation equals the CFC via Cayley transform.
-    Both compute the same operator f(T) = ∫ f(λ) dP(λ). -/
-theorem spectralIntegral_characterization (T : UnboundedOperator H)
-    (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT)
-    (C : CayleyTransform T hT hsa)
-    (P : SpectralMeasure H)
-    (hP : P.proj = spectralProjection T hT hsa C)
-    (f : C(ℝ, ℂ)) :
-    functionalCalculus P f = UnboundedCFC T hT hsa C f := ...
-
-/-- The key equality: functionalCalculus and UnboundedCFC compute the same spectral integral. -/
-theorem spectralIntegral_unique (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
-    (P : SpectralMeasure H)
-    (hP : P.proj = spectralProjection T hT hsa C)
-    (f : C(ℝ, ℂ)) (x y : H) :
-    @inner ℂ H _ y ((functionalCalculus P f) x) =
-    @inner ℂ H _ y ((UnboundedCFC T hT hsa C f) x) := ...
--/
 
 /-! ### The Spectral Theorem -/
 
@@ -976,21 +1096,6 @@ theorem spectral_theorem_pvm (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
   show P_raw E = spectralMeasureFromRMK T hT hsa C E hE
   exact dif_pos hE
 
-/-- **The Spectral Theorem for Unbounded Self-Adjoint Operators**
-
-    For every densely defined self-adjoint operator T on a Hilbert space H,
-    there exists a spectral measure P and a Cayley transform C such that
-    the functional calculus on P agrees with the unbounded CFC via C.
-
-    This extends `spectral_theorem_pvm` with the functional calculus connection.
-    The single sorry is the T-P connection (showing step approximation matches CFC). -/
-theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) :
-    ∃ (P : SpectralMeasure H) (C : CayleyTransform T hT hsa),
-      ∀ f : C(ℝ, ℂ), functionalCalculus P f = UnboundedCFC T hT hsa C f := by
-  obtain ⟨P, C, hP_eq_RMK⟩ := spectral_theorem_pvm T hT hsa
-  exact ⟨P, C, fun f => sorry⟩
-
 /-- The spectral measure of a self-adjoint operator, extracted from `spectral_theorem_pvm`.
     This definition is sorry-free: the PVM is fully constructed from the RMK chain.
     For measurable E: `P.proj E = spectralMeasureFromRMK T hT hsa C E hE`. -/
@@ -1012,15 +1117,6 @@ theorem UnboundedOperator.spectralMeasure_eq_RMK (T : UnboundedOperator H)
     (T.spectralMeasure hT hsa).proj E =
     spectralMeasureFromRMK T hT hsa (T.spectralCayley hT hsa) E hE :=
   (spectral_theorem_pvm T hT hsa).choose_spec.choose_spec E hE
-
-/-- The functional calculus agrees with unbounded CFC (has sorry for T-P connection). -/
-theorem UnboundedOperator.spectralMeasure_spec (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (f : C(ℝ, ℂ)) :
-    functionalCalculus (T.spectralMeasure hT hsa) f =
-    UnboundedCFC T hT hsa (T.spectralCayley hT hsa) f := by
-  -- This requires showing step approximation matches CFC computation.
-  -- Both integrate f against the same spectral measure (from spectralMeasure_eq_RMK).
-  sorry
 
 /-! ### Powers of positive self-adjoint operators -/
 

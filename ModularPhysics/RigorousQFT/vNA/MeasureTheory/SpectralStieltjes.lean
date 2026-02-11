@@ -398,6 +398,27 @@ theorem inner_proj_le_norm_sq (x : H) (E : Set ℝ) :
   calc ‖P.proj E x‖^2 ≤ ‖x‖^2 := sq_le_sq' (by linarith [norm_nonneg (P.proj E x)])
                                             hP_contraction
 
+/-- Projections are contractions: ‖P(E)y‖ ≤ ‖y‖. -/
+theorem proj_contraction (y : H) (E : Set ℝ) : ‖P.proj E y‖ ≤ ‖y‖ := by
+  have h := P.inner_proj_le_norm_sq y E
+  rw [P.inner_proj_eq_norm_sq] at h
+  -- h : ‖P.proj E y‖ ^ 2 ≤ ‖y‖ ^ 2, want ‖P.proj E y‖ ≤ ‖y‖
+  by_contra h_neg
+  push_neg at h_neg
+  -- h_neg : ‖y‖ < ‖P.proj E y‖, so |‖y‖| < |‖P.proj E y‖|, so ‖y‖² < ‖P.proj E y‖²
+  have : ‖y‖ ^ 2 < ‖P.proj E y‖ ^ 2 := by
+    rwa [sq_lt_sq, abs_of_nonneg (norm_nonneg _), abs_of_nonneg (norm_nonneg _)]
+  linarith
+
+/-- For E ⊆ F, ‖P(E)x‖ ≤ ‖P(F)x‖ (monotonicity of projection norms). -/
+theorem proj_norm_mono (x : H) (E F : Set ℝ) (hEF : E ⊆ F) :
+    ‖P.proj E x‖ ≤ ‖P.proj F x‖ := by
+  have h1 : P.proj E = P.proj E ∘L P.proj F := by
+    rw [← P.inter, Set.inter_eq_left.mpr hEF]
+  calc ‖P.proj E x‖ = ‖P.proj E (P.proj F x)‖ := by
+        conv_lhs => rw [h1]; simp [ContinuousLinearMap.comp_apply]
+    _ ≤ ‖P.proj F x‖ := P.proj_contraction _ _
+
 /-- The spectral distribution function for a vector x:
     F_x(t) = ⟨x, P((-∞, t]) x⟩ -/
 def distributionFunction (x : H) : SpectralDistribution where
@@ -446,30 +467,161 @@ def distributionFunction (x : H) : SpectralDistribution where
     exact hcontract
   right_continuous := by
     intro t
-    -- Right-continuity follows from σ-additivity via proj_decreasing_tendsto.
-    -- The sets E_n := Iic (t + 1/(n+1)) form a decreasing sequence with ⋂_n E_n = Iic t.
-    -- By proj_decreasing_tendsto, P(E_n) x → P(Iic t) x in norm.
-    -- Hence ⟨x, P(E_n) x⟩.re → ⟨x, P(Iic t) x⟩.re.
-    -- Since F is monotone, the sequential limit implies ContinuousWithinAt.
-    sorry
+    -- Step 1: Sequential convergence P(Iic(t + 1/(n+1)))x → P(Iic t)x
+    set E := fun n : ℕ => Set.Iic (t + 1 / ((↑n : ℝ) + 1))
+    have hE_dec : ∀ n, E (n + 1) ⊆ E n := by
+      intro n; simp only [E]; apply Set.Iic_subset_Iic.mpr
+      have h1 : (0 : ℝ) < (↑n : ℝ) + 1 := by positivity
+      linarith [one_div_le_one_div_of_le h1 (by push_cast; linarith : (↑n : ℝ) + 1 ≤ ↑(n + 1) + 1)]
+    have hE_inter : ⋂ n, E n = Set.Iic t := by
+      ext s; simp only [Set.mem_iInter, Set.mem_Iic, E]
+      refine ⟨fun h => ?_, fun hs n => le_add_of_le_of_nonneg hs (by positivity)⟩
+      by_contra hst; push_neg at hst
+      obtain ⟨n, hn⟩ := exists_nat_gt (1 / (s - t))
+      have hpos : (0 : ℝ) < s - t := sub_pos.mpr hst
+      have h1 : 1 < (↑n : ℝ) * (s - t) := by rwa [div_lt_iff₀ hpos] at hn
+      have h2 : (s - t) * ((↑n : ℝ) + 1) ≤ 1 :=
+        (le_div_iff₀ (by positivity : (0:ℝ) < ↑n + 1)).mp (by linarith [h n])
+      nlinarith [mul_comm (s - t) (↑n : ℝ)]
+    have hconv := P.proj_decreasing_tendsto x E (Set.Iic t) hE_dec hE_inter
+    -- Compose with continuous map y ↦ ⟨x, y⟩.re
+    have hcont : Continuous (fun y : H => (@inner ℂ H _ x y).re) := by fun_prop
+    have hseq : Tendsto (fun n : ℕ => (@inner ℂ H _ x (P.proj (E n) x)).re)
+        atTop (nhds ((@inner ℂ H _ x (P.proj (Set.Iic t) x)).re)) :=
+      hcont.continuousAt.tendsto.comp hconv
+    -- Step 2: ContinuousWithinAt from monotonicity + sequential convergence
+    rw [Metric.continuousWithinAt_iff]
+    intro ε hε
+    rw [Metric.tendsto_atTop] at hseq
+    obtain ⟨N, hN⟩ := hseq ε hε
+    refine ⟨1 / ((↑N : ℝ) + 1), by positivity, fun s hs hds => ?_⟩
+    have hst : t ≤ s := hs
+    have hsd : s < t + 1 / ((↑N : ℝ) + 1) := by
+      rw [Real.dist_eq, abs_lt] at hds; linarith [hds.2]
+    -- f(t) ≤ f(s) ≤ f(t + 1/(N+1)) by proj_norm_mono + inner_proj_eq_norm_sq
+    have h_lo : (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re ≤
+        (@inner ℂ H _ x (P.proj (Set.Iic s) x)).re := by
+      rw [P.inner_proj_eq_norm_sq, P.inner_proj_eq_norm_sq]
+      have := P.proj_norm_mono x _ _ (Set.Iic_subset_Iic.mpr hst)
+      nlinarith [norm_nonneg (P.proj (Set.Iic t) x)]
+    have h_hi : (@inner ℂ H _ x (P.proj (Set.Iic s) x)).re ≤
+        (@inner ℂ H _ x (P.proj (E N) x)).re := by
+      rw [P.inner_proj_eq_norm_sq, P.inner_proj_eq_norm_sq]
+      have := P.proj_norm_mono x _ _ (Set.Iic_subset_Iic.mpr hsd.le)
+      nlinarith [norm_nonneg (P.proj (Set.Iic s) x)]
+    -- |f(s) - f(t)| = f(s) - f(t) ≤ f(N) - f(t) = |f(N) - f(t)| < ε
+    rw [Real.dist_eq, abs_of_nonneg (by linarith)]
+    have hNN := hN N le_rfl; rw [Real.dist_eq] at hNN
+    have h_nn : 0 ≤ (@inner ℂ H _ x (P.proj (E N) x)).re -
+        (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re := by linarith
+    rw [abs_of_nonneg h_nn] at hNN
+    linarith
   nonneg := fun t => P.inner_proj_nonneg x (Set.Iic t)
   bound := ‖x‖^2
   bound_nonneg := sq_nonneg _
   le_bound := fun t => P.inner_proj_le_norm_sq x (Set.Iic t)
   tendsto_neg_infty := by
-    -- P((-∞, -n]) → 0 as n → ∞
-    sorry
+    -- P(Iic(-n))x → P(∅)x = 0 via proj_decreasing_tendsto
+    set f := fun t : ℝ => (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re
+    -- f is monotone
+    have f_mono : Monotone f := by
+      intro a b hab; simp only [f]
+      rw [P.inner_proj_eq_norm_sq, P.inner_proj_eq_norm_sq]
+      have := P.proj_norm_mono x _ _ (Set.Iic_subset_Iic.mpr hab)
+      nlinarith [norm_nonneg (P.proj (Set.Iic a) x)]
+    -- Sequential convergence: f(-n) → 0
+    set E := fun n : ℕ => Set.Iic (-(↑n : ℝ))
+    have hE_dec : ∀ n, E (n + 1) ⊆ E n := by
+      intro n; simp only [E]; apply Set.Iic_subset_Iic.mpr; push_cast; linarith
+    have hE_inter : ⋂ n, E n = ∅ := by
+      ext s; simp only [Set.mem_iInter, Set.mem_Iic, Set.mem_empty_iff_false, E]
+      constructor
+      · intro h
+        obtain ⟨n, hn⟩ := exists_nat_gt (-s)
+        linarith [h n]
+      · intro h; exact h.elim
+    have hconv := P.proj_decreasing_tendsto x E ∅ hE_dec hE_inter
+    rw [P.empty, ContinuousLinearMap.zero_apply] at hconv
+    have hcont : Continuous (fun y : H => (@inner ℂ H _ x y).re) := by fun_prop
+    have hseq : Tendsto (fun n : ℕ => f (-(↑n : ℝ))) atTop (nhds 0) := by
+      have := hcont.continuousAt.tendsto.comp hconv
+      simp only [inner_zero_right, Complex.zero_re, Function.comp_def] at this
+      exact this
+    -- Use tendsto_order for atBot filter
+    rw [tendsto_order]
+    constructor
+    · -- For a' < 0, eventually f(s) > a' (trivially since f ≥ 0)
+      intro a' ha'
+      rw [Filter.eventually_atBot]
+      exact ⟨0, fun s _ => lt_of_lt_of_le ha' (P.inner_proj_nonneg x (Set.Iic s))⟩
+    · -- For a' > 0, eventually f(s) < a' (since f(-n) → 0 and f monotone)
+      intro a' ha'
+      rw [Filter.eventually_atBot]
+      have hexN : ∃ N : ℕ, f (-(↑N : ℝ)) < a' := by
+        by_contra h; push_neg at h
+        exact absurd (ge_of_tendsto' hseq h) (not_le.mpr ha')
+      obtain ⟨N, hN⟩ := hexN
+      exact ⟨-(↑N : ℝ), fun s hs => lt_of_le_of_lt (f_mono hs) hN⟩
   tendsto_pos_infty := by
-    -- P((-∞, n]) → I as n → ∞, so ⟨x, Px⟩ → ⟨x, x⟩ = ‖x‖²
-    -- Use inner_proj_eq_norm_sq: ⟨x, P(E) x⟩.re = ‖P(E) x‖²
-    have heq : ∀ t, (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re = ‖P.proj (Set.Iic t) x‖^2 :=
-      fun t => P.inner_proj_eq_norm_sq x (Set.Iic t)
-    simp_rw [heq]
-    -- Goal: Tendsto (fun t => ‖P.proj (Iic t) x‖^2) atTop (nhds (‖x‖^2))
-    -- This follows from: P(Iic n) x → x in norm, and ‖·‖² is continuous
-    -- P(Iic n) x → P(ℝ) x = x because ⋃ₙ Iic n = ℝ and projections converge monotonically
-    -- Formal proof requires monotone convergence for projection-valued measures
-    sorry
+    -- P(Iic(n))x → P(ℝ)x = x via complement: P(Ioi(n))x → 0
+    set f := fun t : ℝ => (@inner ℂ H _ x (P.proj (Set.Iic t) x)).re
+    -- f is monotone
+    have f_mono : Monotone f := by
+      intro a b hab; simp only [f]
+      rw [P.inner_proj_eq_norm_sq, P.inner_proj_eq_norm_sq]
+      have := P.proj_norm_mono x _ _ (Set.Iic_subset_Iic.mpr hab)
+      nlinarith [norm_nonneg (P.proj (Set.Iic a) x)]
+    -- Complement sets Ioi(n) are decreasing with ⋂ = ∅
+    set G := fun n : ℕ => Set.Ioi (↑n : ℝ)
+    have hG_dec : ∀ n, G (n + 1) ⊆ G n := by
+      intro n; simp only [G]; apply Set.Ioi_subset_Ioi; push_cast; linarith
+    have hG_inter : ⋂ n, G n = ∅ := by
+      ext s; simp only [Set.mem_iInter, Set.mem_Ioi, Set.mem_empty_iff_false, G]
+      constructor
+      · intro h; obtain ⟨n, hn⟩ := exists_nat_gt s; linarith [h n]
+      · intro h; exact h.elim
+    have hG_conv := P.proj_decreasing_tendsto x G ∅ hG_dec hG_inter
+    rw [P.empty, ContinuousLinearMap.zero_apply] at hG_conv
+    -- P(Iic n)x = x - P(Ioi n)x by finite additivity
+    have h_decomp : ∀ n : ℕ, P.proj (Set.Iic (↑n : ℝ)) x + P.proj (Set.Ioi (↑n : ℝ)) x = x := by
+      intro n
+      have hunion : Set.Iic (↑n : ℝ) ∪ Set.Ioi (↑n : ℝ) = Set.univ := Set.Iic_union_Ioi
+      have hdisj : Disjoint (Set.Iic (↑n : ℝ)) (Set.Ioi (↑n : ℝ)) :=
+        Set.disjoint_left.mpr fun z hz hzoi =>
+          not_lt.mpr (Set.mem_Iic.mp hz) (Set.mem_Ioi.mp hzoi)
+      have := P.proj_finite_additive x _ _ hdisj
+      rw [hunion, P.univ, ContinuousLinearMap.id_apply] at this
+      exact this.symm
+    -- P(Iic n)x → x (since P(Ioi n)x → 0)
+    have hconv : Tendsto (fun n : ℕ => P.proj (Set.Iic (↑n : ℝ)) x) atTop (nhds x) := by
+      have heq : (fun (n : ℕ) => P.proj (Set.Iic (↑n : ℝ)) x) = fun n => x - P.proj (G n) x := by
+        ext n; simp only [G]; exact eq_sub_iff_add_eq.mpr (h_decomp n)
+      rw [heq]; simpa [sub_zero] using tendsto_const_nhds (x := x) |>.sub hG_conv
+    -- Compose with continuous inner product to get f(n) → ‖x‖²
+    have hcont : Continuous (fun y : H => (@inner ℂ H _ x y).re) := by fun_prop
+    have hseq : Tendsto (fun n : ℕ => f (↑n : ℝ)) atTop (nhds (‖x‖^2)) := by
+      have h1 := hcont.continuousAt.tendsto.comp hconv
+      simp only [Function.comp_def] at h1
+      have hlim : (@inner ℂ H _ x x).re = ‖x‖ ^ 2 := by
+        have h := P.inner_proj_eq_norm_sq x Set.univ
+        rw [P.univ, ContinuousLinearMap.id_apply] at h
+        exact h
+      rwa [hlim] at h1
+    -- Use tendsto_order: for monotone f bounded above by ‖x‖² with f(n) → ‖x‖²
+    rw [tendsto_order]
+    constructor
+    · -- For a' < ‖x‖², eventually f(s) > a'
+      intro a' ha'
+      rw [Filter.eventually_atTop]
+      have hexN : ∃ N : ℕ, a' < f ↑N := by
+        by_contra h; push_neg at h
+        exact absurd (le_of_tendsto' hseq h) (not_le.mpr ha')
+      obtain ⟨N, hN⟩ := hexN
+      exact ⟨↑N, fun s hs => lt_of_lt_of_le hN (f_mono hs)⟩
+    · -- For a' > ‖x‖², eventually f(s) < a' (since f ≤ ‖x‖² always)
+      intro a' ha'
+      rw [Filter.eventually_atTop]
+      exact ⟨0, fun s _ => lt_of_le_of_lt (P.inner_proj_le_norm_sq x (Set.Iic s)) ha'⟩
 
 /-- The spectral measure μ_{x,x} for a vector x. -/
 def diagonalMeasure (x : H) : Measure ℝ :=
@@ -478,12 +630,12 @@ def diagonalMeasure (x : H) : Measure ℝ :=
 /-- The complex spectral measure μ_{x,y} defined via polarization. -/
 def complexMeasure (x y : H) (E : Set ℝ) : ℂ :=
   -- Polarization identity:
-  -- 4⟨x, Py⟩ = ⟨x+y, P(x+y)⟩ - ⟨x-y, P(x-y)⟩ + i⟨x+iy, P(x+iy)⟩ - i⟨x-iy, P(x-iy)⟩
+  -- 4⟨x, Py⟩ = ⟨x+y, P(x+y)⟩ - ⟨x-y, P(x-y)⟩ - i⟨x+iy, P(x+iy)⟩ + i⟨x-iy, P(x-iy)⟩
   let μpp := (P.diagonalMeasure (x + y) E).toReal
   let μmm := (P.diagonalMeasure (x - y) E).toReal
   let μpi := (P.diagonalMeasure (x + Complex.I • y) E).toReal
   let μmi := (P.diagonalMeasure (x - Complex.I • y) E).toReal
-  (1/4 : ℂ) * (μpp - μmm + Complex.I * μpi - Complex.I * μmi)
+  (1/4 : ℂ) * (μpp - μmm - Complex.I * μpi + Complex.I * μmi)
 
 /-- The complex measure agrees with the inner product on projections. -/
 theorem complexMeasure_eq_inner (x y : H) (E : Set ℝ) :
