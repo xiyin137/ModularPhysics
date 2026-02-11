@@ -389,6 +389,20 @@ lemma cfcViaInverseCayley_mul (f g : C(ℝ, ℂ)) :
   · simp only [ContinuousMap.mul_apply]
   · simp only [ContinuousMap.mul_apply]
 
+/-- The composition cfcViaInverseCayley preserves addition. -/
+lemma cfcViaInverseCayley_add (f g : C(ℝ, ℂ)) :
+    cfcViaInverseCayley (f + g) = cfcViaInverseCayley f + cfcViaInverseCayley g := by
+  ext w
+  simp only [cfcViaInverseCayley, Pi.add_apply, ContinuousMap.add_apply]
+  split_ifs <;> rfl
+
+/-- The composition cfcViaInverseCayley respects scalar multiplication. -/
+lemma cfcViaInverseCayley_smul (c : ℂ) (f : C(ℝ, ℂ)) :
+    cfcViaInverseCayley (c • f) = c • cfcViaInverseCayley f := by
+  ext w
+  simp only [cfcViaInverseCayley, Pi.smul_apply, ContinuousMap.smul_apply, smul_eq_mul]
+  split_ifs <;> rfl
+
 /-- The unbounded functional calculus is multiplicative.
 
     This version includes explicit continuity hypotheses, which are satisfied when:
@@ -437,6 +451,34 @@ theorem unbounded_cfc_star (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
   split_ifs with h
   · simp only [ContinuousMap.star_apply]
   · simp only [ContinuousMap.star_apply]
+
+/-- The unbounded functional calculus is additive. -/
+theorem unbounded_cfc_add (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
+    (f g : C(ℝ, ℂ))
+    (hcf : ContinuousOn (cfcViaInverseCayley f) (spectrum ℂ C.U))
+    (hcg : ContinuousOn (cfcViaInverseCayley g) (spectrum ℂ C.U)) :
+    UnboundedCFC T hT hsa C (f + g) = UnboundedCFC T hT hsa C f + UnboundedCFC T hT hsa C g := by
+  show cfc (cfcViaInverseCayley (f + g)) C.U =
+      cfc (cfcViaInverseCayley f) C.U + cfc (cfcViaInverseCayley g) C.U
+  haveI : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
+  have h : cfcViaInverseCayley (f + g) = fun x => cfcViaInverseCayley f x + cfcViaInverseCayley g x := by
+    ext w; simp only [cfcViaInverseCayley, ContinuousMap.add_apply]; split_ifs <;> rfl
+  rw [h]
+  exact cfc_add (a := C.U) (cfcViaInverseCayley f) (cfcViaInverseCayley g) hcf hcg
+
+/-- The unbounded functional calculus respects scalar multiplication. -/
+theorem unbounded_cfc_smul (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (C : CayleyTransform T hT hsa)
+    (c : ℂ) (f : C(ℝ, ℂ))
+    (hcf : ContinuousOn (cfcViaInverseCayley f) (spectrum ℂ C.U)) :
+    UnboundedCFC T hT hsa C (c • f) = c • UnboundedCFC T hT hsa C f := by
+  show cfc (cfcViaInverseCayley (c • f)) C.U = c • cfc (cfcViaInverseCayley f) C.U
+  haveI : IsStarNormal C.U := cayleyTransform_isStarNormal T hT hsa C
+  have h : cfcViaInverseCayley (c • f) = fun x => c • cfcViaInverseCayley f x := by
+    ext w; simp only [cfcViaInverseCayley, ContinuousMap.smul_apply, smul_eq_mul]; split_ifs <;> rfl
+  rw [h]
+  exact cfc_smul (a := C.U) c (cfcViaInverseCayley f) hcf
 
 /-- The constant function 1 maps to the identity operator.
 

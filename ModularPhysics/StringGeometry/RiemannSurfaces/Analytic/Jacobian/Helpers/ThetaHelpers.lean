@@ -304,7 +304,9 @@ theorem theta_quasi_periodic (g : ℕ) (z : Fin g → ℂ) (Ω : Matrix (Fin g) 
   -- The key: m + (-n) gives fun i => m i + (-n i) = fun i => m i - n i
   -- So the cast ↑((m + (-n)) i) = ↑(m i + (-n i)) = ↑(m i) - ↑(n i)
   have h_cast : ∀ i, (↑((m + (-n)) i) : ℂ) = (↑(m i) : ℂ) - ↑(n i) := by
-    intro i; simp [Pi.add_apply, Pi.neg_apply, Int.cast_add, Int.cast_neg, sub_eq_add_neg]
+    intro i
+    show (↑(m i + (-n i)) : ℂ) = ↑(m i) - ↑(n i)
+    simp [Int.cast_add, Int.cast_neg, sub_eq_add_neg]
   -- Rewrite the sums using h_cast
   have h_quad_rw : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
       (↑((m + (-n)) i) : ℂ) * Ω i j * ↑((m + (-n)) j)) =
@@ -320,11 +322,164 @@ theorem theta_quasi_periodic (g : ℕ) (z : Fin g → ℂ) (Ω : Matrix (Fin g) 
   -- Now apply the exponent identity
   exact theta_exponent_identity g z Ω hΩ m n
 
-/-- Odd theta null vanishes: if χ is odd, then θ[a;b](0) = 0 -/
+/-- Evenness of the Riemann theta function: θ(-z, Ω) = θ(z, Ω).
+    Proof by reindexing n → -n in the sum. -/
+theorem riemannThetaVal_neg (g : ℕ) (z : Fin g → ℂ) (Ω : Matrix (Fin g) (Fin g) ℂ) :
+    riemannThetaVal g (fun i => -z i) Ω = riemannThetaVal g z Ω := by
+  unfold riemannThetaVal
+  rw [show (∑' m, riemannThetaTerm g (fun i => -z i) Ω m) =
+    ∑' m, riemannThetaTerm g (fun i => -z i) Ω (-m)
+    from ((Equiv.neg (Fin g → ℤ)).tsum_eq _).symm]
+  apply tsum_congr; intro m
+  unfold riemannThetaTerm; simp only []
+  congr 1
+  -- (-m)·Ω·(-m) = m·Ω·m and (-m)·(-z) = m·z
+  have h_quad : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑((-m) i) : ℂ) * Ω i j * ↑((-m) j)) =
+      (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+      (↑(m i) : ℂ) * Ω i j * ↑(m j)) := by
+    congr 1; funext i; congr 1; funext j; simp [Pi.neg_apply, Int.cast_neg]
+  have h_lin : (Finset.univ.sum fun i => (↑((-m) i) : ℂ) * -z i) =
+      (Finset.univ.sum fun i => (↑(m i) : ℂ) * z i) := by
+    congr 1; funext i; simp [Pi.neg_apply, Int.cast_neg]
+  rw [h_quad, h_lin]
+
+/-- Odd theta null vanishes: if χ is a half-integer odd characteristic, then θ[a;b](0) = 0.
+
+    **Proof outline**: At z=0, thetaWithCharVal = exp(phase) * θ(Ωa + b).
+    Using periodicity (2b ∈ ℤ^g) and quasi-periodicity (2a via Ω),
+    θ(Ωa + b) = exp(4πi·a·b) · θ(Ωa + b).
+    For odd chars, exp(4πi·a·b) = -1, so θ(Ωa + b) = 0. -/
 theorem odd_theta_null_vanishes (g : ℕ) (a b : Fin g → ℚ)
-    (hodd : (4 * Finset.univ.sum fun i => a i * b i) % 2 = 1) (Ω : Matrix (Fin g) (Fin g) ℂ) :
+    (ha : ∀ i, a i = 0 ∨ a i = 1/2)
+    (hb : ∀ i, b i = 0 ∨ b i = 1/2)
+    (hodd : (4 * Finset.univ.sum fun i => a i * b i : ℚ).num % 2 = 1)
+    (Ω : Matrix (Fin g) (Fin g) ℂ) (hΩ : Ω.transpose = Ω) :
     thetaWithCharVal g a b (fun _ => 0) Ω = 0 := by
-  sorry  -- Follows from parity of the sum under n ↦ -n
+  -- Reduce to θ(Ωa + b) = 0
+  unfold thetaWithCharVal; simp only []
+  suffices h : riemannThetaVal g
+      (fun i => 0 + Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) Ω = 0 by
+    rw [h, mul_zero]
+  have h_simp : (fun i => (0 : ℂ) + Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) =
+      (fun i => Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) := by
+    funext i; simp
+  rw [h_simp]
+  set S := riemannThetaVal g
+    (fun i => Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) Ω with S_def
+  -- Integer vectors: m_2b for 2b, n_neg2a for -2a
+  let m_2b : Fin g → ℤ := fun i => if b i = 0 then 0 else 1
+  let n_neg2a : Fin g → ℤ := fun i => if a i = 0 then 0 else -1
+  have hm_cast : ∀ i, (m_2b i : ℂ) = 2 * (b i : ℂ) := by
+    intro i; simp only [m_2b]
+    rcases hb i with h | h <;> simp [h] <;> push_cast <;> norm_num
+  have hn_cast : ∀ i, (n_neg2a i : ℂ) = -2 * (a i : ℂ) := by
+    intro i; simp only [n_neg2a]
+    rcases ha i with h | h <;> simp [h] <;> push_cast <;> norm_num
+  -- Step 1: S = θ(-(Ωa + b)) by evenness
+  have h1 : S = riemannThetaVal g
+      (fun i => -(Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i))) Ω :=
+    (riemannThetaVal_neg g _ Ω).symm
+  -- Step 2: θ(-(Ωa+b)) = θ(-(Ωa+b) + 2b) = θ(-Ωa + b) by integer periodicity
+  have h2 : riemannThetaVal g
+      (fun i => -(Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i))) Ω =
+      riemannThetaVal g
+      (fun i => -(Finset.univ.sum (fun j => Ω i j * ↑(a j))) + ↑(b i)) Ω := by
+    calc _ = riemannThetaVal g
+          (fun i => -(Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) + ↑(m_2b i)) Ω :=
+            (theta_periodic_int g _ Ω m_2b).symm
+      _ = _ := by congr 1; funext i; simp only [hm_cast]; ring
+  -- Step 3: θ(-Ωa + b) = automorphy * S by quasi-periodicity (n = -2a)
+  have h3 : riemannThetaVal g
+      (fun i => -(Finset.univ.sum (fun j => Ω i j * ↑(a j))) + ↑(b i)) Ω =
+      automorphyFactorVal g
+      (fun i => Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) Ω n_neg2a * S := by
+    rw [S_def, ← theta_quasi_periodic g _ Ω hΩ n_neg2a]
+    congr 1; funext i; simp only [hn_cast]
+    have : Finset.univ.sum (fun j => Ω i j * (-2 * ↑(a j))) =
+        -2 * Finset.univ.sum (fun j => Ω i j * ↑(a j)) := by
+      rw [Finset.mul_sum]; congr 1; funext j; ring
+    rw [this]; ring
+  -- Step 4: automorphy factor = exp(4πi·a·b)
+  have h_factor : automorphyFactorVal g
+      (fun i => Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i)) Ω n_neg2a =
+      exp (4 * ↑π * I * Finset.univ.sum (fun i => (a i : ℂ) * ↑(b i))) := by
+    unfold automorphyFactorVal; simp only []; congr 1
+    simp_rw [hn_cast]
+    have h_quad : (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+        (-2 * (↑(a i) : ℂ)) * Ω i j * (-2 * ↑(a j))) =
+        4 * (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+        (↑(a i) : ℂ) * Ω i j * ↑(a j)) := by
+      have h := fun i j => show (-2 * (↑(a i) : ℂ)) * Ω i j * (-2 * ↑(a j)) =
+          4 * (↑(a i) * Ω i j * ↑(a j)) from by ring
+      simp_rw [h, ← Finset.mul_sum]
+    have h_lin : (Finset.univ.sum fun i => (-2 * (↑(a i) : ℂ)) *
+        (Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i))) =
+        -2 * (Finset.univ.sum fun i => (↑(a i) : ℂ) *
+        (Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i))) := by
+      rw [Finset.mul_sum]; congr 1; funext i; ring
+    have h_split : (Finset.univ.sum fun i => (↑(a i) : ℂ) *
+        (Finset.univ.sum (fun j => Ω i j * ↑(a j)) + ↑(b i))) =
+        (Finset.univ.sum fun i => Finset.univ.sum fun j =>
+          (↑(a i) : ℂ) * Ω i j * ↑(a j)) +
+        (Finset.univ.sum fun i => (↑(a i) : ℂ) * ↑(b i)) := by
+      rw [← Finset.sum_add_distrib]; congr 1; funext i
+      simp only [mul_add, Finset.mul_sum, mul_assoc]
+    rw [h_quad, h_lin, h_split]; ring
+  -- Step 5: exp(4πi·a·b) = -1 for odd characteristics
+  have h_exp_neg1 : exp (4 * ↑π * I *
+      Finset.univ.sum (fun i => (a i : ℂ) * ↑(b i))) = -1 := by
+    -- Show 4 * Σ a_i * b_i is an integer N
+    have h_int : ∃ N : ℤ, (4 * Finset.univ.sum (fun i => a i * b i) : ℚ) = ↑N := by
+      rw [Finset.mul_sum]
+      have h_term : ∀ i : Fin g, ∃ k : ℤ, (4 * (a i * b i) : ℚ) = ↑k := by
+        intro i; rcases ha i with h | h <;> rcases hb i with h' | h'
+        · exact ⟨0, by rw [h, h']; norm_num⟩
+        · exact ⟨0, by rw [h, h']; norm_num⟩
+        · exact ⟨0, by rw [h, h']; norm_num⟩
+        · exact ⟨1, by rw [h, h']; norm_num⟩
+      induction (Finset.univ : Finset (Fin g)) using Finset.induction_on with
+      | empty => exact ⟨0, by simp⟩
+      | @insert a_el s has ih =>
+        obtain ⟨k₁, hk₁⟩ := ih
+        obtain ⟨k₂, hk₂⟩ := h_term a_el
+        exact ⟨k₂ + k₁, by rw [Finset.sum_insert has, hk₂, hk₁]; push_cast; ring⟩
+    obtain ⟨N, hN_eq⟩ := h_int
+    -- N is odd (from hodd)
+    have hN_odd : N % 2 = 1 := by
+      have h_num : (4 * Finset.univ.sum (fun i => a i * b i) : ℚ).num = N := by
+        rw [hN_eq]; simp
+      rw [← h_num]; exact hodd
+    -- Cast equality: (4 * Σ a_i * b_i : ℚ : ℂ) = (N : ℂ)
+    have h_cast_N : ((4 * Finset.univ.sum (fun i => a i * b i) : ℚ) : ℂ) = (↑N : ℂ) := by
+      exact_mod_cast hN_eq
+    -- Exponent = N * πI
+    have h_exp_eq : 4 * ↑π * I *
+        Finset.univ.sum (fun i => (a i : ℂ) * ↑(b i)) = ↑N * (↑π * I) := by
+      have h_sum : (Finset.univ.sum (fun i => (a i : ℂ) * (↑(b i) : ℂ))) =
+          ((Finset.univ.sum fun i => a i * b i : ℚ) : ℂ) := by push_cast; rfl
+      rw [h_sum, show (4 : ℂ) * ↑π * I * ↑(Finset.univ.sum fun i => a i * b i) =
+          ↑(4 * Finset.univ.sum (fun i => a i * b i) : ℚ) * (↑π * I) from by
+        push_cast; ring, h_cast_N]
+    rw [h_exp_eq]
+    -- exp(N * πI) = -1 for N odd: write N = 2k + 1
+    obtain ⟨k, hk⟩ : ∃ k : ℤ, N = 2 * k + 1 := ⟨N / 2, by omega⟩
+    rw [hk, show ((2 * k + 1 : ℤ) : ℂ) * (↑π * I) =
+        ↑k * (2 * ↑π * I) + ↑π * I from by push_cast; ring]
+    rw [Complex.exp_add, exp_int_mul_two_pi_mul_I, one_mul, exp_pi_mul_I]
+  -- Step 6: S = -1 * S → S = 0
+  have h_chain : S = -1 * S := by
+    calc S = riemannThetaVal g
+          (fun i => -(∑ j, Ω i j * ↑(a j) + ↑(b i))) Ω := h1
+      _ = riemannThetaVal g (fun i => -∑ j, Ω i j * ↑(a j) + ↑(b i)) Ω := h2
+      _ = automorphyFactorVal g
+          (fun i => ∑ j, Ω i j * ↑(a j) + ↑(b i)) Ω n_neg2a * S := h3
+      _ = exp (4 * ↑π * I * ∑ i, ↑(a i) * ↑(b i)) * S := by rw [h_factor]
+      _ = -1 * S := by rw [h_exp_neg1]
+  have h_sum_zero : S + S = 0 := by linear_combination h_chain
+  have h_2S : (2 : ℂ) * S = 0 := by
+    rw [show (2 : ℂ) * S = S + S from by ring]; exact h_sum_zero
+  exact (mul_eq_zero.mp h_2S).resolve_left two_ne_zero
 
 /-- The Jacobi identity: θ₃⁴ = θ₂⁴ + θ₄⁴ at z = 0.
     This is a deep result relating elliptic functions. -/

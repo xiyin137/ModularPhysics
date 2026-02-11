@@ -5,7 +5,10 @@ Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoIntegralProperties
 import ModularPhysics.RigorousQFT.SPDE.Helpers.SimpleProcessLinear
+import ModularPhysics.RigorousQFT.SPDE.Helpers.MergedValueAtTime
+import ModularPhysics.RigorousQFT.SPDE.Helpers.IsometryAt
 import ModularPhysics.RigorousQFT.SPDE.Helpers.GronwallForSDE
+import ModularPhysics.RigorousQFT.SPDE.Helpers.ProductL2Convergence
 import ModularPhysics.RigorousQFT.SPDE.Probability.IndependenceHelpers
 import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
 import Mathlib.Analysis.Calculus.Deriv.Basic
@@ -215,6 +218,7 @@ theorem diagonal_term (H : SimpleProcess F) (W : BrownianMotion Ω μ)
     from funext (fun ω => by simp [Pi.mul_apply])]
   rw [hfactor, hvar]
 
+omit [MeasurableSpace Ω] in
 /-- Pythagoras for orthogonal sums: if E[aᵢ·aⱼ] = 0 for i ≠ j, then
     E[(Σ aᵢ)²] = Σ E[aᵢ²].
 
@@ -382,15 +386,105 @@ end SimpleProcess
 /-! ## Itô Integral -/
 
 /-- The space of Itô integrable processes.
-    H is integrable if E[∫₀ᵀ H²_s ds] < ∞ -/
+    H is integrable if E[∫₀ᵀ H²_s ds] < ∞.
+
+    The process is assumed to be jointly measurable (measurable as a function
+    (t, ω) ↦ H(t, ω) on the product space ℝ × Ω). This is standard: in classical
+    stochastic analysis, Itô integrands are assumed progressively measurable,
+    which implies joint measurability. Joint measurability is needed for
+    Fubini/Tonelli arguments (e.g., showing ω ↦ ∫₀ᵗ H²(s,ω) ds is measurable). -/
 structure ItoIntegrableProcess (F : Filtration Ω ℝ) (μ : Measure Ω) (T : ℝ) where
   /-- The process -/
   process : ℝ → Ω → ℝ
   /-- Adapted to F -/
   adapted : ∀ t : ℝ, t ≤ T → @Measurable Ω ℝ (F.σ_algebra t) _ (process t)
-  /-- Square-integrable condition: E[∫₀ᵀ H²_s ds] < ∞ -/
-  square_integrable : ∃ (bound : ℝ),
-    ∫ ω, (∫ t in Set.Icc 0 T, (process t ω)^2 ∂volume) ∂μ ≤ bound
+  /-- Jointly measurable: (t, ω) ↦ H(t, ω) is measurable on ℝ × Ω.
+      This is the standard condition for Itô integrands (implied by progressive
+      measurability). Needed for Fubini/Tonelli arguments. -/
+  jointly_measurable : Measurable (Function.uncurry process)
+  /-- Square-integrable condition: (s, ω) ↦ H(s, ω)² is integrable on [0,T] × Ω.
+      This is the product-space formulation of E[∫₀ᵀ H²_s ds] < ∞.
+      Using product integrability rather than iterated Bochner integrals avoids
+      the issue that the Bochner integral returns 0 for non-integrable functions.
+      From this, Fubini gives:
+      - a.e. IntegrableOn of H² on [0,T] (via `Integrable.prod_left_ae`)
+      - Bochner integrability of ω ↦ ∫₀ᵀ H²(s,ω) ds (via `Integrable.integral_prod_right`) -/
+  square_integrable : Integrable
+    (fun p : ℝ × Ω => (process p.1 p.2) ^ 2)
+    ((volume.restrict (Set.Icc 0 T)).prod μ)
+
+namespace ItoIntegrableProcess
+
+variable {F : Filtration Ω ℝ} {μ : Measure Ω} {T : ℝ}
+
+/-- Product integrability on sub-intervals [0,t] ⊆ [0,T].
+    Via prod_restrict: convert to IntegrableOn on the product, use mono_set, convert back. -/
+theorem square_integrable_sub [SFinite μ] (H : ItoIntegrableProcess F μ T)
+    {t : ℝ} (_ht0 : 0 ≤ t) (htT : t ≤ T) :
+    Integrable (fun p : ℝ × Ω => (H.process p.1 p.2) ^ 2)
+      ((volume.restrict (Set.Icc 0 t)).prod μ) := by
+  -- Separate f from H to avoid dependent type issues in measure rewriting
+  set f : ℝ × Ω → ℝ := fun p => (H.process p.1 p.2) ^ 2
+  have hsq : Integrable f ((volume.restrict (Set.Icc 0 T)).prod μ) := H.square_integrable
+  -- Convert product measures to restrictions of vol.prod μ via prod_restrict
+  -- (vol.restrict s).prod μ = (vol.prod μ).restrict (s ×ˢ univ)
+  have hconv : ∀ (s : Set ℝ), (volume.restrict s).prod μ =
+      (volume.prod μ).restrict (s ×ˢ Set.univ) := fun s => by
+    conv_lhs => rw [show μ = μ.restrict Set.univ from Measure.restrict_univ.symm]
+    exact Measure.prod_restrict s Set.univ
+  rw [hconv] at hsq ⊢
+  exact hsq.mono_measure (Measure.restrict_mono
+    (Set.prod_mono (Set.Icc_subset_Icc_right htT) le_rfl) le_rfl)
+
+/-- The inner square integral is well-defined (IntegrableOn) for a.e. ω on [0,T].
+    From product integrability via Fubini (`Integrable.prod_left_ae`). -/
+theorem integrableOn_sq_ae [SFinite μ] (H : ItoIntegrableProcess F μ T) :
+    ∀ᵐ ω ∂μ, IntegrableOn (fun s => (H.process s ω) ^ 2) (Set.Icc 0 T) volume :=
+  H.square_integrable.prod_left_ae
+
+/-- The Bochner integral E[∫₀ᵀ H²] is well-defined and integrable.
+    From product integrability via Fubini (`Integrable.integral_prod_right`). -/
+theorem bochner_square_integrable [SFinite μ] (H : ItoIntegrableProcess F μ T) :
+    Integrable (fun ω => ∫ s in Set.Icc 0 T, (H.process s ω) ^ 2 ∂volume) μ :=
+  H.square_integrable.integral_prod_right
+
+/-- Bochner integrability of ω ↦ ∫₀ᵗ H²(s,ω) ds for sub-intervals t ≤ T. -/
+theorem bochner_square_integrable_sub [SFinite μ] (H : ItoIntegrableProcess F μ T)
+    {t : ℝ} (ht0 : 0 ≤ t) (htT : t ≤ T) :
+    Integrable (fun ω => ∫ s in Set.Icc 0 t, (H.process s ω) ^ 2 ∂volume) μ :=
+  (H.square_integrable_sub ht0 htT).integral_prod_right
+
+/-- The inner square integral is well-defined on sub-intervals [0,t] for a.e. ω. -/
+theorem integrableOn_sq_sub_ae [SFinite μ] (H : ItoIntegrableProcess F μ T)
+    {t : ℝ} (ht0 : 0 ≤ t) (htT : t ≤ T) :
+    ∀ᵐ ω ∂μ, IntegrableOn (fun s => (H.process s ω) ^ 2) (Set.Icc 0 t) volume :=
+  (H.square_integrable_sub ht0 htT).prod_left_ae
+
+/-- Product integrability of H₁·H₂ on [0,t]×Ω from individual square integrability.
+    Uses AM-GM: |H₁·H₂| ≤ (H₁² + H₂²)/2 on the product space. -/
+theorem product_integrable_sub [SFinite μ] (H₁ H₂ : ItoIntegrableProcess F μ T)
+    {t : ℝ} (ht0 : 0 ≤ t) (htT : t ≤ T) :
+    Integrable (fun p : ℝ × Ω => H₁.process p.1 p.2 * H₂.process p.1 p.2)
+      ((volume.restrict (Set.Icc 0 t)).prod μ) := by
+  have h1 := H₁.square_integrable_sub ht0 htT
+  have h2 := H₂.square_integrable_sub ht0 htT
+  have hmeas : AEStronglyMeasurable
+      (fun p : ℝ × Ω => H₁.process p.1 p.2 * H₂.process p.1 p.2)
+      ((volume.restrict (Set.Icc 0 t)).prod μ) :=
+    (H₁.jointly_measurable.mul H₂.jointly_measurable).aestronglyMeasurable
+  exact (h1.add h2).mono' hmeas (Filter.Eventually.of_forall fun p => by
+    simp only [Real.norm_eq_abs, Pi.add_apply, abs_mul]
+    nlinarith [sq_nonneg (|H₁.process p.1 p.2| - |H₂.process p.1 p.2|),
+      sq_abs (H₁.process p.1 p.2), sq_abs (H₂.process p.1 p.2)])
+
+/-- Bochner integrability of ω ↦ ∫₀ᵗ H₁·H₂ from individual square integrability. -/
+theorem bochner_product_integrable_sub [SFinite μ] (H₁ H₂ : ItoIntegrableProcess F μ T)
+    {t : ℝ} (ht0 : 0 ≤ t) (htT : t ≤ T) :
+    Integrable (fun ω => ∫ s in Set.Icc 0 t,
+      H₁.process s ω * H₂.process s ω ∂volume) μ :=
+  (product_integrable_sub H₁ H₂ ht0 htT).integral_prod_right
+
+end ItoIntegrableProcess
 
 /-- The Itô integral ∫₀ᵗ H_s dW_s, defined as the L² limit of simple process integrals.
 
@@ -437,7 +531,15 @@ structure ItoIntegral (F : Filtration Ω ℝ) (μ : Measure Ω) (T : ℝ) where
     Filter.Tendsto
       (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx n) BM t ω)^2 ∂μ)
       Filter.atTop
-      (nhds (∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (integrand.process s ω)^2 ∂volume) ∂μ)))
+      (nhds (∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (integrand.process s ω)^2 ∂volume) ∂μ))) ∧
+    -- Integrand L² convergence: the piecewise-constant value functions of the approximating
+    -- simple processes converge to the integrand in L²([0,t] × Ω). This is the standard
+    -- construction property: E[∫₀ᵗ |Hₙ - H|² ds] → 0.
+    (∀ t : ℝ, 0 ≤ t → t ≤ T →
+    Filter.Tendsto
+      (fun n => ∫ ω, (∫ s in Set.Icc 0 t,
+        (SimpleProcess.valueAtTime (approx n) s ω - integrand.process s ω) ^ 2 ∂volume) ∂μ)
+      Filter.atTop (nhds 0))
   /-- The integral is square-integrable at each time in [0, T].
       This is part of the L² limit definition: the limit of an L² Cauchy sequence
       is in L². Without this, `is_L2_limit` would be vacuously true for non-L² functions
@@ -465,178 +567,6 @@ theorem integrable_limit (I : ItoIntegral F μ T) [IsProbabilityMeasure μ]
   nlinarith [sq_nonneg (|I.integral t ω| - 1), sq_abs (I.integral t ω),
     abs_nonneg (I.integral t ω)]
 
-/-- Linearity of Itô integral in the integrand -/
-theorem linear (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMeasure μ]
-    (_h : I₁.BM = I₂.BM) (a b : ℝ) :
-    ∃ I : ItoIntegral F μ T,
-      I.BM = I₁.BM ∧
-      ∀ t : ℝ, ∀ᵐ ω ∂μ, I.integral t ω = a * I₁.integral t ω + b * I₂.integral t ω := by
-  -- Get approximating sequences for both integrals
-  obtain ⟨approx₁, hadapt₁, hbdd₁, hnn₁, hL2₁, hiso₁⟩ := I₁.is_L2_limit
-  obtain ⟨approx₂, hadapt₂, hbdd₂, hnn₂, hL2₂, hiso₂⟩ := I₂.is_L2_limit
-  -- Convert I₂.BM references to I₁.BM using _h
-  have hadapt₂' : ∀ (n : ℕ), ∀ i : Fin (approx₂ n).n,
-      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((approx₂ n).times i)) _ ((approx₂ n).values i) := by
-    intro n i; rw [_h]; exact hadapt₂ n i
-  -- For each n, combine approximations using exists_linear_simple_integral
-  choose combined hcomb_int hcomb_adapt hcomb_bdd hcomb_nn using
-    fun n => SimpleProcess.exists_linear_simple_integral (approx₁ n) (approx₂ n) I₁.BM a b
-  -- Extract fully instantiated properties
-  have hcomb_adapt' : ∀ (n : ℕ), ∀ i : Fin (combined n).n,
-      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((combined n).times i)) _ ((combined n).values i) :=
-    fun n => hcomb_adapt n (hadapt₁ n) (hadapt₂' n)
-  have hcomb_bdd' : ∀ (n : ℕ), ∀ i : Fin (combined n).n,
-      ∃ C : ℝ, ∀ ω, |(combined n).values i ω| ≤ C :=
-    fun n => hcomb_bdd n (hbdd₁ n) (hbdd₂ n)
-  have hcomb_nn' : ∀ (n : ℕ), ∀ i : Fin (combined n).n, 0 ≤ (combined n).times i :=
-    fun n => hcomb_nn n (hnn₁ n) (hnn₂ n)
-  -- The combined integral function
-  let I_integral : ℝ → Ω → ℝ := fun t ω => a * I₁.integral t ω + b * I₂.integral t ω
-  -- Construct the ItoIntegral
-  refine ⟨{
-    integrand := {
-      process := fun t ω => a * I₁.integrand.process t ω + b * I₂.integrand.process t ω
-      adapted := fun t ht =>
-        (measurable_const.mul (I₁.integrand.adapted t ht)).add
-          (measurable_const.mul (I₂.integrand.adapted t ht))
-      square_integrable := by exact ⟨_, le_refl _⟩
-    }
-    BM := I₁.BM
-    integral := I_integral
-    adapted := fun t ht =>
-      (measurable_const.mul (I₁.adapted t ht)).add
-        (measurable_const.mul (I₂.adapted t ht))
-    initial := by
-      filter_upwards [I₁.initial, I₂.initial] with ω h₁ h₂
-      show a * I₁.integral 0 ω + b * I₂.integral 0 ω = 0
-      rw [h₁, h₂, mul_zero, mul_zero, add_zero]
-    is_L2_limit := ⟨combined, hcomb_adapt', hcomb_bdd', hcomb_nn', ?_, ?_⟩
-    sq_integrable_limit := fun t ht0 htT => by
-      -- Use L² approach: aI₁ + bI₂ ∈ L² → (aI₁ + bI₂)² ∈ L¹
-      have hmeas : AEStronglyMeasurable
-          (fun ω => a * I₁.integral t ω + b * I₂.integral t ω) μ := by
-        apply Measurable.aestronglyMeasurable
-        exact (measurable_const.mul ((I₁.adapted t htT).mono (F.le_ambient t) le_rfl)).add
-          (measurable_const.mul ((I₂.adapted t htT).mono (F.le_ambient t) le_rfl))
-      rw [← memLp_two_iff_integrable_sq hmeas]
-      have hI₁_L2 : MemLp (I₁.integral t) 2 μ :=
-        (memLp_two_iff_integrable_sq
-          (I₁.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
-          (I₁.sq_integrable_limit t ht0 htT)
-      have hI₂_L2 : MemLp (I₂.integral t) 2 μ :=
-        (memLp_two_iff_integrable_sq
-          (I₂.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
-          (I₂.sq_integrable_limit t ht0 htT)
-      exact (hI₁_L2.const_smul a).add (hI₂_L2.const_smul b)
-  }, rfl, fun t => Filter.Eventually.of_forall fun ω => rfl⟩
-  · -- L² convergence: ∫((combined n).integral_at - I_integral)² → 0
-    -- Squeeze: 0 ≤ ∫(a(S₁-I₁)+b(S₂-I₂))² ≤ 2a²∫(S₁-I₁)² + 2b²∫(S₂-I₂)² → 0
-    intro t ht0 htT
-    -- Rewrite S₂ₙ with I₁.BM → I₂.BM for hL2₂
-    have hL2₂' : Filter.Tendsto
-        (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-          I₂.integral t ω)^2 ∂μ) Filter.atTop (nhds 0) := by
-      rw [show I₁.BM = I₂.BM from _h]; exact hL2₂ t ht0 htT
-    -- Integrability of individual error squares
-    have hI₁_int := I₁.integrable_limit t ht0 htT
-    have hI₁_sq := I₁.sq_integrable_limit t ht0 htT
-    have hI₂_int := I₂.integrable_limit t ht0 htT
-    have hI₂_sq := I₂.sq_integrable_limit t ht0 htT
-    have hd1_sq : ∀ n, Integrable (fun ω =>
-        (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-          I₁.integral t ω) ^ 2) μ :=
-      fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₁ n) I₁.BM
-        (hadapt₁ n) (hbdd₁ n) (hnn₁ n) _ hI₁_int hI₁_sq t ht0
-    have hd2_sq : ∀ n, Integrable (fun ω =>
-        (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-          I₂.integral t ω) ^ 2) μ := by
-      intro n; rw [show I₁.BM = I₂.BM from _h]
-      exact SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₂ n) I₂.BM
-        (hadapt₂ n) (hbdd₂ n) (hnn₂ n) _ hI₂_int hI₂_sq t ht0
-    -- Upper bound → 0
-    have hupper : Filter.Tendsto (fun n =>
-        2 * a ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-          I₁.integral t ω) ^ 2 ∂μ +
-        2 * b ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-          I₂.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
-      have h1 : Filter.Tendsto (fun n => 2 * a ^ 2 * ∫ ω,
-          (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-            I₁.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
-        simpa [mul_zero] using tendsto_const_nhds.mul (hL2₁ t ht0 htT)
-      have h2 : Filter.Tendsto (fun n => 2 * b ^ 2 * ∫ ω,
-          (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-            I₂.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
-        simpa [mul_zero] using tendsto_const_nhds.mul hL2₂'
-      simpa [add_zero] using h1.add h2
-    -- Squeeze: 0 ≤ ∫ error² ≤ upper → 0
-    refine squeeze_zero (fun n => integral_nonneg (fun ω => sq_nonneg _)) ?_ hupper
-    intro n
-    -- Rewrite combined integral as a*S₁ₙ + b*S₂ₙ
-    have hrewrite : ∀ ω,
-        (combined n).stochasticIntegral_at I₁.BM t ω - I_integral t ω =
-        a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-          I₁.integral t ω) +
-        b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-          I₂.integral t ω) := by
-      intro ω; simp only [I_integral]; rw [hcomb_int n t ω]; ring
-    simp_rw [hrewrite]
-    -- Upper bound is integrable
-    have hbd_int : Integrable (fun ω =>
-        2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-          I₁.integral t ω) ^ 2 +
-        2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-          I₂.integral t ω) ^ 2) μ :=
-      ((hd1_sq n).const_mul _).add ((hd2_sq n).const_mul _)
-    -- Pointwise bound: (aX+bY)² ≤ 2a²X² + 2b²Y²
-    have hpw_bound : ∀ ω : Ω,
-        (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-            I₁.integral t ω) +
-         b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-            I₂.integral t ω)) ^ 2 ≤
-        2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-            I₁.integral t ω) ^ 2 +
-        2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-            I₂.integral t ω) ^ 2 := by
-      intro ω
-      set X := SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω - I₁.integral t ω
-      set Y := SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω - I₂.integral t ω
-      have h1 : 0 ≤ (a * X - b * Y) ^ 2 := sq_nonneg _
-      have h2 : (a * X + b * Y) ^ 2 + (a * X - b * Y) ^ 2 =
-        2 * a ^ 2 * X ^ 2 + 2 * b ^ 2 * Y ^ 2 := by ring
-      linarith
-    -- Integral bound via integral_mono_of_nonneg then split
-    have h_le := integral_mono_of_nonneg
-      (ae_of_all μ fun ω => sq_nonneg
-        (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-            I₁.integral t ω) +
-         b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-            I₂.integral t ω)))
-      hbd_int (ae_of_all μ hpw_bound)
-    calc ∫ ω, (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-              I₁.integral t ω) +
-            b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-              I₂.integral t ω)) ^ 2 ∂μ
-        ≤ ∫ ω, (2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-              I₁.integral t ω) ^ 2 +
-            2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-              I₂.integral t ω) ^ 2) ∂μ := h_le
-      _ = 2 * a ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
-              I₁.integral t ω) ^ 2 ∂μ +
-          2 * b ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
-              I₂.integral t ω) ^ 2 ∂μ := by
-        rw [integral_add ((hd1_sq n).const_mul _) ((hd2_sq n).const_mul _),
-          integral_const_mul, integral_const_mul]
-  · -- Isometry convergence: ∫ (combined_n stoch)² → ∫∫ (aH₁+bH₂)²
-    -- Proof plan:
-    -- 1. sq_integral_tendsto_of_L2_tendsto gives ∫(combined_n stoch)² → ∫(aI₁+bI₂)²
-    -- 2. Need: ∫(aI₁+bI₂)² = ∫∫(aH₁+bH₂)² (bilinear Itô isometry)
-    -- Step 2 expands to: ∫I₁I₂ = ∫∫H₁H₂ (from ito_isometry for I₁² and I₂²).
-    -- The bilinear Itô isometry requires:
-    --   (a) Product L² convergence: S₁ₙ→I₁, S₂ₙ→I₂ in L² ⟹ ∫S₁ₙS₂ₙ → ∫I₁I₂
-    --   (b) Bilinear simple process isometry: E[∫H₁dW·∫H₂dW] = Σ E[H₁ᵢH₂ᵢ]Δtᵢ
-    --   (c) Riemann sum convergence for the cross terms
-    sorry
-
 /-- Itô isometry: E[(∫₀ᵗ H dW)²] = E[∫₀ᵗ H² ds].
 
     Proof: By `is_L2_limit`, simple integrals S_n converge to I in L².
@@ -647,7 +577,7 @@ theorem ito_isometry (I : ItoIntegral F μ T) [IsProbabilityMeasure μ]
     (t : ℝ) (ht0 : 0 ≤ t) (ht : t ≤ T) :
     ∫ ω, (I.integral t ω)^2 ∂μ =
     ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (I.integrand.process s ω)^2 ∂volume) ∂μ := by
-  obtain ⟨approx, hadapted, hbdd, hnn, hL2, hiso⟩ := I.is_L2_limit
+  obtain ⟨approx, hadapted, hbdd, hnn, hL2, hiso, _⟩ := I.is_L2_limit
   have h_sq_conv : Filter.Tendsto
       (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx n) I.BM t ω)^2 ∂μ)
       Filter.atTop (nhds (∫ ω, (I.integral t ω) ^ 2 ∂μ)) := by
@@ -675,6 +605,647 @@ theorem ito_isometry (I : ItoIntegral F μ T) [IsProbabilityMeasure μ]
       (hL2 t ht0 ht)
   exact tendsto_nhds_unique h_sq_conv (hiso t ht0 ht)
 
+/-- Bilinear Itô isometry: E[I₁(t)·I₂(t)] = E[∫₀ᵗ H₁(s)·H₂(s) ds].
+
+    Proof strategy:
+    1. For simple processes on the same partition: direct computation using
+       independence of increments and E[(ΔWᵢ)²] = Δtᵢ.
+    2. Approximate both integrands by simple processes and take L² limits. -/
+theorem bilinear_ito_isometry (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMeasure μ]
+    (h : I₁.BM = I₂.BM) (t : ℝ) (ht0 : 0 ≤ t) (ht : t ≤ T) :
+    ∫ ω, I₁.integral t ω * I₂.integral t ω ∂μ =
+    ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t,
+      I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) ∂μ := by
+  -- Extract approximating sequences with all 6 components
+  obtain ⟨approx₁, hadapt₁, hbdd₁, hnn₁, hL2₁, hiso₁, hint₁⟩ := I₁.is_L2_limit
+  obtain ⟨approx₂, hadapt₂, hbdd₂, hnn₂, hL2₂, hiso₂, hint₂⟩ := I₂.is_L2_limit
+  -- Transport approx₂ to use I₁.BM (since I₁.BM = I₂.BM)
+  have hadapt₂' : ∀ (n : ℕ) (i : Fin (approx₂ n).n),
+      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((approx₂ n).times i)) _
+        ((approx₂ n).values i) := by
+    intro n i; rw [h]; exact hadapt₂ n i
+  have hL2₂' : ∀ t₀ : ℝ, 0 ≤ t₀ → t₀ ≤ T →
+      Filter.Tendsto (fun n => ∫ ω,
+        (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t₀ ω -
+          I₂.integral t₀ ω)^2 ∂μ) Filter.atTop (nhds 0) := by
+    intro t₀ ht₀0 ht₀T
+    rw [show I₁.BM = I₂.BM from h]; exact hL2₂ t₀ ht₀0 ht₀T
+  -- Abbreviations for stochastic integrals
+  let S₁ := fun n ω => SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω
+  let S₂ := fun n ω => SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω
+  -- Step 1: E[S₁ₙ·S₂ₙ] → E[I₁·I₂] (product L² convergence)
+  -- From L² convergence: S₁ₙ → I₁ and S₂ₙ → I₂, so product converges.
+  have h_prod_conv : Filter.Tendsto
+      (fun n => ∫ ω, S₁ n ω * S₂ n ω ∂μ)
+      Filter.atTop (nhds (∫ ω, I₁.integral t ω * I₂.integral t ω ∂μ)) := by
+    -- Basic integrability facts
+    have hI₁_sq := I₁.sq_integrable_limit t ht0 ht
+    have hI₂_sq := I₂.sq_integrable_limit t ht0 ht
+    have hI₁_int := I₁.integrable_limit t ht0 ht
+    have hI₂_int := I₂.integrable_limit t ht0 ht
+    have hS₁_int : ∀ n, Integrable (S₁ n) μ :=
+      fun n => SimpleProcess.stochasticIntegral_at_integrable (approx₁ n) I₁.BM
+        (hadapt₁ n) (hbdd₁ n) (hnn₁ n) t ht0
+    have hS₂_int : ∀ n, Integrable (S₂ n) μ :=
+      fun n => SimpleProcess.stochasticIntegral_at_integrable (approx₂ n) I₁.BM
+        (hadapt₂' n) (hbdd₂ n) (hnn₂ n) t ht0
+    -- Square-integrability of differences
+    have hSub₁_sq : ∀ n, Integrable (fun ω => (S₁ n ω - I₁.integral t ω) ^ 2) μ :=
+      fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₁ n) I₁.BM
+        (hadapt₁ n) (hbdd₁ n) (hnn₁ n) _ hI₁_int hI₁_sq t ht0
+    have hSub₂_sq : ∀ n, Integrable (fun ω => (S₂ n ω - I₂.integral t ω) ^ 2) μ := by
+      intro n
+      -- Unfold S₂ to expose I₁.BM, then rewrite to I₂.BM
+      change Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2) μ
+      rw [show I₁.BM = I₂.BM from h]
+      exact SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₂ n) I₂.BM
+        (hadapt₂ n) (hbdd₂ n) (hnn₂ n) _ hI₂_int hI₂_sq t ht0
+    -- Product integrabilities via AM-GM: |ab| ≤ (a²+b²)/2 ≤ a²+b²
+    have hfg_int : Integrable (fun ω => I₁.integral t ω * I₂.integral t ω) μ := by
+      refine (hI₁_sq.add hI₂_sq).mono'
+        (hI₁_int.aestronglyMeasurable.mul hI₂_int.aestronglyMeasurable) ?_
+      filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs, abs_mul]
+      nlinarith [sq_nonneg (|I₁.integral t ω| - |I₂.integral t ω|),
+        sq_abs (I₁.integral t ω), sq_abs (I₂.integral t ω)]
+    have hFG_int : ∀ n, Integrable (fun ω => S₁ n ω * S₂ n ω) μ := by
+      intro n
+      -- |S₁·S₂| ≤ (S₁-I₁)²+I₁²+(S₂-I₂)²+I₂² via AM-GM + (a-2b)²≥0
+      refine (((hSub₁_sq n).add hI₁_sq).add ((hSub₂_sq n).add hI₂_sq)).mono'
+        ((hS₁_int n).aestronglyMeasurable.mul (hS₂_int n).aestronglyMeasurable) ?_
+      filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs, abs_mul]
+      nlinarith [sq_nonneg (|S₁ n ω| - |S₂ n ω|),
+        sq_abs (S₁ n ω), sq_abs (S₂ n ω),
+        sq_nonneg (S₁ n ω - 2 * I₁.integral t ω),
+        sq_nonneg (S₂ n ω - 2 * I₂.integral t ω)]
+    -- Cross-product integrabilities for integral splitting
+    have hcross : ∀ n, Integrable (fun ω =>
+        (S₁ n ω - I₁.integral t ω) * (S₂ n ω - I₂.integral t ω)) μ := by
+      intro n
+      refine ((hSub₁_sq n).add (hSub₂_sq n)).mono'
+        (((hS₁_int n).sub hI₁_int).aestronglyMeasurable.mul
+          ((hS₂_int n).sub hI₂_int).aestronglyMeasurable) ?_
+      filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs, abs_mul]
+      nlinarith [sq_nonneg (|S₁ n ω - I₁.integral t ω| - |S₂ n ω - I₂.integral t ω|),
+        sq_abs (S₁ n ω - I₁.integral t ω), sq_abs (S₂ n ω - I₂.integral t ω)]
+    have hFg : ∀ n, Integrable (fun ω =>
+        (S₁ n ω - I₁.integral t ω) * I₂.integral t ω) μ := by
+      intro n
+      refine ((hSub₁_sq n).add hI₂_sq).mono'
+        (((hS₁_int n).sub hI₁_int).aestronglyMeasurable.mul
+          hI₂_int.aestronglyMeasurable) ?_
+      filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs, abs_mul]
+      nlinarith [sq_nonneg (|S₁ n ω - I₁.integral t ω| - |I₂.integral t ω|),
+        sq_abs (S₁ n ω - I₁.integral t ω), sq_abs (I₂.integral t ω)]
+    have hfG : ∀ n, Integrable (fun ω =>
+        I₁.integral t ω * (S₂ n ω - I₂.integral t ω)) μ := by
+      intro n
+      refine (hI₁_sq.add (hSub₂_sq n)).mono'
+        (hI₁_int.aestronglyMeasurable.mul
+          ((hS₂_int n).sub hI₂_int).aestronglyMeasurable) ?_
+      filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs, abs_mul]
+      nlinarith [sq_nonneg (|I₁.integral t ω| - |S₂ n ω - I₂.integral t ω|),
+        sq_abs (I₁.integral t ω), sq_abs (S₂ n ω - I₂.integral t ω)]
+    exact product_integral_tendsto_of_L2_tendsto
+      hI₁_sq hI₂_sq hFG_int hfg_int hSub₁_sq hSub₂_sq
+      hcross hFg hfG (hL2₁ t ht0 ht) (hL2₂' t ht0 ht)
+  -- Step 2: E[S₁ₙ·S₂ₙ] = E[∫val₁ₙ·val₂ₙ] (bilinear isometry at simple process level)
+  have h_bilinear : ∀ n,
+      ∫ ω, S₁ n ω * S₂ n ω ∂μ =
+      ∫ ω, (∫ s in Set.Icc 0 t,
+        SimpleProcess.valueAtTime (approx₁ n) s ω *
+        SimpleProcess.valueAtTime (approx₂ n) s ω ∂volume) ∂μ := by
+    intro n
+    exact SimpleProcess.bilinear_isometry_at (approx₁ n) (approx₂ n) I₁.BM
+      (hadapt₁ n) (hadapt₂' n) (hbdd₁ n) (hbdd₂ n) (hnn₁ n) (hnn₂ n) t ht0
+  -- Step 3: E[∫val₁ₙ·val₂ₙ] → E[∫h₁·h₂] (from integrand L² convergence)
+  have h_integrand_conv : Filter.Tendsto
+      (fun n => ∫ ω, (∫ s in Set.Icc 0 t,
+        SimpleProcess.valueAtTime (approx₁ n) s ω *
+        SimpleProcess.valueAtTime (approx₂ n) s ω ∂volume) ∂μ)
+      Filter.atTop
+      (nhds (∫ ω, (∫ s in Set.Icc 0 t,
+        I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) ∂μ)) := by
+    sorry -- Inner integral product convergence: uses Cauchy-Schwarz on L²([0,t]×Ω)
+  -- Step 4: Combine via uniqueness of limits
+  -- Rewrite h_prod_conv using h_bilinear to get the same sequence as h_integrand_conv
+  have h_prod_rewrite : Filter.Tendsto
+      (fun n => ∫ ω, (∫ s in Set.Icc 0 t,
+        SimpleProcess.valueAtTime (approx₁ n) s ω *
+        SimpleProcess.valueAtTime (approx₂ n) s ω ∂volume) ∂μ)
+      Filter.atTop (nhds (∫ ω, I₁.integral t ω * I₂.integral t ω ∂μ)) := by
+    have : (fun n => ∫ ω, (∫ s in Set.Icc 0 t,
+        SimpleProcess.valueAtTime (approx₁ n) s ω *
+        SimpleProcess.valueAtTime (approx₂ n) s ω ∂volume) ∂μ) =
+        (fun n => ∫ ω, S₁ n ω * S₂ n ω ∂μ) :=
+      funext (fun n => (h_bilinear n).symm)
+    rw [this]; exact h_prod_conv
+  exact tendsto_nhds_unique h_prod_rewrite h_integrand_conv
+
+/-- Combined Itô isometry: E[(aI₁(t) + bI₂(t))²] = E[∫₀ᵗ (aH₁ + bH₂)² ds].
+
+    Proof: Expand both sides as quadratic forms in a, b, then apply `ito_isometry`
+    for the diagonal terms and `bilinear_ito_isometry` for the cross term. -/
+theorem combined_sq_integral_eq (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMeasure μ]
+    (h : I₁.BM = I₂.BM) (a b : ℝ) (t : ℝ) (ht0 : 0 ≤ t) (ht : t ≤ T) :
+    ∫ ω, (a * I₁.integral t ω + b * I₂.integral t ω) ^ 2 ∂μ =
+    ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t,
+      (a * I₁.integrand.process s ω + b * I₂.integrand.process s ω) ^ 2 ∂volume) ∂μ := by
+  -- Integrability of I₁², I₂², I₁*I₂
+  have hI₁_sq := I₁.sq_integrable_limit t ht0 ht
+  have hI₂_sq := I₂.sq_integrable_limit t ht0 ht
+  have hprod_int : Integrable (fun ω => I₁.integral t ω * I₂.integral t ω) μ := by
+    refine (hI₁_sq.add hI₂_sq).mono'
+      ((I₁.integrable_limit t ht0 ht).aestronglyMeasurable.mul
+        (I₂.integrable_limit t ht0 ht).aestronglyMeasurable) ?_
+    filter_upwards with ω
+    simp only [Real.norm_eq_abs, abs_mul, Pi.add_apply]
+    nlinarith [sq_nonneg (|I₁.integral t ω| - |I₂.integral t ω|),
+      sq_abs (I₁.integral t ω), sq_abs (I₂.integral t ω)]
+  -- Expand LHS: ∫(aI₁+bI₂)² = a²∫I₁² + 2ab∫I₁I₂ + b²∫I₂²
+  have hLHS : ∫ ω, (a * I₁.integral t ω + b * I₂.integral t ω) ^ 2 ∂μ =
+      a ^ 2 * ∫ ω, (I₁.integral t ω) ^ 2 ∂μ +
+      2 * a * b * ∫ ω, I₁.integral t ω * I₂.integral t ω ∂μ +
+      b ^ 2 * ∫ ω, (I₂.integral t ω) ^ 2 ∂μ := by
+    -- Expand the square, keeping lambda form
+    have h_eq : (fun ω => (a * I₁.integral t ω + b * I₂.integral t ω) ^ 2) =
+        (fun ω => a ^ 2 * I₁.integral t ω ^ 2 +
+          2 * a * b * (I₁.integral t ω * I₂.integral t ω) +
+          b ^ 2 * I₂.integral t ω ^ 2) := by ext ω; ring
+    rw [h_eq]
+    -- Construct integrability proofs with explicit types matching goal form
+    have hab_int : Integrable (fun ω => a ^ 2 * I₁.integral t ω ^ 2 +
+        2 * a * b * (I₁.integral t ω * I₂.integral t ω)) μ :=
+      (hI₁_sq.const_mul _).add (hprod_int.const_mul _)
+    have hc_int : Integrable (fun ω => b ^ 2 * I₂.integral t ω ^ 2) μ :=
+      hI₂_sq.const_mul _
+    rw [integral_add hab_int hc_int]
+    have ha_int : Integrable (fun ω => a ^ 2 * I₁.integral t ω ^ 2) μ :=
+      hI₁_sq.const_mul _
+    have hb_int : Integrable (fun ω =>
+        2 * a * b * (I₁.integral t ω * I₂.integral t ω)) μ :=
+      hprod_int.const_mul _
+    rw [integral_add ha_int hb_int, integral_const_mul, integral_const_mul,
+      integral_const_mul]
+  -- Expand RHS: ∫∫(aH₁+bH₂)² = a²∫∫H₁² + 2ab∫∫H₁H₂ + b²∫∫H₂²
+  -- Outer integrability of inner integrals (from square_integrable)
+  -- Outer integrability of inner integrals (from square_integrable of I₁, I₂)
+  -- These follow from: E[∫₀ᵀ Hᵢ²] < ∞ ⟹ E[∫₀ᵗ Hᵢ²] < ∞ (since [0,t] ⊆ [0,T], Hᵢ² ≥ 0)
+  -- and |H₁H₂| ≤ (H₁² + H₂²)/2 for the product term
+  have hI₁_inner_int : Integrable (fun ω => ∫ (s : ℝ) in Set.Icc 0 t,
+      I₁.integrand.process s ω ^ 2 ∂volume) μ :=
+    I₁.integrand.bochner_square_integrable_sub ht0 ht
+  have hI₂_inner_int : Integrable (fun ω => ∫ (s : ℝ) in Set.Icc 0 t,
+      I₂.integrand.process s ω ^ 2 ∂volume) μ :=
+    I₂.integrand.bochner_square_integrable_sub ht0 ht
+  have hprod_inner_int : Integrable (fun ω => ∫ (s : ℝ) in Set.Icc 0 t,
+      I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) μ :=
+    ItoIntegrableProcess.bochner_product_integrable_sub I₁.integrand I₂.integrand ht0 ht
+  have hRHS : ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t,
+      (a * I₁.integrand.process s ω + b * I₂.integrand.process s ω) ^ 2 ∂volume) ∂μ =
+      a ^ 2 * ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t,
+        (I₁.integrand.process s ω) ^ 2 ∂volume) ∂μ +
+      2 * a * b * ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t,
+        I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) ∂μ +
+      b ^ 2 * ∫ ω, (∫ (s : ℝ) in Set.Icc 0 t,
+        (I₂.integrand.process s ω) ^ 2 ∂volume) ∂μ := by
+    -- Step 1: Expand the square inside inner integral
+    have h_ring : ∀ s ω,
+        (a * I₁.integrand.process s ω + b * I₂.integrand.process s ω) ^ 2 =
+        a ^ 2 * I₁.integrand.process s ω ^ 2 +
+        2 * a * b * (I₁.integrand.process s ω * I₂.integrand.process s ω) +
+        b ^ 2 * I₂.integrand.process s ω ^ 2 := fun s ω => by ring
+    simp_rw [h_ring]
+    -- Step 2: Split inner integral (a.e. in ω)
+    have h_inner : ∀ᵐ ω ∂μ,
+        ∫ (s : ℝ) in Set.Icc 0 t,
+          (a ^ 2 * I₁.integrand.process s ω ^ 2 +
+           2 * a * b * (I₁.integrand.process s ω * I₂.integrand.process s ω) +
+           b ^ 2 * I₂.integrand.process s ω ^ 2) ∂volume =
+        a ^ 2 * ∫ (s : ℝ) in Set.Icc 0 t, I₁.integrand.process s ω ^ 2 ∂volume +
+        2 * a * b * ∫ (s : ℝ) in Set.Icc 0 t,
+          I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume +
+        b ^ 2 * ∫ (s : ℝ) in Set.Icc 0 t, I₂.integrand.process s ω ^ 2 ∂volume := by
+      -- For a.e. ω, H₁(·,ω)² and H₂(·,ω)² are IntegrableOn [0,t]
+      -- from product integrability via Fubini
+      have hion_f := I₁.integrand.integrableOn_sq_sub_ae ht0 ht
+      have hion_g := I₂.integrand.integrableOn_sq_sub_ae ht0 ht
+      have hion_fg : ∀ᵐ ω ∂μ, IntegrableOn (fun s => I₁.integrand.process s ω *
+          I₂.integrand.process s ω) (Set.Icc 0 t) volume :=
+        (ItoIntegrableProcess.product_integrable_sub I₁.integrand I₂.integrand ht0 ht).prod_left_ae
+      filter_upwards [hion_f, hion_g, hion_fg] with ω hf_sq hg_sq hfg
+      -- Now split the integral using integrability of each term
+      have h1 : IntegrableOn (fun s => a ^ 2 * (I₁.integrand.process s ω) ^ 2)
+          (Set.Icc 0 t) volume := hf_sq.const_mul _
+      have h2 : IntegrableOn (fun s => 2 * a * b *
+          (I₁.integrand.process s ω * I₂.integrand.process s ω))
+          (Set.Icc 0 t) volume := hfg.const_mul _
+      have h3 : IntegrableOn (fun s => b ^ 2 * (I₂.integrand.process s ω) ^ 2)
+          (Set.Icc 0 t) volume := hg_sq.const_mul _
+      -- Split the integral step by step using integral_add with explicit types
+      have h_split1 : ∫ (s : ℝ) in Set.Icc 0 t,
+          (a ^ 2 * (I₁.integrand.process s ω) ^ 2 +
+           2 * a * b * (I₁.integrand.process s ω * I₂.integrand.process s ω) +
+           b ^ 2 * (I₂.integrand.process s ω) ^ 2) ∂volume =
+        ∫ (s : ℝ) in Set.Icc 0 t,
+          (a ^ 2 * (I₁.integrand.process s ω) ^ 2 +
+           2 * a * b * (I₁.integrand.process s ω * I₂.integrand.process s ω)) ∂volume +
+        ∫ (s : ℝ) in Set.Icc 0 t,
+          b ^ 2 * (I₂.integrand.process s ω) ^ 2 ∂volume :=
+        integral_add (h1.add h2) h3
+      have h_split2 : ∫ (s : ℝ) in Set.Icc 0 t,
+          (a ^ 2 * (I₁.integrand.process s ω) ^ 2 +
+           2 * a * b * (I₁.integrand.process s ω * I₂.integrand.process s ω)) ∂volume =
+        ∫ (s : ℝ) in Set.Icc 0 t,
+          a ^ 2 * (I₁.integrand.process s ω) ^ 2 ∂volume +
+        ∫ (s : ℝ) in Set.Icc 0 t,
+          2 * a * b * (I₁.integrand.process s ω * I₂.integrand.process s ω) ∂volume :=
+        integral_add h1 h2
+      rw [h_split1, h_split2, integral_const_mul, integral_const_mul, integral_const_mul]
+    rw [integral_congr_ae h_inner]
+    -- Step 3: Split outer integral (same technique as hLHS)
+    have hab_int : Integrable (fun ω =>
+        a ^ 2 * ∫ (s : ℝ) in Set.Icc 0 t, I₁.integrand.process s ω ^ 2 ∂volume +
+        2 * a * b * ∫ (s : ℝ) in Set.Icc 0 t,
+          I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) μ :=
+      (hI₁_inner_int.const_mul _).add (hprod_inner_int.const_mul _)
+    have hc_int : Integrable (fun ω =>
+        b ^ 2 * ∫ (s : ℝ) in Set.Icc 0 t,
+          I₂.integrand.process s ω ^ 2 ∂volume) μ :=
+      hI₂_inner_int.const_mul _
+    rw [integral_add hab_int hc_int]
+    have ha_int : Integrable (fun ω =>
+        a ^ 2 * ∫ (s : ℝ) in Set.Icc 0 t,
+          I₁.integrand.process s ω ^ 2 ∂volume) μ :=
+      hI₁_inner_int.const_mul _
+    have hb_int : Integrable (fun ω =>
+        2 * a * b * ∫ (s : ℝ) in Set.Icc 0 t,
+          I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) μ :=
+      hprod_inner_int.const_mul _
+    rw [integral_add ha_int hb_int, integral_const_mul, integral_const_mul, integral_const_mul]
+  rw [hLHS, ito_isometry I₁ t ht0 ht, ito_isometry I₂ t ht0 ht,
+    bilinear_ito_isometry I₁ I₂ h t ht0 ht, ← hRHS]
+
+/-- Linearity of Itô integral in the integrand -/
+theorem linear (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMeasure μ]
+    (_h : I₁.BM = I₂.BM) (a b : ℝ) :
+    ∃ I : ItoIntegral F μ T,
+      I.BM = I₁.BM ∧
+      ∀ t : ℝ, ∀ᵐ ω ∂μ, I.integral t ω = a * I₁.integral t ω + b * I₂.integral t ω := by
+  -- Get approximating sequences for both integrals
+  obtain ⟨approx₁, hadapt₁, hbdd₁, hnn₁, hL2₁, hiso₁, hint₁⟩ := I₁.is_L2_limit
+  obtain ⟨approx₂, hadapt₂, hbdd₂, hnn₂, hL2₂, hiso₂, hint₂⟩ := I₂.is_L2_limit
+  -- Convert I₂.BM references to I₁.BM using _h
+  have hadapt₂' : ∀ (n : ℕ), ∀ i : Fin (approx₂ n).n,
+      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((approx₂ n).times i)) _ ((approx₂ n).values i) := by
+    intro n i; rw [_h]; exact hadapt₂ n i
+  -- Construct combined process directly as mergedProcess
+  let combined : ℕ → SimpleProcess F :=
+    fun n => SimpleProcess.mergedProcess (approx₁ n) (approx₂ n) a b
+  -- Stochastic integral linearity
+  have hcomb_int : ∀ n t ω, (combined n).stochasticIntegral_at I₁.BM t ω =
+      a * (approx₁ n).stochasticIntegral_at I₁.BM t ω +
+      b * (approx₂ n).stochasticIntegral_at I₁.BM t ω :=
+    fun n t ω => SimpleProcess.mergedProcess_integral_eq _ _ I₁.BM a b t ω
+  -- valueAtTime linearity
+  have hcomb_val : ∀ n s ω, (combined n).valueAtTime s ω =
+      a * (approx₁ n).valueAtTime s ω + b * (approx₂ n).valueAtTime s ω :=
+    fun n => SimpleProcess.mergedProcess_valueAtTime_linear _ _ a b
+  -- Adaptedness
+  have hcomb_adapt' : ∀ (n : ℕ), ∀ i : Fin (combined n).n,
+      @Measurable Ω ℝ (I₁.BM.F.σ_algebra ((combined n).times i)) _ ((combined n).values i) :=
+    fun n i => (measurable_const.mul
+      (SimpleProcess.valueAtTime_measurable_filtration (approx₁ n) _ (hadapt₁ n))).add
+      (measurable_const.mul
+      (SimpleProcess.valueAtTime_measurable_filtration (approx₂ n) _ (hadapt₂' n)))
+  -- Boundedness
+  have hcomb_bdd' : ∀ (n : ℕ), ∀ i : Fin (combined n).n,
+      ∃ C : ℝ, ∀ ω, |(combined n).values i ω| ≤ C := by
+    intro n i
+    obtain ⟨C₁, hC₁⟩ := SimpleProcess.valueAtTime_bounded (approx₁ n) _ (hbdd₁ n)
+    obtain ⟨C₂, hC₂⟩ := SimpleProcess.valueAtTime_bounded (approx₂ n) _ (hbdd₂ n)
+    exact ⟨|a| * C₁ + |b| * C₂, fun ω => by
+      calc |(combined n).values i ω|
+          = |a * (approx₁ n).valueAtTime _ ω + b * (approx₂ n).valueAtTime _ ω| := rfl
+        _ ≤ |a * (approx₁ n).valueAtTime _ ω| + |b * (approx₂ n).valueAtTime _ ω| :=
+            abs_add_le _ _
+        _ = |a| * |(approx₁ n).valueAtTime _ ω| + |b| * |(approx₂ n).valueAtTime _ ω| := by
+            rw [abs_mul, abs_mul]
+        _ ≤ |a| * C₁ + |b| * C₂ := add_le_add
+            (mul_le_mul_of_nonneg_left (hC₁ ω) (abs_nonneg a))
+            (mul_le_mul_of_nonneg_left (hC₂ ω) (abs_nonneg b))⟩
+  -- Nonneg times
+  have hcomb_nn' : ∀ (n : ℕ), ∀ i : Fin (combined n).n, 0 ≤ (combined n).times i := by
+    intro n i
+    have hmem := SimpleProcess.mergedProcess_times_mem (approx₁ n) (approx₂ n) a b i
+    simp only [SimpleProcess.mergedFinset, Finset.mem_union, SimpleProcess.partitionFinset,
+      Finset.mem_image, Finset.mem_univ, true_and] at hmem
+    rcases hmem with ⟨j, hj⟩ | ⟨j, hj⟩
+    · rw [← hj]; exact hnn₁ n j
+    · rw [← hj]; exact hnn₂ n j
+  -- The combined integral function
+  let I_integral : ℝ → Ω → ℝ := fun t ω => a * I₁.integral t ω + b * I₂.integral t ω
+  -- L² convergence (factored out for use in isometry convergence)
+  have hL2_combined : ∀ (t : ℝ), 0 ≤ t → t ≤ T →
+      Filter.Tendsto
+        (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (combined n) I₁.BM t ω -
+          I_integral t ω)^2 ∂μ)
+        Filter.atTop (nhds 0) := by
+    intro t ht0 htT
+    have hL2₂' : Filter.Tendsto
+        (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω)^2 ∂μ) Filter.atTop (nhds 0) := by
+      rw [show I₁.BM = I₂.BM from _h]; exact hL2₂ t ht0 htT
+    have hI₁_int := I₁.integrable_limit t ht0 htT
+    have hI₁_sq := I₁.sq_integrable_limit t ht0 htT
+    have hI₂_int := I₂.integrable_limit t ht0 htT
+    have hI₂_sq := I₂.sq_integrable_limit t ht0 htT
+    have hd1_sq : ∀ n, Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) ^ 2) μ :=
+      fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₁ n) I₁.BM
+        (hadapt₁ n) (hbdd₁ n) (hnn₁ n) _ hI₁_int hI₁_sq t ht0
+    have hd2_sq : ∀ n, Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2) μ := by
+      intro n; rw [show I₁.BM = I₂.BM from _h]
+      exact SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx₂ n) I₂.BM
+        (hadapt₂ n) (hbdd₂ n) (hnn₂ n) _ hI₂_int hI₂_sq t ht0
+    have hupper : Filter.Tendsto (fun n =>
+        2 * a ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) ^ 2 ∂μ +
+        2 * b ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
+      have h1 : Filter.Tendsto (fun n => 2 * a ^ 2 * ∫ ω,
+          (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
+        simpa [mul_zero] using tendsto_const_nhds.mul (hL2₁ t ht0 htT)
+      have h2 : Filter.Tendsto (fun n => 2 * b ^ 2 * ∫ ω,
+          (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω) ^ 2 ∂μ) Filter.atTop (nhds 0) := by
+        simpa [mul_zero] using tendsto_const_nhds.mul hL2₂'
+      simpa [add_zero] using h1.add h2
+    refine squeeze_zero (fun n => integral_nonneg (fun ω => sq_nonneg _)) ?_ hupper
+    intro n
+    have hrewrite : ∀ ω,
+        (combined n).stochasticIntegral_at I₁.BM t ω - I_integral t ω =
+        a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) +
+        b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) := by
+      intro ω; simp only [I_integral]; rw [hcomb_int n t ω]; ring
+    simp_rw [hrewrite]
+    have hbd_int : Integrable (fun ω =>
+        2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+          I₁.integral t ω) ^ 2 +
+        2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+          I₂.integral t ω) ^ 2) μ :=
+      ((hd1_sq n).const_mul _).add ((hd2_sq n).const_mul _)
+    have hpw_bound : ∀ ω : Ω,
+        (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) +
+         b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω)) ^ 2 ≤
+        2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) ^ 2 +
+        2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω) ^ 2 := by
+      intro ω
+      set X := SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω - I₁.integral t ω
+      set Y := SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω - I₂.integral t ω
+      have h1 : 0 ≤ (a * X - b * Y) ^ 2 := sq_nonneg _
+      have h2 : (a * X + b * Y) ^ 2 + (a * X - b * Y) ^ 2 =
+        2 * a ^ 2 * X ^ 2 + 2 * b ^ 2 * Y ^ 2 := by ring
+      linarith
+    have h_le := integral_mono_of_nonneg
+      (ae_of_all μ fun ω => sq_nonneg
+        (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+            I₁.integral t ω) +
+         b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+            I₂.integral t ω)))
+      hbd_int (ae_of_all μ hpw_bound)
+    calc ∫ ω, (a * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+              I₁.integral t ω) +
+            b * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+              I₂.integral t ω)) ^ 2 ∂μ
+        ≤ ∫ ω, (2 * a ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+              I₁.integral t ω) ^ 2 +
+            2 * b ^ 2 * (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+              I₂.integral t ω) ^ 2) ∂μ := h_le
+      _ = 2 * a ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₁ n) I₁.BM t ω -
+              I₁.integral t ω) ^ 2 ∂μ +
+          2 * b ^ 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (approx₂ n) I₁.BM t ω -
+              I₂.integral t ω) ^ 2 ∂μ := by
+        rw [integral_add ((hd1_sq n).const_mul _) ((hd2_sq n).const_mul _),
+          integral_const_mul, integral_const_mul]
+  -- Construct the ItoIntegral
+  refine ⟨{
+    integrand := {
+      process := fun t ω => a * I₁.integrand.process t ω + b * I₂.integrand.process t ω
+      adapted := fun t ht =>
+        (measurable_const.mul (I₁.integrand.adapted t ht)).add
+          (measurable_const.mul (I₂.integrand.adapted t ht))
+      jointly_measurable := by
+        show Measurable (fun p : ℝ × Ω =>
+          a * I₁.integrand.process p.1 p.2 + b * I₂.integrand.process p.1 p.2)
+        exact (measurable_const.mul I₁.integrand.jointly_measurable).add
+          (measurable_const.mul I₂.integrand.jointly_measurable)
+      square_integrable := by
+        -- (aH₁+bH₂)² ≤ 2(a²H₁² + b²H₂²) pointwise
+        -- Product integrability from I₁ and I₂
+        show Integrable (fun p : ℝ × Ω =>
+          (a * I₁.integrand.process p.1 p.2 + b * I₂.integrand.process p.1 p.2) ^ 2)
+          ((volume.restrict (Set.Icc 0 T)).prod μ)
+        have h1 := I₁.integrand.square_integrable
+        have h2 := I₂.integrand.square_integrable
+        have hmeas : AEStronglyMeasurable (fun p : ℝ × Ω =>
+            (a * I₁.integrand.process p.1 p.2 + b * I₂.integrand.process p.1 p.2) ^ 2)
+            ((volume.restrict (Set.Icc 0 T)).prod μ) :=
+          (((measurable_const.mul I₁.integrand.jointly_measurable).add
+            (measurable_const.mul I₂.integrand.jointly_measurable)).pow_const 2).aestronglyMeasurable
+        exact ((h1.const_mul (2 * a ^ 2)).add (h2.const_mul (2 * b ^ 2))).mono' hmeas
+          (Filter.Eventually.of_forall fun p => by
+            simp only [Real.norm_eq_abs, Pi.add_apply]
+            rw [abs_of_nonneg (sq_nonneg _)]
+            nlinarith [sq_nonneg (a * I₁.integrand.process p.1 p.2 -
+              b * I₂.integrand.process p.1 p.2)])
+    }
+    BM := I₁.BM
+    integral := I_integral
+    adapted := fun t ht =>
+      (measurable_const.mul (I₁.adapted t ht)).add
+        (measurable_const.mul (I₂.adapted t ht))
+    initial := by
+      filter_upwards [I₁.initial, I₂.initial] with ω h₁ h₂
+      show a * I₁.integral 0 ω + b * I₂.integral 0 ω = 0
+      rw [h₁, h₂, mul_zero, mul_zero, add_zero]
+    is_L2_limit := ⟨combined, hcomb_adapt', hcomb_bdd', hcomb_nn', hL2_combined, ?_, ?_⟩
+    sq_integrable_limit := fun t ht0 htT => by
+      -- Use L² approach: aI₁ + bI₂ ∈ L² → (aI₁ + bI₂)² ∈ L¹
+      have hmeas : AEStronglyMeasurable
+          (fun ω => a * I₁.integral t ω + b * I₂.integral t ω) μ := by
+        apply Measurable.aestronglyMeasurable
+        exact (measurable_const.mul ((I₁.adapted t htT).mono (F.le_ambient t) le_rfl)).add
+          (measurable_const.mul ((I₂.adapted t htT).mono (F.le_ambient t) le_rfl))
+      rw [← memLp_two_iff_integrable_sq hmeas]
+      have hI₁_L2 : MemLp (I₁.integral t) 2 μ :=
+        (memLp_two_iff_integrable_sq
+          (I₁.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
+          (I₁.sq_integrable_limit t ht0 htT)
+      have hI₂_L2 : MemLp (I₂.integral t) 2 μ :=
+        (memLp_two_iff_integrable_sq
+          (I₂.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
+          (I₂.sq_integrable_limit t ht0 htT)
+      exact (hI₁_L2.const_smul a).add (hI₂_L2.const_smul b)
+  }, rfl, fun t => Filter.Eventually.of_forall fun ω => rfl⟩
+  · -- Isometry convergence: ∫ (combined_n stoch)² → ∫∫ (aH₁+bH₂)²
+    -- Strategy: sq_integral_tendsto_of_L2_tendsto gives ∫(S_n)² → ∫(aI₁+bI₂)²,
+    -- then combined_sq_integral_eq shows ∫(aI₁+bI₂)² = ∫∫(aH₁+bH₂)².
+    intro t ht0 htT
+    -- Rewrite target using combined_sq_integral_eq
+    rw [(combined_sq_integral_eq I₁ I₂ _h a b t ht0 htT).symm]
+    -- Integrability of (aI₁+bI₂)²
+    have hI_int : Integrable (fun ω => a * I₁.integral t ω + b * I₂.integral t ω) μ :=
+      ((I₁.integrable_limit t ht0 htT).const_mul a).add
+        ((I₂.integrable_limit t ht0 htT).const_mul b)
+    have hI_sq : Integrable (fun ω => (a * I₁.integral t ω + b * I₂.integral t ω) ^ 2) μ := by
+      have hmeas : AEStronglyMeasurable
+          (fun ω => a * I₁.integral t ω + b * I₂.integral t ω) μ :=
+        hI_int.aestronglyMeasurable
+      rw [← memLp_two_iff_integrable_sq hmeas]
+      exact ((memLp_two_iff_integrable_sq
+          (I₁.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
+          (I₁.sq_integrable_limit t ht0 htT)).const_smul a |>.add
+        (((memLp_two_iff_integrable_sq
+          (I₂.integrable_limit t ht0 htT).aestronglyMeasurable).mpr
+          (I₂.sq_integrable_limit t ht0 htT)).const_smul b)
+    -- Integrability of (S_n - (aI₁+bI₂))²
+    have hSub_sq : ∀ n, Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (combined n) I₁.BM t ω -
+          (a * I₁.integral t ω + b * I₂.integral t ω)) ^ 2) μ :=
+      fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (combined n) I₁.BM
+        (hcomb_adapt' n) (hcomb_bdd' n) (hcomb_nn' n) _ hI_int hI_sq t ht0
+    -- Cross-term integrability: |(g-f)*f| ≤ (g-f)² + f²
+    have hFf_prod : ∀ n, Integrable (fun ω =>
+        (SimpleProcess.stochasticIntegral_at (combined n) I₁.BM t ω -
+          (a * I₁.integral t ω + b * I₂.integral t ω)) *
+          (a * I₁.integral t ω + b * I₂.integral t ω)) μ := by
+      intro n
+      have hSn_int := SimpleProcess.stochasticIntegral_at_integrable (combined n) I₁.BM
+        (hcomb_adapt' n) (hcomb_bdd' n) (hcomb_nn' n) t ht0
+      refine ((hSub_sq n).add hI_sq).mono'
+        ((hSn_int.sub hI_int).aestronglyMeasurable.mul
+          hI_int.aestronglyMeasurable) ?_
+      filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs, abs_mul]
+      nlinarith [sq_nonneg (|SimpleProcess.stochasticIntegral_at (combined n) I₁.BM t ω -
+          (a * I₁.integral t ω + b * I₂.integral t ω)| -
+          |a * I₁.integral t ω + b * I₂.integral t ω|),
+        sq_abs (SimpleProcess.stochasticIntegral_at (combined n) I₁.BM t ω -
+          (a * I₁.integral t ω + b * I₂.integral t ω)),
+        sq_abs (a * I₁.integral t ω + b * I₂.integral t ω)]
+    exact sq_integral_tendsto_of_L2_tendsto hI_sq hSub_sq hFf_prod (hL2_combined t ht0 htT)
+  · -- Integrand L² convergence: E[∫₀ᵗ |combined_val - (aH₁+bH₂)|² ds] → 0
+    -- Strategy: (a(val₁-H₁) + b(val₂-H₂))² ≤ 2a²(val₁-H₁)² + 2b²(val₂-H₂)²
+    intro t ht0 htT
+    -- Upper bound → 0 from integrand convergences of I₁ and I₂
+    have hupper : Filter.Tendsto (fun n =>
+        2 * a ^ 2 * ∫ ω, ∫ s in Set.Icc 0 t,
+          ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume ∂μ +
+        2 * b ^ 2 * ∫ ω, ∫ s in Set.Icc 0 t,
+          ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume ∂μ)
+        Filter.atTop (nhds 0) := by
+      simpa [add_zero, mul_zero] using
+        (tendsto_const_nhds.mul (hint₁ t ht0 htT)).add
+        (tendsto_const_nhds.mul (hint₂ t ht0 htT))
+    refine squeeze_zero
+      (fun n => integral_nonneg fun ω => integral_nonneg fun s => sq_nonneg _)
+      (fun n => ?_) hupper
+    -- Rewrite using valueAtTime linearity
+    have hrew : ∀ s ω,
+        (combined n).valueAtTime s ω -
+          (a * I₁.integrand.process s ω + b * I₂.integrand.process s ω) =
+        a * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) +
+        b * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) := by
+      intro s ω; rw [hcomb_val]; ring
+    simp_rw [hrew]
+    -- Pointwise bound: (aX+bY)² ≤ 2a²X² + 2b²Y²
+    have hpw : ∀ s ω,
+        (a * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) +
+         b * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω)) ^ 2 ≤
+        2 * a ^ 2 * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 +
+        2 * b ^ 2 * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 := by
+      intro s ω
+      nlinarith [sq_nonneg (a * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) -
+        b * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω))]
+    -- Outer integrability of the bound terms
+    have hd1_outer_int : Integrable (fun ω =>
+        ∫ s in Set.Icc 0 t,
+          ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume) μ := by
+      sorry -- Integrability: step fn minus L² integrand, squared, inner integral (Tonelli + boundedness)
+    have hd2_outer_int : Integrable (fun ω =>
+        ∫ s in Set.Icc 0 t,
+          ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume) μ := by
+      sorry -- Integrability: step fn minus L² integrand, squared, inner integral (Tonelli + boundedness)
+    -- a.e. inner integrability: for a.e. ω, (val-H)² is integrable on [0,t]
+    -- Follows from product measure square integrability via Tonelli + step fn boundedness
+    have h_ae_sq₁ : ∀ᵐ ω ∂μ, IntegrableOn (fun s =>
+        ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2)
+        (Set.Icc 0 t) volume := by
+      sorry -- Tonelli: product sq integrability → a.e. inner sq integrability
+    have h_ae_sq₂ : ∀ᵐ ω ∂μ, IntegrableOn (fun s =>
+        ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2)
+        (Set.Icc 0 t) volume := by
+      sorry -- Tonelli: product sq integrability → a.e. inner sq integrability
+    -- Inner integral bound (a.e.)
+    have hinner_ae : ∀ᵐ ω ∂μ,
+        ∫ s in Set.Icc 0 t,
+          (a * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) +
+           b * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω)) ^ 2 ∂volume ≤
+        2 * a ^ 2 * ∫ s in Set.Icc 0 t,
+          ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume +
+        2 * b ^ 2 * ∫ s in Set.Icc 0 t,
+          ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume := by
+      filter_upwards [h_ae_sq₁, h_ae_sq₂] with ω hω₁ hω₂
+      have hbnd_int := (hω₁.const_mul (2 * a ^ 2)).add (hω₂.const_mul (2 * b ^ 2))
+      calc ∫ s in Set.Icc 0 t, _ ^ 2 ∂volume
+          ≤ ∫ s in Set.Icc 0 t,
+              (2 * a ^ 2 * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 +
+               2 * b ^ 2 * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2)
+              ∂volume := by
+            apply MeasureTheory.integral_mono_of_nonneg
+              (ae_of_all _ fun s => sq_nonneg _) hbnd_int
+              (ae_of_all _ fun s => hpw s ω)
+        _ = 2 * a ^ 2 * ∫ s in Set.Icc 0 t,
+              ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume +
+            2 * b ^ 2 * ∫ s in Set.Icc 0 t,
+              ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume := by
+          rw [MeasureTheory.integral_add (hω₁.const_mul _) (hω₂.const_mul _),
+            MeasureTheory.integral_const_mul, MeasureTheory.integral_const_mul]
+    -- Outer integral bound
+    calc ∫ ω, _ ∂μ
+        ≤ ∫ ω,
+            (2 * a ^ 2 * ∫ s in Set.Icc 0 t,
+              ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume +
+            2 * b ^ 2 * ∫ s in Set.Icc 0 t,
+              ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume) ∂μ :=
+          MeasureTheory.integral_mono_of_nonneg
+            (ae_of_all _ fun ω => integral_nonneg fun s => sq_nonneg _)
+            ((hd1_outer_int.const_mul _).add (hd2_outer_int.const_mul _))
+            hinner_ae
+      _ = 2 * a ^ 2 * ∫ ω, (∫ s in Set.Icc 0 t,
+              ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume) ∂μ +
+          2 * b ^ 2 * ∫ ω, (∫ s in Set.Icc 0 t,
+              ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume) ∂μ := by
+        rw [MeasureTheory.integral_add (hd1_outer_int.const_mul _) (hd2_outer_int.const_mul _),
+          MeasureTheory.integral_const_mul, MeasureTheory.integral_const_mul]
+
 /-- The Itô integral satisfies the martingale set-integral property on [0, T]:
     for 0 ≤ s ≤ t ≤ T and A ∈ F_s, ∫_A I(t) dμ = ∫_A I(s) dμ.
 
@@ -685,7 +1256,7 @@ theorem is_martingale (I : ItoIntegral F μ T) [IsProbabilityMeasure μ]
     {s t : ℝ} (hs : 0 ≤ s) (hst : s ≤ t) (ht : t ≤ T)
     {A : Set Ω} (hA : MeasurableSet[I.BM.F.σ_algebra s] A) :
     ∫ ω in A, I.integral t ω ∂μ = ∫ ω in A, I.integral s ω ∂μ := by
-  obtain ⟨approx, hadapted, hbdd, hnn, hL2, _⟩ := I.is_L2_limit
+  obtain ⟨approx, hadapted, hbdd, hnn, hL2, _, _⟩ := I.is_L2_limit
   exact ito_integral_martingale_setIntegral I.BM I.integral approx
     hadapted hbdd hnn hL2 I.integrable_limit I.sq_integrable_limit hs hst ht hA
 

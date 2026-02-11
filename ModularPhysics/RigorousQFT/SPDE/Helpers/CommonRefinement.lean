@@ -140,7 +140,7 @@ theorem stochasticIntegral_at_eq_of_same_active_values
     (H₁ H₂ : SimpleProcess F) (W : BrownianMotion Ω μ) (t : ℝ) (ω : Ω)
     (hn : H₁.n = H₂.n)
     (ht : ∀ i : Fin H₁.n, H₁.times i = H₂.times (Fin.cast hn i))
-    (hv : ∀ (i : Fin H₁.n) (h : (i : ℕ) + 1 < H₁.n),
+    (hv : ∀ (i : Fin H₁.n) (_ : (i : ℕ) + 1 < H₁.n),
       H₁.values i ω = H₂.values (Fin.cast hn i) ω) :
     H₁.stochasticIntegral_at W t ω = H₂.stochasticIntegral_at W t ω := by
   unfold stochasticIntegral_at
@@ -394,7 +394,7 @@ noncomputable def refinedSum (H : SimpleProcess F) (W : BrownianMotion Ω μ)
   else 0
 
 /-- Removing an element from a Finset.sort corresponds to List.erase. -/
-theorem sort_erase_comm (S : Finset ℝ) (s : ℝ) (hs : s ∈ S) :
+theorem sort_erase_comm (S : Finset ℝ) (s : ℝ) (_hs : s ∈ S) :
     (S.erase s).sort (· ≤ ·) = (S.sort (· ≤ ·)).erase s := by
   have h_sorted₁ : ((S.erase s).sort (· ≤ ·)).SortedLE :=
     (Finset.pairwise_sort (S.erase s) (· ≤ ·)).sortedLE
@@ -489,8 +489,7 @@ private theorem valueAtTime_eq_at_nonpartition (H : SimpleProcess F)
   apply valueAtTime_eq_no_partition_in_Ioc H
   · have : (⟨p - 1, by omega⟩ : Fin L.length) < ⟨p, hp⟩ := by simp [Fin.lt_def]; omega
     exact hL.strictMono_get this
-  · intro i
-    intro ⟨h_gt, h_le⟩
+  · intro i ⟨h_gt, h_le⟩
     -- h_gt : L[p-1] < H.times i, h_le : H.times i ≤ L[p]
     rcases h_le.lt_or_eq with h_lt | h_eq
     · -- L[p-1] < H.times i < L[p]: impossible

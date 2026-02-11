@@ -354,15 +354,8 @@ theorem diagonal_spectral_integral_real (U : H →L[ℂ] H) (hU : U ∈ unitary 
 
 /-! ### Helper lemmas for cfcViaInverseCayley -/
 
-/-- cfcViaInverseCayley respects addition -/
-lemma cfcViaInverseCayley_add (f g : C(ℝ, ℂ)) :
-    cfcViaInverseCayley (f + g) = cfcViaInverseCayley f + cfcViaInverseCayley g := by
-  ext w; simp only [cfcViaInverseCayley, Pi.add_apply, ContinuousMap.add_apply]; split_ifs <;> rfl
-
-/-- cfcViaInverseCayley respects scalar multiplication -/
-lemma cfcViaInverseCayley_smul (c : ℂ) (f : C(ℝ, ℂ)) :
-    cfcViaInverseCayley (c • f) = c • cfcViaInverseCayley f := by
-  ext w; simp only [cfcViaInverseCayley, Pi.smul_apply, ContinuousMap.smul_apply, smul_eq_mul]; split_ifs <;> rfl
+-- cfcViaInverseCayley_add and cfcViaInverseCayley_smul are in
+-- FunctionalCalculusFromCFC/Basic.lean
 
 /-- For a real-valued function f : C(ℝ, ℝ), embed it as C(ℝ, ℂ) -/
 def realToComplexMap (f : C(ℝ, ℝ)) : C(ℝ, ℂ) :=

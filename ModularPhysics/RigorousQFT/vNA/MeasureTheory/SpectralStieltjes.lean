@@ -179,22 +179,146 @@ theorem proj_disjoint_cauchy (x : H) (E : ℕ → Set ℝ) (hE : ∀ i j, i ≠ 
   -- The sequence converges by σ-additivity, hence is Cauchy
   exact (P.sigma_additive E hE x).cauchySeq
 
-/-- For decreasing sets E_n with ⋂ E_n = E, P(E_n) x → P(E) x in the norm topology.
+/-- Finite additivity: P(A ∪ B) x = P(A) x + P(B) x for disjoint A, B.
+    Derived from σ-additivity using the sequence A, B, ∅, ∅, ... -/
+theorem proj_finite_additive (x : H) (A B : Set ℝ) (hAB : Disjoint A B) :
+    P.proj (A ∪ B) x = P.proj A x + P.proj B x := by
+  -- Define the sequence: A, B, ∅, ∅, ...
+  set E : ℕ → Set ℝ := fun | 0 => A | 1 => B | (_ + 2) => ∅ with hE_def
+  -- Pairwise disjoint
+  have hE_disj : ∀ i j, i ≠ j → Disjoint (E i) (E j) := by
+    intro i j hij
+    match i, j with
+    | 0, 0 => exact absurd rfl hij
+    | 0, 1 => exact hAB
+    | 1, 0 => exact hAB.symm
+    | 0, _ + 2 | 1, _ + 2 | _ + 2, _ + 2 => exact disjoint_bot_right
+    | _ + 2, 0 | _ + 2, 1 => exact disjoint_bot_left
+    | 1, 1 => exact absurd rfl hij
+  -- ⋃ E = A ∪ B
+  have hE_union : ⋃ i, E i = A ∪ B := by
+    ext z; simp only [Set.mem_iUnion, Set.mem_union]
+    constructor
+    · rintro ⟨i, hi⟩
+      match i with
+      | 0 => exact Or.inl hi
+      | 1 => exact Or.inr hi
+      | _ + 2 => simp [E] at hi
+    · rintro (ha | hb)
+      · exact ⟨0, ha⟩
+      · exact ⟨1, hb⟩
+  -- σ-additivity gives convergence
+  have hσ := P.sigma_additive E hE_disj x
+  rw [hE_union] at hσ
+  -- Partial sums stabilize at P(A)x + P(B)x for n ≥ 2
+  have h_tail : ∀ k, k ≥ 2 → P.proj (E k) x = 0 := by
+    intro k hk
+    have : E k = ∅ := by match k, hk with | _ + 2, _ => rfl
+    rw [this, P.empty, ContinuousLinearMap.zero_apply]
+  -- Prove stability by reducing to the case n = m + 2
+  suffices hstab : ∀ m, ∑ i ∈ Finset.range (m + 2), P.proj (E i) x =
+      P.proj A x + P.proj B x by
+    -- Eventually constant → converges to constant
+    have hevt : (fun n => ∑ i ∈ Finset.range n, P.proj (E i) x) =ᶠ[atTop]
+        fun _ => P.proj A x + P.proj B x := by
+      filter_upwards [Filter.eventually_ge_atTop 2] with n hn
+      rw [show n = (n - 2) + 2 from by omega]
+      exact hstab _
+    exact tendsto_nhds_unique hσ (tendsto_const_nhds.congr' hevt.symm)
+  -- Induction on m
+  intro m
+  induction m with
+  | zero => simp [Finset.sum_range_succ, E]
+  | succ k ih =>
+    rw [show k + 1 + 2 = (k + 2) + 1 from by ring, Finset.sum_range_succ, ih,
+        h_tail (k + 2) (by omega), add_zero]
+
+/-- Helper: E is decreasing for any gap, not just consecutive indices. -/
+theorem _root_.decreasing_chain_le {E : ℕ → Set ℝ} (hE_dec : ∀ n, E (n + 1) ⊆ E n)
+    {i j : ℕ} (hij : i ≤ j) : E j ⊆ E i := by
+  induction hij with
+  | refl => exact Subset.rfl
+  | step _ ih => exact (hE_dec _).trans ih
+
+/-- For decreasing sets E_n with ⋂ E_n = S, P(E_n) x → P(S) x in the norm topology.
 
     This is the monotone convergence theorem for projection-valued measures.
-    The proof uses σ-additivity on the "difference" sets F_k = E_k \ E_{k+1}. -/
+    The proof uses σ-additivity on the "difference" sets F_k = E_k \ E_{k+1},
+    telescoping sums, and finite additivity derived from σ-additivity. -/
 theorem proj_decreasing_tendsto (x : H) (E : ℕ → Set ℝ) (S : Set ℝ)
     (hE_dec : ∀ n, E (n + 1) ⊆ E n)
     (hE_inter : ⋂ n, E n = S) :
     Tendsto (fun n => P.proj (E n) x) atTop (nhds (P.proj S x)) := by
-  -- The proof uses σ-additivity on the "difference" sets F_k = E_k \ E_{k+1}.
-  -- These are disjoint and E_0 \ S = ⋃_k F_k.
-  -- By σ-additivity, ∑_k P(F_k) x → P(E_0 \ S) x.
-  -- P(E_n) x = P(S) x + P(E_n \ S) x (by finite additivity)
-  -- E_n \ S = ⋃_{k≥n} F_k, so P(E_n \ S) x is a tail of the convergent series.
-  -- Hence P(E_n \ S) x → 0, so P(E_n) x → P(S) x.
-  -- Full formalization requires infrastructure for finite additivity and tail decay.
-  sorry
+  -- S ⊆ E_n for all n
+  have hS_sub : ∀ n, S ⊆ E n := fun n => hE_inter ▸ Set.iInter_subset E n
+  -- Define difference sets F_k = E_k \ E_{k+1}
+  set F : ℕ → Set ℝ := fun k => E k \ E (k + 1) with hF_def
+  -- F_k are pairwise disjoint
+  have hF_disj : ∀ i j, i ≠ j → Disjoint (F i) (F j) := by
+    intro i j hij
+    apply Set.disjoint_left.mpr
+    intro z hz hzj
+    -- hz : z ∈ E i \ E (i+1), hzj : z ∈ E j \ E (j+1)
+    rcases lt_or_gt_of_ne hij with h | h
+    · -- i < j: E j ⊆ E (i+1), so z ∈ E (i+1), contradicts hz.2
+      exact hz.2 (decreasing_chain_le hE_dec (show i + 1 ≤ j by omega) hzj.1)
+    · -- j < i: E i ⊆ E (j+1), so z ∈ E (j+1), contradicts hzj.2
+      exact hzj.2 (decreasing_chain_le hE_dec (show j + 1 ≤ i by omega) hz.1)
+  -- Finite additivity: P(E_k)x = P(E_{k+1})x + P(F_k)x
+  have htelesc : ∀ k, P.proj (E k) x = P.proj (E (k + 1)) x + P.proj (F k) x := by
+    intro k
+    rw [show E k = E (k + 1) ∪ (E k \ E (k + 1)) from (Set.union_diff_cancel (hE_dec k)).symm]
+    exact P.proj_finite_additive x _ _ (Set.disjoint_left.mpr fun _ hz hzd => hzd.2 hz)
+  -- Telescoping: ∑_{k<n} P(F_k)x = P(E_0)x - P(E_n)x
+  have htelesc_sum : ∀ n, ∑ k ∈ Finset.range n, P.proj (F k) x =
+      P.proj (E 0) x - P.proj (E n) x := by
+    intro n; induction n with
+    | zero => simp
+    | succ m ih =>
+      rw [Finset.sum_range_succ, ih, (sub_eq_of_eq_add (htelesc m)).symm]
+      abel
+  -- P(E_n)x = P(E_0)x - ∑_{k<n} P(F_k)x
+  have hEn_eq : ∀ n, P.proj (E n) x =
+      P.proj (E 0) x - ∑ k ∈ Finset.range n, P.proj (F k) x := by
+    intro n; rw [htelesc_sum n]; abel
+  -- ⋃_k F_k = E_0 \ S
+  have hF_union : ⋃ k, F k = E 0 \ S := by
+    ext z; simp only [Set.mem_iUnion, Set.mem_diff]
+    constructor
+    · rintro ⟨k, hzk, hzk'⟩
+      exact ⟨decreasing_chain_le hE_dec (Nat.zero_le k) hzk,
+             fun hzS => hzk' (hS_sub (k + 1) hzS)⟩
+    · rintro ⟨hz0, hzS⟩
+      rw [← hE_inter] at hzS
+      simp only [Set.mem_iInter] at hzS
+      push_neg at hzS
+      -- Find smallest k with z ∉ E k
+      haveI : DecidablePred (fun m => z ∉ E m) := Classical.decPred _
+      have hexists : ∃ m, z ∉ E m := hzS
+      set k := Nat.find hexists
+      have hk_spec : z ∉ E k := Nat.find_spec hexists
+      have hk_pos : k ≠ 0 := by
+        intro hk0; rw [hk0] at hk_spec; exact hk_spec hz0
+      have hk_prev : z ∈ E (k - 1) := by
+        by_contra hc; exact Nat.find_min hexists (by omega) hc
+      exact ⟨k - 1, hk_prev, by rwa [show k - 1 + 1 = k from by omega]⟩
+  -- E_0 = S ∪ (E_0 \ S), disjoint, so P(E_0\S)x = P(E_0)x - P(S)x
+  have hE0_decomp : P.proj (E 0) x = P.proj S x + P.proj (E 0 \ S) x := by
+    have := P.proj_finite_additive x S (E 0 \ S)
+      (Set.disjoint_left.mpr (fun _ hzS hzd => hzd.2 hzS))
+    rwa [Set.union_diff_cancel (hS_sub 0)] at this
+  -- σ-additivity: ∑_{k<N} P(F_k)x → P(E_0 \ S)x
+  have hF_sigma := P.sigma_additive F hF_disj x
+  rw [hF_union] at hF_sigma
+  -- P(E_n)x = P(E_0)x - ∑ P(F_k)x, and ∑ → P(E_0\S)x
+  -- So P(E_0)x - ∑ → P(E_0)x - P(E_0\S)x = P(S)x
+  have h_sub := tendsto_const_nhds (x := P.proj (E 0) x) |>.sub hF_sigma
+  -- h_sub : P(E_0)x - ∑... → P(E_0)x - P(E_0\S)x
+  -- P(E_0)x - P(E_0\S)x = P(S)x by hE0_decomp
+  have h_eq : P.proj (E 0) x - P.proj (E 0 \ S) x = P.proj S x :=
+    sub_eq_iff_eq_add.mpr hE0_decomp
+  rw [h_eq] at h_sub
+  exact h_sub.congr (fun n => (hEn_eq n).symm)
 
 /-- ⟨x, P(E)x⟩ is real and non-negative for any projection P(E). -/
 theorem inner_proj_nonneg (x : H) (E : Set ℝ) :

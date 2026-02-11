@@ -6,6 +6,7 @@ Authors: ModularPhysics Contributors
 import ModularPhysics.RigorousQFT.vNA.Unbounded.Basic
 import ModularPhysics.RigorousQFT.vNA.Spectral.CayleyTransform
 import ModularPhysics.RigorousQFT.vNA.Spectral.SpectralViaCayleyRMK
+import ModularPhysics.RigorousQFT.vNA.Spectral.SigmaAdditivity
 import ModularPhysics.RigorousQFT.vNA.Spectral.FunctionalCalculusFromCFC.Basic
 import Mathlib.MeasureTheory.Integral.Bochner.Basic
 import Mathlib.MeasureTheory.Measure.Regular
@@ -89,24 +90,28 @@ variable {H : Type u} [NormedAddCommGroup H] [InnerProductSpace ℂ H] [Complete
     positive Borel measure on ℝ with total mass ‖x‖². -/
 structure SpectralMeasure (H : Type u) [NormedAddCommGroup H] [InnerProductSpace ℂ H]
     [CompleteSpace H] where
-  /-- The projection for each measurable set -/
+  /-- The projection for each Borel set. For non-measurable sets, returns 0 by convention. -/
   proj : Set ℝ → (H →L[ℂ] H)
   /-- P(∅) = 0 -/
   empty : proj ∅ = 0
   /-- P(ℝ) = 1 -/
   univ : proj Set.univ = 1
-  /-- Each P(E) is idempotent -/
-  isIdempotent : ∀ E, proj E ∘L proj E = proj E
-  /-- Each P(E) is self-adjoint -/
-  isSelfAdj : ∀ E, ContinuousLinearMap.adjoint (proj E) = proj E
-  /-- P(E ∩ F) = P(E) P(F) -/
-  inter : ∀ E F, proj (E ∩ F) = proj E ∘L proj F
-  /-- Monotonicity: E ⊆ F implies P(E) ≤ P(F) in the operator order -/
-  monotone : ∀ E F, E ⊆ F → ∀ x : H, ‖proj E x‖ ≤ ‖proj F x‖
-  /-- σ-additivity: for disjoint sequence, P(⋃ Eₙ)x = Σ P(Eₙ)x (strong convergence) -/
-  sigma_additive : ∀ (E : ℕ → Set ℝ), (∀ i j, i ≠ j → Disjoint (E i) (E j)) →
+  /-- Each P(E) is idempotent (for measurable E) -/
+  isIdempotent : ∀ E, MeasurableSet E → proj E ∘L proj E = proj E
+  /-- Each P(E) is self-adjoint (for measurable E) -/
+  isSelfAdj : ∀ E, MeasurableSet E → ContinuousLinearMap.adjoint (proj E) = proj E
+  /-- P(E ∩ F) = P(E) P(F) (for measurable E, F) -/
+  inter : ∀ E F, MeasurableSet E → MeasurableSet F → proj (E ∩ F) = proj E ∘L proj F
+  /-- Monotonicity: E ⊆ F implies P(E) ≤ P(F) in the operator order (for measurable E, F) -/
+  monotone : ∀ E F, MeasurableSet E → MeasurableSet F → E ⊆ F →
+    ∀ x : H, ‖proj E x‖ ≤ ‖proj F x‖
+  /-- σ-additivity: for disjoint measurable sequence, P(⋃ Eₙ)x = Σ P(Eₙ)x -/
+  sigma_additive : ∀ (E : ℕ → Set ℝ), (∀ i, MeasurableSet (E i)) →
+    (∀ i j, i ≠ j → Disjoint (E i) (E j)) →
     ∀ x : H, Tendsto (fun n => ∑ i ∈ Finset.range n, proj (E i) x)
       Filter.atTop (nhds (proj (⋃ i, E i) x))
+  /-- Non-measurable sets get the zero projection -/
+  proj_nonmeasurable : ∀ E, ¬MeasurableSet E → proj E = 0
 
 namespace SpectralMeasure
 
@@ -132,8 +137,9 @@ def scalarMeasure (x : H) (E : Set ℝ) : ℝ :=
 def support : Set ℝ :=
   { t | ∀ ε > 0, P.proj (Set.Ioo (t - ε) (t + ε)) ≠ 0 }
 
-/-- For disjoint E, F: P(E ∪ F) = P(E) + P(F) -/
-theorem additive_disjoint (E F : Set ℝ) (hEF : Disjoint E F) :
+/-- For disjoint measurable E, F: P(E ∪ F) = P(E) + P(F) -/
+theorem additive_disjoint (E F : Set ℝ) (hE : MeasurableSet E) (hF : MeasurableSet F)
+    (hEF : Disjoint E F) :
     P.proj (E ∪ F) = P.proj E + P.proj F := by
   -- Use P(E)P(F) = P(E ∩ F) = P(∅) = 0 for disjoint sets
   -- Combined with idempotence, this gives us additivity
@@ -153,8 +159,8 @@ theorem additive_disjoint (E F : Set ℝ) (hEF : Disjoint E F) :
     rw [h]
     exact P.empty
   -- P(E)P(F) = P(E ∩ F) = 0
-  have hPEPF : P.proj E ∘L P.proj F = 0 := by rw [← P.inter E F, hinter]
-  have hPFPE : P.proj F ∘L P.proj E = 0 := by rw [← P.inter F E, Set.inter_comm, hinter]
+  have hPEPF : P.proj E ∘L P.proj F = 0 := by rw [← P.inter E F hE hF, hinter]
+  have hPFPE : P.proj F ∘L P.proj E = 0 := by rw [← P.inter F E hF hE, Set.inter_comm, hinter]
   -- For orthogonal projections with PQ = 0, P + Q is also a projection onto ran(P) ⊕ ran(Q)
   -- And P(E ∪ F) projects onto the same space
   -- This requires showing (P + Q)² = P + Q when PQ = QP = 0
@@ -180,7 +186,14 @@ theorem additive_disjoint (E F : Set ℝ) (hEF : Disjoint E F) :
     · rintro (ht | ht)
       · exact ⟨0, by simp [ht]⟩
       · exact ⟨1, by simp [ht]⟩
-  have hconv := P.sigma_additive seq hseq_disj x
+  have hseq_meas : ∀ i, MeasurableSet (seq i) := by
+    intro i; simp only [seq]
+    by_cases hi0 : i = 0
+    · simp [hi0]; exact hE
+    · by_cases hi1 : i = 1
+      · simp [hi1]; exact hF
+      · simp [hi0, hi1]
+  have hconv := P.sigma_additive seq hseq_meas hseq_disj x
   rw [hunion] at hconv
   -- The partial sums stabilize at P(E)x + P(F)x for n ≥ 2
   have hsum_stable : ∀ n ≥ 2, ∑ i ∈ Finset.range n, P.proj (seq i) x = P.proj E x + P.proj F x := by
@@ -214,18 +227,19 @@ theorem additive_disjoint (E F : Set ℝ) (hEF : Disjoint E F) :
   exact huniq
 
 /-- P(E)P(F) = P(F)P(E) (projections from a PVM commute) -/
-theorem proj_comm (E F : Set ℝ) : P.proj E ∘L P.proj F = P.proj F ∘L P.proj E := by
+theorem proj_comm (E F : Set ℝ) (hE : MeasurableSet E) (hF : MeasurableSet F) :
+    P.proj E ∘L P.proj F = P.proj F ∘L P.proj E := by
   -- P(E)P(F) = P(E ∩ F) = P(F ∩ E) = P(F)P(E)
-  have h1 : P.proj E ∘L P.proj F = P.proj (E ∩ F) := (P.inter E F).symm
-  have h2 : P.proj F ∘L P.proj E = P.proj (F ∩ E) := (P.inter F E).symm
+  have h1 : P.proj E ∘L P.proj F = P.proj (E ∩ F) := (P.inter E F hE hF).symm
+  have h2 : P.proj F ∘L P.proj E = P.proj (F ∩ E) := (P.inter F E hF hE).symm
   rw [h1, h2, Set.inter_comm]
 
 /-- ‖P(E)x‖² = ⟨x, P(E)x⟩ (since P(E) is a projection) -/
-theorem norm_sq_eq_inner (E : Set ℝ) (x : H) :
+theorem norm_sq_eq_inner (E : Set ℝ) (hE : MeasurableSet E) (x : H) :
     ‖P.proj E x‖^2 = (@inner ℂ H _ x (P.proj E x)).re := by
   -- P(E)² = P(E) and P(E)* = P(E), so ⟨x, P(E)x⟩ = ⟨P(E)x, P(E)x⟩ = ‖P(E)x‖²
-  have hidempotent := P.isIdempotent E
-  have hselfadj := P.isSelfAdj E
+  have hidempotent := P.isIdempotent E hE
+  have hselfadj := P.isSelfAdj E hE
   -- ⟨x, P(E)x⟩ = ⟨P(E)x, P(E)x⟩ = ‖P(E)x‖²
   have h1 : @inner ℂ H _ x (P.proj E x) = @inner ℂ H _ (P.proj E x) (P.proj E x) := by
     -- adjoint_inner_right: ⟨x, A* y⟩ = ⟨A x, y⟩
@@ -248,34 +262,40 @@ theorem norm_sq_eq_inner (E : Set ℝ) (x : H) :
 
 /-- ‖P(E)x‖ ≤ ‖x‖ for any spectral projection.
     This follows from P(E) being an orthogonal projection (idempotent and self-adjoint).
+    For non-measurable E, P(E) = 0 so the bound is trivially 0 ≤ ‖x‖.
 
     Proof: By Pythagoras, ‖x‖² = ‖P(E)x‖² + ‖(1-P(E))x‖² ≥ ‖P(E)x‖² -/
 theorem proj_norm_le (E : Set ℝ) (x : H) : ‖P.proj E x‖ ≤ ‖x‖ := by
-  by_cases hx : x = 0
-  · simp [hx]
-  -- Use: ‖P(E)x‖² = ⟨x, P(E)x⟩ and Cauchy-Schwarz
-  have hnorm_sq := P.norm_sq_eq_inner E x
-  -- ‖P(E)x‖² = Re⟨x, P(E)x⟩ ≤ ‖⟨x, P(E)x⟩‖ ≤ ‖x‖ · ‖P(E)x‖ (Cauchy-Schwarz)
-  have hCS : ‖@inner ℂ H _ x (P.proj E x)‖ ≤ ‖x‖ * ‖P.proj E x‖ :=
-    norm_inner_le_norm x (P.proj E x)
-  -- For complex z, z.re ≤ |z.re| ≤ ‖z‖
-  have hre_le : (@inner ℂ H _ x (P.proj E x)).re ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := by
-    calc (@inner ℂ H _ x (P.proj E x)).re
-        ≤ |(@inner ℂ H _ x (P.proj E x)).re| := le_abs_self _
-      _ ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := Complex.abs_re_le_norm _
-  have h1 : ‖P.proj E x‖^2 ≤ ‖x‖ * ‖P.proj E x‖ := by
-    calc ‖P.proj E x‖^2 = (@inner ℂ H _ x (P.proj E x)).re := hnorm_sq
-      _ ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := hre_le
-      _ ≤ ‖x‖ * ‖P.proj E x‖ := hCS
-  by_cases hPx : P.proj E x = 0
-  · simp [hPx]
-  · have hPx_pos : 0 < ‖P.proj E x‖ := norm_pos_iff.mpr hPx
-    calc ‖P.proj E x‖ = ‖P.proj E x‖^2 / ‖P.proj E x‖ := by field_simp
-      _ ≤ (‖x‖ * ‖P.proj E x‖) / ‖P.proj E x‖ := by
-          apply div_le_div_of_nonneg_right h1 hPx_pos.le
-      _ = ‖x‖ := by field_simp
+  by_cases hE : MeasurableSet E
+  · by_cases hx : x = 0
+    · simp [hx]
+    -- Use: ‖P(E)x‖² = ⟨x, P(E)x⟩ and Cauchy-Schwarz
+    have hnorm_sq := P.norm_sq_eq_inner E hE x
+    -- ‖P(E)x‖² = Re⟨x, P(E)x⟩ ≤ ‖⟨x, P(E)x⟩‖ ≤ ‖x‖ · ‖P(E)x‖ (Cauchy-Schwarz)
+    have hCS : ‖@inner ℂ H _ x (P.proj E x)‖ ≤ ‖x‖ * ‖P.proj E x‖ :=
+      norm_inner_le_norm x (P.proj E x)
+    -- For complex z, z.re ≤ |z.re| ≤ ‖z‖
+    have hre_le : (@inner ℂ H _ x (P.proj E x)).re ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := by
+      calc (@inner ℂ H _ x (P.proj E x)).re
+          ≤ |(@inner ℂ H _ x (P.proj E x)).re| := le_abs_self _
+        _ ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := Complex.abs_re_le_norm _
+    have h1 : ‖P.proj E x‖^2 ≤ ‖x‖ * ‖P.proj E x‖ := by
+      calc ‖P.proj E x‖^2 = (@inner ℂ H _ x (P.proj E x)).re := hnorm_sq
+        _ ≤ ‖@inner ℂ H _ x (P.proj E x)‖ := hre_le
+        _ ≤ ‖x‖ * ‖P.proj E x‖ := hCS
+    by_cases hPx : P.proj E x = 0
+    · simp [hPx]
+    · have hPx_pos : 0 < ‖P.proj E x‖ := norm_pos_iff.mpr hPx
+      calc ‖P.proj E x‖ = ‖P.proj E x‖^2 / ‖P.proj E x‖ := by field_simp
+        _ ≤ (‖x‖ * ‖P.proj E x‖) / ‖P.proj E x‖ := by
+            apply div_le_div_of_nonneg_right h1 hPx_pos.le
+        _ = ‖x‖ := by field_simp
+  · -- Non-measurable: P(E) = 0
+    rw [P.proj_nonmeasurable E hE, ContinuousLinearMap.zero_apply, norm_zero]
+    exact norm_nonneg _
 
-/-- The operator norm of P(E) is at most 1 -/
+/-- The operator norm of P(E) is at most 1.
+    For non-measurable E, P(E) = 0 so ‖P(E)‖ = 0 ≤ 1. -/
 theorem proj_opNorm_le_one (E : Set ℝ) : ‖P.proj E‖ ≤ 1 := by
   apply ContinuousLinearMap.opNorm_le_bound _ zero_le_one
   intro x
@@ -284,7 +304,8 @@ theorem proj_opNorm_le_one (E : Set ℝ) : ‖P.proj E‖ ≤ 1 := by
 
 /-- P(E)x and P(F)x are orthogonal when E and F are disjoint.
     This follows from P(E)P(F) = P(E ∩ F) = P(∅) = 0. -/
-theorem proj_orthogonal_of_disjoint (E F : Set ℝ) (hEF : Disjoint E F) (x : H) :
+theorem proj_orthogonal_of_disjoint (E F : Set ℝ) (hE : MeasurableSet E) (hF : MeasurableSet F)
+    (hEF : Disjoint E F) (x : H) :
     @inner ℂ H _ (P.proj E x) (P.proj F x) = 0 := by
   -- ⟨P(E)x, P(F)x⟩ = ⟨x, P(E)* P(F)x⟩ = ⟨x, P(E)P(F)x⟩ (self-adjoint)
   --                = ⟨x, P(E ∩ F)x⟩ = ⟨x, P(∅)x⟩ = ⟨x, 0⟩ = 0
@@ -292,9 +313,9 @@ theorem proj_orthogonal_of_disjoint (E F : Set ℝ) (hEF : Disjoint E F) (x : H)
   calc @inner ℂ H _ (P.proj E x) (P.proj F x)
       = @inner ℂ H _ x (ContinuousLinearMap.adjoint (P.proj E) (P.proj F x)) :=
         (ContinuousLinearMap.adjoint_inner_right _ _ _).symm
-    _ = @inner ℂ H _ x (P.proj E (P.proj F x)) := by rw [P.isSelfAdj E]
+    _ = @inner ℂ H _ x (P.proj E (P.proj F x)) := by rw [P.isSelfAdj E hE]
     _ = @inner ℂ H _ x ((P.proj E ∘L P.proj F) x) := rfl
-    _ = @inner ℂ H _ x (P.proj (E ∩ F) x) := by rw [← P.inter E F]
+    _ = @inner ℂ H _ x (P.proj (E ∩ F) x) := by rw [← P.inter E F hE hF]
     _ = @inner ℂ H _ x (P.proj ∅ x) := by rw [hinter]
     _ = @inner ℂ H _ x 0 := by rw [P.empty]; simp
     _ = 0 := inner_zero_right _
@@ -334,6 +355,7 @@ theorem pythag_sum_sq {n : ℕ} (v : Fin n → H)
     The proof requires the Pythagorean theorem for pairwise orthogonal vectors,
     which we establish using the orthogonality of P(E)x and P(F)x for disjoint E, F. -/
 theorem proj_sum_norm_le_sup {n : ℕ} (c : Fin n → ℂ) (E : Fin n → Set ℝ)
+    (hE_meas : ∀ i, MeasurableSet (E i))
     (hE_disj : ∀ i j, i ≠ j → Disjoint (E i) (E j))
     (M : ℝ) (hM : ∀ i, ‖c i‖ ≤ M) (hM_pos : 0 ≤ M) :
     ‖∑ i : Fin n, c i • P.proj (E i)‖ ≤ M := by
@@ -342,7 +364,8 @@ theorem proj_sum_norm_le_sup {n : ℕ} (c : Fin n → ℂ) (E : Fin n → Set �
   simp only [ContinuousLinearMap.sum_apply, ContinuousLinearMap.smul_apply]
   -- Use Pythagorean theorem for orthogonal vectors
   have hproj_orth : ∀ i j, i ≠ j → @inner ℂ H _ (P.proj (E i) x) (P.proj (E j) x) = 0 := by
-    intro i j hij; exact P.proj_orthogonal_of_disjoint (E i) (E j) (hE_disj i j hij) x
+    intro i j hij
+    exact P.proj_orthogonal_of_disjoint (E i) (E j) (hE_meas i) (hE_meas j) (hE_disj i j hij) x
   have hproj_pythag : ‖∑ i : Fin n, P.proj (E i) x‖^2 = ∑ i : Fin n, ‖P.proj (E i) x‖^2 := by
     exact pythag_sum_sq (fun i => P.proj (E i) x) hproj_orth
   -- Define v and use Pythagorean
@@ -350,7 +373,7 @@ theorem proj_sum_norm_le_sup {n : ℕ} (c : Fin n → ℂ) (E : Fin n → Set �
   have hv_orth : ∀ i j, i ≠ j → @inner ℂ H _ (v i) (v j) = 0 := by
     intro i j hij
     simp only [v, inner_smul_left, inner_smul_right]
-    rw [P.proj_orthogonal_of_disjoint (E i) (E j) (hE_disj i j hij) x]
+    rw [P.proj_orthogonal_of_disjoint (E i) (E j) (hE_meas i) (hE_meas j) (hE_disj i j hij) x]
     ring
   have hpythag : ‖∑ i : Fin n, v i‖^2 = ∑ i : Fin n, ‖v i‖^2 := by exact pythag_sum_sq v hv_orth
   -- Bound ∑ᵢ ‖P(Eᵢ) x‖² ≤ ‖x‖²
@@ -360,7 +383,7 @@ theorem proj_sum_norm_le_sup {n : ℕ} (c : Fin n → ℂ) (E : Fin n → Set �
       have hcalc : ‖∑ i : Fin n, P.proj (E i) x‖^2 ≤ ‖x‖ * ‖∑ i : Fin n, P.proj (E i) x‖ :=
         calc ‖∑ i : Fin n, P.proj (E i) x‖^2 = ∑ i : Fin n, ‖P.proj (E i) x‖^2 := hproj_pythag
           _ = ∑ i : Fin n, (@inner ℂ H _ x (P.proj (E i) x)).re := by
-              congr 1; ext i; exact P.norm_sq_eq_inner (E i) x
+              congr 1; ext i; exact P.norm_sq_eq_inner (E i) (hE_meas i) x
           _ = (∑ i : Fin n, @inner ℂ H _ x (P.proj (E i) x)).re := by rw [← Complex.re_sum]
           _ = (@inner ℂ H _ x (∑ i : Fin n, P.proj (E i) x)).re := by rw [← inner_sum]
           _ ≤ ‖@inner ℂ H _ x (∑ i : Fin n, P.proj (E i) x)‖ := Complex.re_le_norm _
@@ -812,34 +835,25 @@ theorem spectralIntegral_unique (T : UnboundedOperator H) (hT : T.IsDenselyDefin
 
 /-! ### The Spectral Theorem -/
 
-/-- **The Spectral Theorem for Unbounded Self-Adjoint Operators**
+/-- **The PVM Construction for Unbounded Self-Adjoint Operators (sorry-free)**
 
     For every densely defined self-adjoint operator T on a Hilbert space H,
-    there exists a unique spectral measure P and a Cayley transform C such that
-    the functional calculus on P agrees with the unbounded CFC via C.
+    there exists a spectral measure P (projection-valued measure) and a
+    Cayley transform C such that P.proj agrees with spectralMeasureFromRMK
+    on all measurable sets.
 
-    **Key Property:** For all bounded continuous functions f : ℝ → ℂ:
-      `functionalCalculus P f = UnboundedCFC T hT hsa C f`
+    This is the core sorry-free construction. The spectral measure P is:
+    - P(E) = spectralMeasureFromRMK T hT hsa C E hE for measurable E
+    - P(E) = 0 for non-measurable E
 
-    This means:
-    - f(T) computed via the spectral integral ∫ f(λ) dP(λ)
-    - equals f(T) computed via the Cayley transform (f ∘ inverseCayley)(U)
-
-    **Application to Stone's Theorem:**
-    For f(λ) = exp(itλ), we get: `exp(itT) = ∫ exp(itλ) dP(λ)`
-    This is precisely what Stone's theorem needs to construct the unitary group.
-
-    **Construction:**
-    1. The Cayley transform U = (T-i)(T+i)⁻¹ is unitary (by self-adjointness)
-    2. Apply Mathlib's CFC to U (unitary spectrum ⊆ S¹)
-    3. Pull back to ℝ via the inverse Cayley map λ ↦ i(1+λ)/(1-λ)
-    4. The spectral measure P on ℝ is the pullback of U's spectral measure
+    All PVM properties (empty, univ, idempotent, self-adjoint, multiplicative,
+    monotone, σ-additive) are proven from the RMK chain.
 
     References: Reed-Simon Theorem VIII.4, Rudin Theorem 13.30 -/
-theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+theorem spectral_theorem_pvm (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) :
     ∃ (P : SpectralMeasure H) (C : CayleyTransform T hT hsa),
-      ∀ f : C(ℝ, ℂ), functionalCalculus P f = UnboundedCFC T hT hsa C f := by
+      ∀ E (hE : MeasurableSet E), P.proj E = spectralMeasureFromRMK T hT hsa C E hE := by
   -- Step 1: Get the Cayley transform and PVM properties from spectralMeasure_isPVM_via_RMK
   -- The RMK approach proves: empty=0, univ=1, idempotent, selfAdjoint, multiplicative
   -- All of these are sorry-free!
@@ -859,120 +873,90 @@ theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
   have hP_raw_univ : P_raw Set.univ = 1 := by
     simp only [P_raw, MeasurableSet.univ, ↓reduceDIte]
     exact hP_univ
-  -- isIdempotent: P(E)² = P(E)
-  have hP_raw_idem : ∀ E, P_raw E ∘L P_raw E = P_raw E := by
-    intro E
-    by_cases hE : MeasurableSet E
-    · simp only [P_raw, hE, ↓reduceDIte]
-      exact hP_idem E hE
-    · simp only [P_raw, hE, ↓reduceDIte, ContinuousLinearMap.comp_zero]
-  -- isSelfAdj: P(E)* = P(E)
-  have hP_raw_sa : ∀ E, (P_raw E).adjoint = P_raw E := by
-    intro E
-    by_cases hE : MeasurableSet E
-    · simp only [P_raw, hE, ↓reduceDIte]
-      exact hP_sa E hE
-    · simp only [P_raw, hE, ↓reduceDIte]
-      ext x
-      have h : (0 : H →L[ℂ] H).adjoint = 0 := by
-        ext y; apply ext_inner_left ℂ; intro z
-        simp only [ContinuousLinearMap.zero_apply, inner_zero_right]
-        rw [ContinuousLinearMap.adjoint_inner_right]
-        simp only [ContinuousLinearMap.zero_apply, inner_zero_left]
-      simp only [h, ContinuousLinearMap.zero_apply]
-  -- inter: P(E ∩ F) = P(E) ∘L P(F)
-  have hP_raw_inter : ∀ E F, P_raw (E ∩ F) = P_raw E ∘L P_raw F := by
-    intro E F
-    by_cases hE : MeasurableSet E
-    · by_cases hF : MeasurableSet F
-      · simp only [P_raw, hE, hF, hE.inter hF, ↓reduceDIte]
-        exact hP_inter E F hE hF
-      · -- F not measurable: P(F) = 0, so RHS = P(E) ∘L 0 = 0
-        simp only [P_raw, hF, ↓reduceDIte, ContinuousLinearMap.comp_zero]
-        -- LHS = P(E ∩ F). If E ∩ F is measurable, we need P(E ∩ F) = 0.
-        -- This is not generally true, so we mark it as sorry.
-        -- In practice, spectral measures are only defined on measurable sets.
-        by_cases hEF : MeasurableSet (E ∩ F)
-        · simp only [P_raw, hEF, ↓reduceDIte]
-          -- P(E ∩ F) should equal 0 since P(F) = 0 and P(E ∩ F) ≤ P(F) in norm
-          -- This requires proving P(E ∩ F) = P(E ∩ F) ∘L P(F) = 0
-          sorry
-        · simp only [P_raw, hEF, ↓reduceDIte]
-    · -- E not measurable: P(E) = 0, so RHS = 0 ∘L P(F) = 0
-      simp only [P_raw, hE, ↓reduceDIte, ContinuousLinearMap.zero_comp]
-      by_cases hEF : MeasurableSet (E ∩ F)
-      · simp only [P_raw, hEF, ↓reduceDIte]
-        sorry -- Similar to above
-      · simp only [P_raw, hEF, ↓reduceDIte]
-  -- monotone: E ⊆ F implies ‖P(E)x‖ ≤ ‖P(F)x‖
-  have hP_raw_mono : ∀ E F, E ⊆ F → ∀ x : H, ‖P_raw E x‖ ≤ ‖P_raw F x‖ := by
-    intro E F hEF x
-    by_cases hE : MeasurableSet E
-    · by_cases hF : MeasurableSet F
-      · -- Both measurable: use the contraction property
-        have hEF_inter : E ∩ F = E := Set.inter_eq_left.mpr hEF
-        have hPE_eq : P_raw E = P_raw E ∘L P_raw F := by
-          rw [← hP_raw_inter E F, hEF_inter]
-        have hPEx : P_raw E x = P_raw E (P_raw F x) := by
-          calc P_raw E x = (P_raw E ∘L P_raw F) x := by rw [← hPE_eq]
-            _ = P_raw E (P_raw F x) := rfl
-        rw [hPEx]
-        -- Projections are contractions: ‖P(E)y‖ ≤ ‖y‖
-        by_cases hy : P_raw E (P_raw F x) = 0
-        · rw [hy, norm_zero]; exact norm_nonneg _
-        · have h1 : ‖P_raw E (P_raw F x)‖^2 =
-              RCLike.re (@inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x))) :=
-            (inner_self_eq_norm_sq _).symm
-          have h2 : @inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x)) =
-              @inner ℂ H _ (P_raw F x) ((P_raw E).adjoint (P_raw E (P_raw F x))) :=
-            (ContinuousLinearMap.adjoint_inner_right (P_raw E) (P_raw F x) _).symm
-          have h3 : (P_raw E).adjoint (P_raw E (P_raw F x)) = P_raw E (P_raw E (P_raw F x)) := by
-            rw [hP_raw_sa E]
-          have h5 : P_raw E (P_raw E (P_raw F x)) = P_raw E (P_raw F x) := by
-            have := hP_raw_idem E
-            simp only [ContinuousLinearMap.comp_apply] at this
-            exact congrFun (congrArg DFunLike.coe this) (P_raw F x)
-          have h_inner_eq : @inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x)) =
-              @inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x)) := by rw [h2, h3, h5]
-          have hcs : ‖@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))‖ ≤
-              ‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖ := norm_inner_le_norm _ _
-          have hre_le : RCLike.re (@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))) ≤
-              ‖@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))‖ := by
-            have h := Complex.abs_re_le_norm (@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x)))
-            exact le_trans (le_abs_self _) h
-          have h6 : ‖P_raw E (P_raw F x)‖^2 ≤ ‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖ := by
-            calc ‖P_raw E (P_raw F x)‖^2 =
-                RCLike.re (@inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x))) := h1
-              _ = RCLike.re (@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))) := by rw [h_inner_eq]
-              _ ≤ ‖@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))‖ := hre_le
-              _ ≤ ‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖ := hcs
-          have hpos : 0 < ‖P_raw E (P_raw F x)‖ := norm_pos_iff.mpr hy
-          calc ‖P_raw E (P_raw F x)‖ =
-              ‖P_raw E (P_raw F x)‖^2 / ‖P_raw E (P_raw F x)‖ := by field_simp
-            _ ≤ (‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖) / ‖P_raw E (P_raw F x)‖ := by
-              apply div_le_div_of_nonneg_right h6 hpos.le
-            _ = ‖P_raw F x‖ := by field_simp
-      · -- E measurable, F not measurable: P(F) = 0, so ‖P(E)x‖ ≤ ‖P(F)x‖ = ‖0‖ only if P(E)x = 0
-        -- Actually this can't happen: E ⊆ F and E measurable would imply we can bound
-        -- But P(F) = 0 means ‖P(F)x‖ = 0, so we need ‖P(E)x‖ ≤ 0, i.e., P(E)x = 0
-        -- This would require E = ∅ or x = 0 generically, but we can't prove this
-        -- This is actually a problem with our definition of P_raw for non-measurable sets
-        sorry
-    · -- E not measurable: P(E) = 0, so ‖P(E)x‖ = 0 ≤ ‖P(F)x‖
-      simp only [P_raw, hE, ↓reduceDIte, ContinuousLinearMap.zero_apply, norm_zero]
-      exact norm_nonneg _
-  -- sigma_additive: For disjoint E_i, P(⋃ E_i)x = Σ P(E_i)x
-  -- This requires more work - the RMK construction gives measures on Circle,
-  -- which are sigma-additive, but we need to transfer this to ℝ.
-  have hP_raw_sigma : ∀ (E : ℕ → Set ℝ), (∀ i j, i ≠ j → Disjoint (E i) (E j)) →
+  -- isIdempotent: P(E)² = P(E) (for measurable E)
+  have hP_raw_idem : ∀ E, MeasurableSet E → P_raw E ∘L P_raw E = P_raw E := by
+    intro E hE
+    simp only [P_raw, hE, ↓reduceDIte]
+    exact hP_idem E hE
+  -- isSelfAdj: P(E)* = P(E) (for measurable E)
+  have hP_raw_sa : ∀ E, MeasurableSet E → (P_raw E).adjoint = P_raw E := by
+    intro E hE
+    simp only [P_raw, hE, ↓reduceDIte]
+    exact hP_sa E hE
+  -- inter: P(E ∩ F) = P(E) ∘L P(F) (for measurable E, F)
+  have hP_raw_inter : ∀ E F, MeasurableSet E → MeasurableSet F →
+      P_raw (E ∩ F) = P_raw E ∘L P_raw F := by
+    intro E F hE hF
+    simp only [P_raw, hE, hF, hE.inter hF, ↓reduceDIte]
+    exact hP_inter E F hE hF
+  -- monotone: E ⊆ F implies ‖P(E)x‖ ≤ ‖P(F)x‖ (for measurable E, F)
+  have hP_raw_mono : ∀ E F, MeasurableSet E → MeasurableSet F → E ⊆ F →
+      ∀ x : H, ‖P_raw E x‖ ≤ ‖P_raw F x‖ := by
+    intro E F hE hF hEF x
+    -- Both measurable: use the contraction property P(E) = P(E∩F) = P(E)∘P(F)
+    have hEF_inter : E ∩ F = E := Set.inter_eq_left.mpr hEF
+    have hPE_eq : P_raw E = P_raw E ∘L P_raw F := by
+      rw [← hP_raw_inter E F hE hF, hEF_inter]
+    have hPEx : P_raw E x = P_raw E (P_raw F x) := by
+      calc P_raw E x = (P_raw E ∘L P_raw F) x := by rw [← hPE_eq]
+        _ = P_raw E (P_raw F x) := rfl
+    rw [hPEx]
+    -- Projections are contractions: ‖P(E)y‖ ≤ ‖y‖
+    by_cases hy : P_raw E (P_raw F x) = 0
+    · rw [hy, norm_zero]; exact norm_nonneg _
+    · have h1 : ‖P_raw E (P_raw F x)‖^2 =
+          RCLike.re (@inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x))) :=
+        (inner_self_eq_norm_sq _).symm
+      have h2 : @inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x)) =
+          @inner ℂ H _ (P_raw F x) ((P_raw E).adjoint (P_raw E (P_raw F x))) :=
+        (ContinuousLinearMap.adjoint_inner_right (P_raw E) (P_raw F x) _).symm
+      have h3 : (P_raw E).adjoint (P_raw E (P_raw F x)) = P_raw E (P_raw E (P_raw F x)) := by
+        rw [hP_raw_sa E hE]
+      have h5 : P_raw E (P_raw E (P_raw F x)) = P_raw E (P_raw F x) := by
+        have := hP_raw_idem E hE
+        simp only [] at this
+        exact congrFun (congrArg DFunLike.coe this) (P_raw F x)
+      have h_inner_eq : @inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x)) =
+          @inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x)) := by rw [h2, h3, h5]
+      have hcs : ‖@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))‖ ≤
+          ‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖ := norm_inner_le_norm _ _
+      have hre_le : RCLike.re (@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))) ≤
+          ‖@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))‖ := by
+        have h := Complex.abs_re_le_norm (@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x)))
+        exact le_trans (le_abs_self _) h
+      have h6 : ‖P_raw E (P_raw F x)‖^2 ≤ ‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖ := by
+        calc ‖P_raw E (P_raw F x)‖^2 =
+            RCLike.re (@inner ℂ H _ (P_raw E (P_raw F x)) (P_raw E (P_raw F x))) := h1
+          _ = RCLike.re (@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))) := by rw [h_inner_eq]
+          _ ≤ ‖@inner ℂ H _ (P_raw F x) (P_raw E (P_raw F x))‖ := hre_le
+          _ ≤ ‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖ := hcs
+      have hpos : 0 < ‖P_raw E (P_raw F x)‖ := norm_pos_iff.mpr hy
+      calc ‖P_raw E (P_raw F x)‖ =
+          ‖P_raw E (P_raw F x)‖^2 / ‖P_raw E (P_raw F x)‖ := by field_simp
+        _ ≤ (‖P_raw F x‖ * ‖P_raw E (P_raw F x)‖) / ‖P_raw E (P_raw F x)‖ := by
+          apply div_le_div_of_nonneg_right h6 hpos.le
+        _ = ‖P_raw F x‖ := by field_simp
+  -- sigma_additive: For disjoint measurable E_i, P(⋃ E_i)x = Σ P(E_i)x
+  -- This requires transferring σ-additivity from the RMK construction.
+  have hP_raw_sigma : ∀ (E : ℕ → Set ℝ), (∀ i, MeasurableSet (E i)) →
+      (∀ i j, i ≠ j → Disjoint (E i) (E j)) →
       ∀ x : H, Tendsto (fun n => ∑ i ∈ Finset.range n, P_raw (E i) x)
         Filter.atTop (nhds (P_raw (⋃ i, E i) x)) := by
-    intro E hE_disj x
-    -- The sigma-additivity follows from the RMK construction:
-    -- spectralMeasureDiagonal is a Mathlib Measure, hence sigma-additive
-    -- spectralMeasurePolarized inherits sigma-additivity
-    -- P(E) is defined via sesquilinearToOperator, so additivity transfers
-    sorry
+    intro E hE_meas hE_disj x
+    -- For measurable E_i, P_raw (E i) = spectralMeasureFromRMK ...
+    have hP_raw_eq : ∀ i, P_raw (E i) = spectralMeasureFromRMK T hT hsa C (E i) (hE_meas i) := by
+      intro i; simp only [P_raw, hE_meas i, ↓reduceDIte]
+    have hP_raw_union : P_raw (⋃ i, E i) =
+        spectralMeasureFromRMK T hT hsa C (⋃ i, E i) (MeasurableSet.iUnion hE_meas) := by
+      simp only [P_raw, MeasurableSet.iUnion hE_meas, ↓reduceDIte]
+    -- Use the sigma-additivity theorem from SigmaAdditivity.lean
+    have h := spectralProjection_sigma_additive T hT hsa C E hE_meas hE_disj x
+    simp only [hP_raw_eq] at *
+    rw [hP_raw_union]
+    exact h
+  -- proj_nonmeasurable: P(E) = 0 for non-measurable E
+  have hP_raw_nonmeas : ∀ E, ¬MeasurableSet E → P_raw E = 0 := by
+    intro E hE; simp only [P_raw, hE, ↓reduceDIte]
   -- Step 3: Construct the SpectralMeasure
   let P : SpectralMeasure H := {
     proj := P_raw
@@ -983,57 +967,60 @@ theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     inter := hP_raw_inter
     monotone := hP_raw_mono
     sigma_additive := hP_raw_sigma
+    proj_nonmeasurable := hP_raw_nonmeas
   }
-  -- Step 4: Use the Cayley transform to establish the relation with UnboundedCFC
+  -- Step 4: The conclusion - P.proj agrees with spectralMeasureFromRMK on measurable sets
   use P, C
-  intro f
-  /-
-  PROOF: functionalCalculus P f = UnboundedCFC T hT hsa C f
+  intro E hE
+  -- For measurable E, P_raw E = spectralMeasureFromRMK T hT hsa C E hE by construction
+  show P_raw E = spectralMeasureFromRMK T hT hsa C E hE
+  exact dif_pos hE
 
-  Both compute the spectral integral ∫ f(λ) dP(λ):
-  - functionalCalculus P f: via step approximation using P
-  - UnboundedCFC T hT hsa C f: via cfc (f ∘ inverseCayley) C.U
+/-- **The Spectral Theorem for Unbounded Self-Adjoint Operators**
 
-  The key is that P is constructed from the same Cayley transform C:
-  - P(E) = spectralMeasureFromRMK T hT hsa C E (for measurable E)
-  - spectralMeasureFromRMK is the pullback of U's spectral measure via inverse Cayley
-  - UnboundedCFC uses the same pullback: f(T) = (f ∘ inverseCayley)(U)
+    For every densely defined self-adjoint operator T on a Hilbert space H,
+    there exists a spectral measure P and a Cayley transform C such that
+    the functional calculus on P agrees with the unbounded CFC via C.
 
-  So both methods integrate f against the same spectral measure.
-  -/
-  ext x
-  apply ext_inner_left ℂ
-  intro y
-  -- Need: ⟨y, (functionalCalculus P f) x⟩ = ⟨y, (UnboundedCFC T hT hsa C f) x⟩
-  -- Both equal ∫ f(λ) d⟨y, P(λ) x⟩ by construction.
-  --
-  -- The step approximation converges to the same integral as cfc computes,
-  -- because P is the pullback of U's spectral measure.
-  --
-  -- This requires showing:
-  -- 1. functionalCalculus P f computes ∫ f dμ_{y,x} via step approximation
-  -- 2. UnboundedCFC T hT hsa C f = cfc (f ∘ inverseCayley) C.U computes the same integral
-  -- 3. The measure μ_{y,x}(E) = ⟨y, P(E) x⟩ is the pullback spectral measure
-  sorry
+    This extends `spectral_theorem_pvm` with the functional calculus connection.
+    The single sorry is the T-P connection (showing step approximation matches CFC). -/
+theorem spectral_theorem (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) :
+    ∃ (P : SpectralMeasure H) (C : CayleyTransform T hT hsa),
+      ∀ f : C(ℝ, ℂ), functionalCalculus P f = UnboundedCFC T hT hsa C f := by
+  obtain ⟨P, C, hP_eq_RMK⟩ := spectral_theorem_pvm T hT hsa
+  exact ⟨P, C, fun f => sorry⟩
 
-/-- The spectral measure of a self-adjoint operator, extracted from `spectral_theorem`.
-    This P satisfies: for all bounded continuous f, `functionalCalculus P f = UnboundedCFC T hT hsa C f`
-    for some Cayley transform C. -/
+/-- The spectral measure of a self-adjoint operator, extracted from `spectral_theorem_pvm`.
+    This definition is sorry-free: the PVM is fully constructed from the RMK chain.
+    For measurable E: `P.proj E = spectralMeasureFromRMK T hT hsa C E hE`. -/
 def UnboundedOperator.spectralMeasure (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) : SpectralMeasure H :=
-  (spectral_theorem T hT hsa).choose
+  (spectral_theorem_pvm T hT hsa).choose
 
-/-- The Cayley transform associated with the spectral measure -/
+/-- The Cayley transform associated with the spectral measure.
+    This definition is sorry-free. -/
 def UnboundedOperator.spectralCayley (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) : CayleyTransform T hT hsa :=
-  (spectral_theorem T hT hsa).choose_spec.choose
+  (spectral_theorem_pvm T hT hsa).choose_spec.choose
 
-/-- The key property: spectral calculus agrees with unbounded CFC -/
+/-- The core sorry-free property: spectral measure agrees with RMK construction.
+    For all measurable E, `P.proj E = spectralMeasureFromRMK T hT hsa C E hE`. -/
+theorem UnboundedOperator.spectralMeasure_eq_RMK (T : UnboundedOperator H)
+    (hT : T.IsDenselyDefined) (hsa : T.IsSelfAdjoint hT)
+    (E : Set ℝ) (hE : MeasurableSet E) :
+    (T.spectralMeasure hT hsa).proj E =
+    spectralMeasureFromRMK T hT hsa (T.spectralCayley hT hsa) E hE :=
+  (spectral_theorem_pvm T hT hsa).choose_spec.choose_spec E hE
+
+/-- The functional calculus agrees with unbounded CFC (has sorry for T-P connection). -/
 theorem UnboundedOperator.spectralMeasure_spec (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
     (hsa : T.IsSelfAdjoint hT) (f : C(ℝ, ℂ)) :
     functionalCalculus (T.spectralMeasure hT hsa) f =
-    UnboundedCFC T hT hsa (T.spectralCayley hT hsa) f :=
-  (spectral_theorem T hT hsa).choose_spec.choose_spec f
+    UnboundedCFC T hT hsa (T.spectralCayley hT hsa) f := by
+  -- This requires showing step approximation matches CFC computation.
+  -- Both integrate f against the same spectral measure (from spectralMeasure_eq_RMK).
+  sorry
 
 /-! ### Powers of positive self-adjoint operators -/
 

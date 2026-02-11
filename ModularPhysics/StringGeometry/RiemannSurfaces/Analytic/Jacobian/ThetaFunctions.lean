@@ -112,7 +112,7 @@ theorem theta_omega_periodicity (g : ℕ) (z : Fin g → ℂ) (Ω : SiegelUpperH
     riemannTheta g (fun i => z i + (Finset.univ.sum fun j => Ω.Ω i j * n j)) Ω =
     automorphyFactor g z Ω n * riemannTheta g z Ω := by
   unfold riemannTheta automorphyFactor
-  exact Helpers.theta_quasi_periodic g z Ω.Ω n
+  exact Helpers.theta_quasi_periodic g z Ω.Ω Ω.symmetric n
 
 /-!
 ## Theta Functions with Characteristics
@@ -166,21 +166,28 @@ theorem thetaWithChar_relation (g : ℕ) (χ : ThetaCharacteristic g)
   -- The phase matches by definition
   rfl
 
+/-- The parity value of a characteristic: 4 * Σ a_i b_i as an integer.
+    For half-integer characteristics (a_i, b_i ∈ {0, 1/2}), this counts
+    the number of coordinates where both a_i = 1/2 and b_i = 1/2. -/
+def ThetaCharacteristic.parityNum {g : ℕ} (χ : ThetaCharacteristic g) : ℤ :=
+  (4 * Finset.univ.sum fun i => χ.a i * χ.b i : ℚ).num
+
+/-- Even characteristics: 4·Σ a_i b_i is an even integer.
+    θ[a;b](-z) = θ[a;b](z) for even characteristics. -/
+def ThetaCharacteristic.even {g : ℕ} (χ : ThetaCharacteristic g) : Prop :=
+  χ.parityNum % 2 = 0
+
+/-- Odd characteristics: 4·Σ a_i b_i is an odd integer.
+    θ[a;b](-z) = -θ[a;b](z) for odd characteristics. -/
+def ThetaCharacteristic.odd {g : ℕ} (χ : ThetaCharacteristic g) : Prop :=
+  χ.parityNum % 2 = 1
+
 /-- Parity of theta function under negation -/
 theorem theta_parity (g : ℕ) (χ : ThetaCharacteristic g)
     (_ : χ.halfInteger) (z : Fin g → ℂ) (Ω : SiegelUpperHalfSpace g) :
     thetaWithChar g χ (fun i => -z i) Ω =
-    (if (4 * Finset.univ.sum fun i => χ.a i * χ.b i) % 2 = 0 then 1 else -1) *
-    thetaWithChar g χ z Ω := by
+    (if χ.parityNum % 2 = 0 then 1 else -1) * thetaWithChar g χ z Ω := by
   sorry  -- Follows from pairing terms n and -n-a in the sum
-
-/-- Even characteristics: θ[a;b](-z) = θ[a;b](z) -/
-def ThetaCharacteristic.even {g : ℕ} (χ : ThetaCharacteristic g) : Prop :=
-  (4 * Finset.univ.sum fun i => χ.a i * χ.b i) % 2 = 0
-
-/-- Odd characteristics: θ[a;b](-z) = -θ[a;b](z) -/
-def ThetaCharacteristic.odd {g : ℕ} (χ : ThetaCharacteristic g) : Prop :=
-  (4 * Finset.univ.sum fun i => χ.a i * χ.b i) % 2 = 1
 
 /-!
 ## Theta Constants (Theta Nulls)
@@ -194,10 +201,10 @@ noncomputable def thetaNull (g : ℕ) (χ : ThetaCharacteristic g) (Ω : SiegelU
 
 /-- Odd theta nulls vanish -/
 theorem odd_theta_null_zero (g : ℕ) (χ : ThetaCharacteristic g)
-    (_ : χ.halfInteger) (hodd : χ.odd) (Ω : SiegelUpperHalfSpace g) :
+    (hhi : χ.halfInteger) (hodd : χ.odd) (Ω : SiegelUpperHalfSpace g) :
     thetaNull g χ Ω = 0 := by
-  unfold thetaNull thetaWithChar ThetaCharacteristic.odd at *
-  exact Helpers.odd_theta_null_vanishes g χ.a χ.b hodd Ω.Ω
+  unfold thetaNull thetaWithChar
+  exact Helpers.odd_theta_null_vanishes g χ.a χ.b hhi.1 hhi.2 hodd Ω.Ω Ω.symmetric
 
 /-- A half-integer value: either 0 or 1/2 -/
 def HalfIntegerValues : Finset ℚ := {0, 1/2}

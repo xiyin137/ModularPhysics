@@ -33,6 +33,80 @@ wavelet decomposition infrastructure.
 
 ## Recent Updates (2026-02-10)
 
+### Session 34 Progress (Integrand L² Convergence — Structure Complete)
+
+**Integrand L² convergence proof in `linear` is structurally complete** — only 4 integrability sorrys remain.
+
+**Architecture changes:**
+1. **Replaced `choose` with direct `mergedProcess` construction** in `linear`:
+   - Old: `choose combined hcomb_int hcomb_adapt hcomb_bdd hcomb_nn` from `exists_linear_simple_integral`
+   - New: `let combined := fun n => mergedProcess (approx₁ n) (approx₂ n) a b`
+   - Derives all properties (integral eq, adaptedness, boundedness, nonneg) directly from merged process lemmas
+   - Key advantage: `hcomb_val` (valueAtTime linearity) available from `mergedProcess_valueAtTime_linear`
+2. **Integrand L² convergence proof** uses squeeze theorem:
+   - Rewrites `(combined_val - (aH₁+bH₂))` as `a(val₁-H₁) + b(val₂-H₂)` via `hcomb_val`
+   - Pointwise bound: `(aX+bY)² ≤ 2a²X² + 2b²Y²` (nlinarith)
+   - Upper bound → 0 from `hint₁` and `hint₂` (individual integrand convergences)
+   - Inner integral bound uses `filter_upwards` for a.e. ω treatment
+   - Outer integral bound uses `integral_mono_of_nonneg`
+
+**4 remaining integrability sorrys (lines ~1191–1205):**
+1. `hd1_outer_int`: `Integrable (ω ↦ ∫₀ᵗ (val₁-H₁)² ds) μ` — outer integrability
+2. `hd2_outer_int`: `Integrable (ω ↦ ∫₀ᵗ (val₂-H₂)² ds) μ` — outer integrability
+3. `h_ae_sq₁`: `∀ᵐ ω ∂μ, IntegrableOn ((val₁-H₁)²) (Icc 0 t)` — a.e. inner integrability
+4. `h_ae_sq₂`: `∀ᵐ ω ∂μ, IntegrableOn ((val₂-H₂)²) (Icc 0 t)` — a.e. inner integrability
+
+**Proof strategy for remaining sorrys:** `(val-H)² ≤ 2·val² + 2·H²`. The `val²` part
+is bounded (step function with bounded values) and the `H²` part has integrable inner integral
+from `ItoIntegrableProcess.bochner_square_integrable_sub` / `.integrableOn_sq_sub_ae`.
+
+### Session 33 Progress (MergedValueAtTime Infrastructure)
+
+**New Helper File: `Helpers/MergedValueAtTime.lean` — FULLY PROVEN (0 sorrys)**
+
+Key theorem: `mergedProcess_valueAtTime_linear`:
+```
+∀ s ω, (mergedProcess H₁ H₂ a b).valueAtTime s ω = a * H₁.valueAtTime s ω + b * H₂.valueAtTime s ω
+```
+
+Infrastructure developed:
+- `find_merged_interval`: finds merged interval containing s (uses ℕ indices to avoid Fin proof-irrelevance)
+- `original_interval_implies_merged`: maps original intervals to merged intervals
+- `no_mergedFinset_in_Ioo`: no merged finset element lies strictly between consecutive merged times
+- `H1_valueAtTime_const_on_merged` / `H2_valueAtTime_const_on_merged`: valueAtTime constant on merged intervals
+
+**Design insight**: Using ℕ arguments with `L[k]` getElem notation instead of `Fin L.length`
+avoids proof-irrelevance issues that made `subst` fail. The zero case becomes trivially
+`subst this; exact ⟨...⟩`.
+
+### Session 32 Progress (ItoIntegral.linear — isometry convergence resolved)
+
+**Isometry convergence sorry in `linear` proved** (modulo `combined_sq_integral_eq` and `bilinear_ito_isometry`).
+
+**Architecture changes:**
+1. **Moved `ito_isometry` before `linear`** — `ito_isometry` doesn't depend on `linear`, so reordered
+2. **Added `bilinear_ito_isometry`** (sorry'd) — E[I₁(t)·I₂(t)] = E[∫₀ᵗ H₁·H₂ ds]
+3. **Added `combined_sq_integral_eq`** — E[(aI₁+bI₂)²] = E[∫(aH₁+bH₂)²]
+   - `hLHS` PROVED: integral expansion a²∫I₁² + 2ab∫I₁I₂ + b²∫I₂²
+   - `hRHS` sorry'd: inner integral expansion (needs IntegrableOn infrastructure for each ω)
+4. **Extracted `hL2_combined`** as a `have` before the `refine` in `linear`
+5. **Isometry convergence proof**: uses `sq_integral_tendsto_of_L2_tendsto` + `combined_sq_integral_eq`
+
+**New Helper Files (0 sorrys each unless noted):**
+- `Helpers/MergedValueAtTime.lean` — 0 sorrys (valueAtTime linearity)
+- `Helpers/CommonRefinement.lean` — 0 sorrys (common refinement partition)
+- `Helpers/SimpleProcessLinear.lean` — 0 sorrys (linear combination of simple integrals)
+- `Helpers/InnerIntegralIntegrability.lean` — 3 sorrys (Tonelli/Fubini infrastructure)
+- `Helpers/IsometryAt.lean` — 2 sorrys (isometry convergence helpers)
+- `Helpers/ProductL2Convergence.lean` — product L² convergence helpers
+
+**Updated Sorry Count (as of Session 34):**
+- StochasticIntegration.lean: **14 sorrys** (integrand convergence integrability(4), bilinear_ito_isometry(1),
+  hRHS(1), bdg_inequality(1), and ItoProcess/SDE sorrys)
+- InnerIntegralIntegrability.lean: **3 sorrys**
+- IsometryAt.lean: **2 sorrys**
+- BrownianMotion.lean: **6 sorrys**
+
 ### Session 31 Progress (ItoIntegral.linear — 3/4 sorrys proved)
 
 **Proved 3 out of 4 sorrys in `ItoIntegral.linear`** (linearity of Itô integral).
@@ -54,18 +128,10 @@ wavelet decomposition infrastructure.
    - Pointwise bound via ring identity: `(aX+bY)² + (aX-bY)² = 2a²X² + 2b²Y²`
    - Upper bound convergence from individual L² convergences
 
-**Remaining sorry in `linear` (1):**
+**Previously remaining sorry in `linear` (now resolved):**
 - **Isometry convergence**: `∫(combined_n stoch)² → ∫∫(aH₁+bH₂)²`
-  - Requires bilinear Itô isometry: `∫I₁I₂ = ∫∫H₁H₂`
-  - Proof plan: (a) product L² convergence, (b) bilinear simple process isometry,
-    (c) Riemann sum convergence for cross terms
-  - This is genuine new infrastructure (~200-300 lines)
-
-**Updated Sorry Count:**
-- StochasticIntegration.lean: **10 sorrys** (same count — reduced `linear` from 4 sorrys to 1,
-  but the 3 eliminated were introduced in session 30.5 during the proof construction)
-- New Helpers: CommonRefinement.lean (0), SimpleProcessLinear.lean (0)
-- **Total SPDE core: 19 sorrys** (unchanged)
+  - Now proved via `sq_integral_tendsto_of_L2_tendsto` + `combined_sq_integral_eq`
+  - `combined_sq_integral_eq` has 2 sorrys: `bilinear_ito_isometry` and `hRHS`
 
 ---
 
@@ -1040,12 +1106,18 @@ Major fixes implemented to address critical mathematical errors:
 | File | Status | Sorrys | Notes |
 |------|--------|--------|-------|
 | Basic.lean | ✅ Compiles | 1 | `is_martingale_of_bounded` (needs uniform integrability) |
-| BrownianMotion.lean | ✅ Compiles | 5 | time_inversion, eval_unit_is_brownian, Q-Wiener (2), levy_characterization |
-| StochasticIntegration.lean | ✅ Compiles | 10 | **`isometry` FULLY PROVED**, **`linear` 3/4 proved**, ItoProcess/SDE sorrys |
+| BrownianMotion.lean | ✅ Compiles | 6 | time_inversion, eval_unit_is_brownian, Q-Wiener (2), levy_characterization, + 1 |
+| StochasticIntegration.lean | ✅ Compiles | 14 | **`isometry` PROVED**, `linear` structure complete (4 integrability sorrys), ItoProcess/SDE sorrys |
+| Helpers/MergedValueAtTime.lean | ✅ Compiles | 0 | **FULLY PROVEN** - valueAtTime linearity for merged processes |
+| Helpers/CommonRefinement.lean | ✅ Compiles | 0 | **FULLY PROVEN** - common refinement partition infrastructure |
+| Helpers/SimpleProcessLinear.lean | ✅ Compiles | 0 | **FULLY PROVEN** - linear combination of simple integrals |
+| Helpers/InnerIntegralIntegrability.lean | ✅ Compiles | 3 | Tonelli/Fubini infrastructure for inner integrals |
+| Helpers/IsometryAt.lean | ✅ Compiles | 2 | isometry convergence helpers |
+| Helpers/ProductL2Convergence.lean | ✅ Compiles | 0 | **FULLY PROVEN** - product L² convergence |
 | Probability/IndependenceHelpers.lean | ✅ Compiles | 0 | **FULLY PROVEN** - bridge lemmas for independence |
-| RegularityStructures.lean | ✅ Compiles | 9 | Chen relation proved, vanishing moments & BPHZ properly defined |
-| SPDE.lean | ✅ Compiles | 6 | Generator linearity proved, proper well-posedness conditions |
-| Probability/Basic.lean | ✅ Compiles | 3 | `condexp_jensen`, `doob_maximal_L2`, `IsGaussian.all_moments` |
+| RegularityStructures.lean | ✅ Compiles | 1 | Chen relation proved, vanishing moments & BPHZ properly defined |
+| SPDE.lean | ✅ Compiles | 7 | Generator linearity proved, proper well-posedness conditions |
+| Probability/Basic.lean | ✅ Compiles | 2 | `condexp_jensen`, `doob_maximal_L2` |
 | Trees/Basic.lean | ✅ Compiles | 0 | Multi-indices, TreeSymbol, complexity |
 | Trees/Homogeneity.lean | ✅ Compiles | 0 | **FULLY PROVEN** - sumByTree_congr, homogeneity_decomposition |
 | Trees/Operations.lean | ✅ Compiles | 0 | I_Xi, standard trees, polynomial operations |

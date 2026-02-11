@@ -1,4 +1,5 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Divisors
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.ChartMeromorphic
 import Mathlib.LinearAlgebra.Dimension.Finrank
 import Mathlib.LinearAlgebra.Dimension.Constructions
 
@@ -121,6 +122,39 @@ structure LinearSystem (RS : RiemannSurface) (D : Divisor RS) where
   holomorphicAway : ∀ p, 0 ≤ fn.order p →
     @MDifferentiableAt ℂ _ ℂ _ _ ℂ _ 𝓘(ℂ, ℂ) RS.carrier RS.topology RS.chartedSpace
       ℂ _ _ ℂ _ 𝓘(ℂ, ℂ) ℂ _ _ fn.regularValue p
+  /-- The regularValue function is meromorphic in every chart.
+
+      This is the full analytical condition: at EVERY point (including poles),
+      the chart representation `fn.regularValue ∘ (extChartAt p).symm` is
+      `MeromorphicAt` in the sense of Mathlib.
+
+      At non-pole points, this follows from `holomorphicAway` (holomorphic → analytic
+      → meromorphic). At poles, this captures the essential Laurent expansion behavior:
+      multiplying by a suitable power of the local coordinate makes the function analytic.
+
+      This field is critical for the argument principle and zero-counting arguments. -/
+  chartMeromorphic : ∀ p,
+    letI := RS.topology
+    letI := RS.chartedSpace
+    MeromorphicAt (fn.regularValue ∘ (extChartAt 𝓘(ℂ, ℂ) p).symm) (extChartAt 𝓘(ℂ, ℂ) p p)
+  /-- The chart-local meromorphic order matches the abstract AMF order.
+
+      This is the soundness condition connecting the abstract `fn.order` field
+      (an integer assigned per point by the AMF structure) to the analytic
+      `meromorphicOrderAt` computed from the Laurent expansion in charts.
+
+      At non-pole points (order ≥ 0), this follows from `holomorphicAway`:
+      the function is analytic, so the analytic order matches the zero order.
+      At poles (order < 0), this requires the Laurent expansion to have the
+      correct leading term, which is part of the analytical content of the section.
+
+      This field is critical for reducing `zero_counting_linear_combination`
+      to the argument principle: it lets us bound the chart-order of a
+      linear combination Σ cᵢ fᵢ using the AMF orders of the individual fᵢ. -/
+  chartOrderAt_eq : ∀ p,
+    letI := RS.topology
+    letI := RS.chartedSpace
+    chartOrderAt (RS := RS) fn.regularValue p = (fn.order p : WithTop ℤ)
 
 /-- The linear system L(D) is empty when deg(D) < 0.
 
@@ -132,7 +166,7 @@ theorem linearSystem_empty_negative_degree (CRS : CompactRiemannSurface)
     (D : Divisor CRS.toRiemannSurface) (hdeg : D.degree < 0) :
     IsEmpty (LinearSystem CRS.toRiemannSurface D) := by
   constructor
-  intro ⟨f, heff, _⟩
+  intro ⟨f, heff, _, _, _⟩
   -- div(f) + D ≥ 0 means deg(div(f) + D) ≥ 0
   have hdeg_sum : (divisorOf f + D).degree ≥ 0 := Divisor.degree_nonneg_of_effective heff
   rw [Divisor.degree_add] at hdeg_sum

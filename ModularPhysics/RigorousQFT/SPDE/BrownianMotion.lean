@@ -579,7 +579,7 @@ theorem reflection (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ] :
       rw [hfun]
       have hg := Probability.gaussian_affine (W.gaussian_increments s t hs hst) (-1) 0
       simp only [neg_one_mul, neg_zero, add_zero, one_mul, neg_one_sq] at hg
-      convert hg using 2 <;> (try ring)
+      (convert hg using 2; ring)
     nonneg_time := fun t ht => by
       filter_upwards [W.nonneg_time t ht] with ω h0
       simp [negW, h0]
