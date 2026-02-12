@@ -9,6 +9,7 @@ import ModularPhysics.RigorousQFT.SPDE.Helpers.MergedValueAtTime
 import ModularPhysics.RigorousQFT.SPDE.Helpers.IsometryAt
 import ModularPhysics.RigorousQFT.SPDE.Helpers.GronwallForSDE
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ProductL2Convergence
+import ModularPhysics.RigorousQFT.SPDE.Helpers.IteratedProductConvergence
 import ModularPhysics.RigorousQFT.SPDE.Probability.IndependenceHelpers
 import Mathlib.MeasureTheory.Measure.Lebesgue.Basic
 import Mathlib.Analysis.Calculus.Deriv.Basic
@@ -732,7 +733,23 @@ theorem bilinear_ito_isometry (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMea
       Filter.atTop
       (nhds (∫ ω, (∫ s in Set.Icc 0 t,
         I₁.integrand.process s ω * I₂.integrand.process s ω ∂volume) ∂μ)) := by
-    sorry -- Inner integral product convergence: uses Cauchy-Schwarz on L²([0,t]×Ω)
+    exact iterated_product_integral_tendsto
+      (f := I₁.integrand.process) (g := I₂.integrand.process)
+      (F := fun n => SimpleProcess.valueAtTime (approx₁ n))
+      (G := fun n => SimpleProcess.valueAtTime (approx₂ n))
+      ht0
+      I₁.integrand.jointly_measurable
+      I₂.integrand.jointly_measurable
+      (fun n => SimpleProcess.valueAtTime_jointly_measurable (approx₁ n))
+      (fun n => SimpleProcess.valueAtTime_jointly_measurable (approx₂ n))
+      (I₁.integrand.square_integrable_sub ht0 ht)
+      (I₂.integrand.square_integrable_sub ht0 ht)
+      (fun n => (SimpleProcess.valueAtTime_uniform_bounded
+        (approx₁ n) (hbdd₁ n)).imp fun _ h => h.2)
+      (fun n => (SimpleProcess.valueAtTime_uniform_bounded
+        (approx₂ n) (hbdd₂ n)).imp fun _ h => h.2)
+      (hint₁ t ht0 ht)
+      (hint₂ t ht0 ht)
   -- Step 4: Combine via uniqueness of limits
   -- Rewrite h_prod_conv using h_bilinear to get the same sequence as h_integrand_conv
   have h_prod_rewrite : Filter.Tendsto
@@ -1184,25 +1201,62 @@ theorem linear (I₁ I₂ : ItoIntegral F μ T) [IsProbabilityMeasure μ]
       intro s ω
       nlinarith [sq_nonneg (a * ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) -
         b * ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω))]
-    -- Outer integrability of the bound terms
+    -- Product integrability of (val - H)² on [0,t] × Ω (via domination)
+    haveI h_fin_vol : IsFiniteMeasure (volume.restrict (Set.Icc 0 t)) := ⟨by
+      rw [Measure.restrict_apply_univ]; exact measure_Icc_lt_top⟩
+    have h_prod₁ : Integrable (fun p : ℝ × Ω =>
+        ((approx₁ n).valueAtTime p.1 p.2 - I₁.integrand.process p.1 p.2) ^ 2)
+        ((volume.restrict (Set.Icc 0 t)).prod μ) := by
+      obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded _ (hbdd₁ n)
+      have hH := I₁.integrand.square_integrable_sub ht0 htT
+      have h_const_int : Integrable (fun _ : ℝ × Ω => (2 * C ^ 2 : ℝ))
+          ((volume.restrict (Set.Icc 0 t)).prod μ) := integrable_const _
+      apply Integrable.mono' (h_const_int.add (hH.const_mul 2))
+      · exact ((SimpleProcess.valueAtTime_jointly_measurable _).sub
+            I₁.integrand.jointly_measurable).pow_const 2 |>.aestronglyMeasurable
+      · filter_upwards with p
+        simp only [Real.norm_eq_abs, Pi.add_apply]
+        rw [abs_of_nonneg (sq_nonneg _)]
+        have hle := abs_le.mp (hC p.1 p.2)
+        have hv_sq : ((approx₁ n).valueAtTime p.1 p.2) ^ 2 ≤ C ^ 2 :=
+          sq_le_sq' hle.1 hle.2
+        nlinarith [sq_nonneg ((approx₁ n).valueAtTime p.1 p.2 +
+          I₁.integrand.process p.1 p.2)]
+    have h_prod₂ : Integrable (fun p : ℝ × Ω =>
+        ((approx₂ n).valueAtTime p.1 p.2 - I₂.integrand.process p.1 p.2) ^ 2)
+        ((volume.restrict (Set.Icc 0 t)).prod μ) := by
+      obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded _ (hbdd₂ n)
+      have hH := I₂.integrand.square_integrable_sub ht0 htT
+      have h_const_int : Integrable (fun _ : ℝ × Ω => (2 * C ^ 2 : ℝ))
+          ((volume.restrict (Set.Icc 0 t)).prod μ) := integrable_const _
+      apply Integrable.mono' (h_const_int.add (hH.const_mul 2))
+      · exact ((SimpleProcess.valueAtTime_jointly_measurable _).sub
+            I₂.integrand.jointly_measurable).pow_const 2 |>.aestronglyMeasurable
+      · filter_upwards with p
+        simp only [Real.norm_eq_abs, Pi.add_apply]
+        rw [abs_of_nonneg (sq_nonneg _)]
+        have hle := abs_le.mp (hC p.1 p.2)
+        have hv_sq : ((approx₂ n).valueAtTime p.1 p.2) ^ 2 ≤ C ^ 2 :=
+          sq_le_sq' hle.1 hle.2
+        nlinarith [sq_nonneg ((approx₂ n).valueAtTime p.1 p.2 +
+          I₂.integrand.process p.1 p.2)]
+    -- Derive via Fubini: outer integrability and a.e. inner integrability
     have hd1_outer_int : Integrable (fun ω =>
         ∫ s in Set.Icc 0 t,
-          ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume) μ := by
-      sorry -- Integrability: step fn minus L² integrand, squared, inner integral (Tonelli + boundedness)
+          ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2 ∂volume) μ :=
+      h_prod₁.integral_prod_right
     have hd2_outer_int : Integrable (fun ω =>
         ∫ s in Set.Icc 0 t,
-          ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume) μ := by
-      sorry -- Integrability: step fn minus L² integrand, squared, inner integral (Tonelli + boundedness)
-    -- a.e. inner integrability: for a.e. ω, (val-H)² is integrable on [0,t]
-    -- Follows from product measure square integrability via Tonelli + step fn boundedness
+          ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2 ∂volume) μ :=
+      h_prod₂.integral_prod_right
     have h_ae_sq₁ : ∀ᵐ ω ∂μ, IntegrableOn (fun s =>
         ((approx₁ n).valueAtTime s ω - I₁.integrand.process s ω) ^ 2)
-        (Set.Icc 0 t) volume := by
-      sorry -- Tonelli: product sq integrability → a.e. inner sq integrability
+        (Set.Icc 0 t) volume :=
+      h_prod₁.prod_left_ae
     have h_ae_sq₂ : ∀ᵐ ω ∂μ, IntegrableOn (fun s =>
         ((approx₂ n).valueAtTime s ω - I₂.integrand.process s ω) ^ 2)
-        (Set.Icc 0 t) volume := by
-      sorry -- Tonelli: product sq integrability → a.e. inner sq integrability
+        (Set.Icc 0 t) volume :=
+      h_prod₂.prod_left_ae
     -- Inner integral bound (a.e.)
     have hinner_ae : ∀ᵐ ω ∂μ,
         ∫ s in Set.Icc 0 t,

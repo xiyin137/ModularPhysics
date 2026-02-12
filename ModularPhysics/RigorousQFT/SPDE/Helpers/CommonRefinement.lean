@@ -92,6 +92,240 @@ theorem valueAtTime_bounded (H : SimpleProcess F) (s : ℝ)
   · next h => exact hb h.choose
   · exact ⟨0, fun ω => by simp⟩
 
+/-- valueAtTime has a uniform bound over all times s when all values are bounded. -/
+theorem valueAtTime_uniform_bounded (H : SimpleProcess F)
+    (hb : ∀ i : Fin H.n, ∃ C : ℝ, ∀ ω, |H.values i ω| ≤ C) :
+    ∃ C : ℝ, 0 ≤ C ∧ ∀ s ω, |H.valueAtTime s ω| ≤ C := by
+  by_cases hn : H.n = 0
+  · exact ⟨0, le_refl _, fun s ω => by
+      have : H.valueAtTime s ω = 0 := by
+        unfold valueAtTime
+        rw [dif_neg]; push_neg; intro j; exact absurd j.isLt (by omega)
+      simp [this]⟩
+  · choose Cs hCs using hb
+    refine ⟨∑ i : Fin H.n, (|Cs i| + 1),
+      Finset.sum_nonneg (fun i _ => by positivity), fun s ω => ?_⟩
+    unfold valueAtTime
+    split
+    · next h =>
+      have h1 : |H.values h.choose ω| ≤ |Cs h.choose| + 1 :=
+        (hCs h.choose ω).trans ((le_abs_self _).trans (le_add_of_nonneg_right one_pos.le))
+      exact h1.trans (Finset.single_le_sum
+        (f := fun i => |Cs i| + 1) (fun j _ => by positivity) (Finset.mem_univ _))
+    · simp; exact Finset.sum_nonneg (fun i _ => by positivity)
+
+/-- valueAtTime is jointly measurable in (s, ω).
+    Key for Fubini/Tonelli arguments with simple process integrands.
+    Proof: express as ∑_j 𝟙_{[t_j,t_{j+1})}(s) · values_j(ω), each term is
+    measurable (product of measurable functions of s and ω). -/
+theorem valueAtTime_jointly_measurable (H : SimpleProcess F) :
+    Measurable (fun p : ℝ × Ω => H.valueAtTime p.1 p.2) := by
+  -- Express as a sum of products: 𝟙_{Ico}(s) * values(ω)
+  have h_eq : ∀ p : ℝ × Ω, H.valueAtTime p.1 p.2 =
+      ∑ j : Fin H.n, if hj : (j : ℕ) + 1 < H.n then
+        (Set.Ico (H.times j) (H.times ⟨(j:ℕ) + 1, hj⟩)).indicator
+          (fun _ => (1 : ℝ)) p.1 * H.values j p.2
+      else 0 := by
+    intro ⟨s, ω⟩
+    simp only
+    unfold valueAtTime
+    split
+    · next hex =>
+      obtain ⟨hj_lt, hs_lo, hs_hi⟩ := hex.choose_spec
+      rw [Finset.sum_eq_single hex.choose]
+      · -- Chosen term: indicator is 1, so 1 * values = values
+        rw [dif_pos hj_lt, Set.indicator_of_mem (Set.mem_Ico.mpr ⟨hs_lo, hs_hi⟩), one_mul]
+      · -- Other terms are 0 by disjointness of intervals
+        intro k _ hk_ne
+        by_cases hk : (k : ℕ) + 1 < H.n
+        · rw [dif_pos hk, Set.indicator_of_notMem, zero_mul]
+          rw [Set.mem_Ico]; push_neg
+          intro hk_lo
+          by_contra hk_hi; push_neg at hk_hi
+          apply hk_ne; ext
+          by_contra h_val_ne
+          rcases Nat.lt_or_gt_of_ne h_val_ne with hlt | hgt
+          · have : H.times ⟨(k:ℕ)+1, hk⟩ ≤ H.times hex.choose := by
+              rcases (Nat.succ_le_of_lt hlt).eq_or_lt with heq | hstrict
+              · exact le_of_eq (congrArg H.times (Fin.ext heq))
+              · exact le_of_lt (H.increasing ⟨(k:ℕ)+1, hk⟩ hex.choose hstrict)
+            linarith
+          · have : H.times ⟨(hex.choose:ℕ)+1, hj_lt⟩ ≤ H.times k := by
+              rcases (Nat.succ_le_of_lt hgt).eq_or_lt with heq | hstrict
+              · exact le_of_eq (congrArg H.times (Fin.ext heq))
+              · exact le_of_lt (H.increasing ⟨(hex.choose:ℕ)+1, hj_lt⟩ k hstrict)
+            linarith
+        · rw [dif_neg hk]
+      · exact fun h => absurd (Finset.mem_univ _) h
+    · next hnex =>
+      push_neg at hnex
+      simp only
+      symm
+      apply Finset.sum_eq_zero; intro j _
+      by_cases hj : (j : ℕ) + 1 < H.n
+      · rw [dif_pos hj, Set.indicator_of_notMem, zero_mul]
+        rw [Set.mem_Ico]; push_neg
+        intro hlo; exact hnex j hj hlo
+      · rw [dif_neg hj]
+  -- Measurability of the sum form
+  rw [show (fun p : ℝ × Ω => H.valueAtTime p.1 p.2) = fun p =>
+      ∑ j : Fin H.n, if hj : (j : ℕ) + 1 < H.n then
+        (Set.Ico (H.times j) (H.times ⟨(j:ℕ) + 1, hj⟩)).indicator
+          (fun _ => (1 : ℝ)) p.1 * H.values j p.2
+      else 0 from funext h_eq]
+  apply Finset.measurable_sum Finset.univ fun j _ => ?_
+  by_cases hj : (j : ℕ) + 1 < H.n
+  · simp only [dif_pos hj]
+    exact ((measurable_const.indicator measurableSet_Ico).comp measurable_fst).mul
+      ((H.adapted j).comp measurable_snd)
+  · simp only [dif_neg hj]; exact measurable_const
+
+/-- Decomposition of valueAtTime as indicator sum, for a single point (s, ω). -/
+theorem valueAtTime_eq_sum_indicator (H : SimpleProcess F) (s : ℝ) (ω : Ω) :
+    H.valueAtTime s ω =
+    ∑ j : Fin H.n, if hj : (j : ℕ) + 1 < H.n then
+      (Set.Ico (H.times j) (H.times ⟨(j:ℕ) + 1, hj⟩)).indicator
+        (fun _ => (1 : ℝ)) s * H.values j ω
+    else 0 := by
+  unfold valueAtTime
+  split
+  · next hex =>
+    obtain ⟨hj_lt, hs_lo, hs_hi⟩ := hex.choose_spec
+    rw [Finset.sum_eq_single hex.choose]
+    · rw [dif_pos hj_lt, Set.indicator_of_mem (Set.mem_Ico.mpr ⟨hs_lo, hs_hi⟩), one_mul]
+    · intro k _ hk_ne
+      by_cases hk : (k : ℕ) + 1 < H.n
+      · rw [dif_pos hk, Set.indicator_of_notMem, zero_mul]
+        rw [Set.mem_Ico]; push_neg
+        intro hk_lo
+        by_contra hk_hi; push_neg at hk_hi
+        apply hk_ne; ext
+        by_contra h_val_ne
+        rcases Nat.lt_or_gt_of_ne h_val_ne with hlt | hgt
+        · have : H.times ⟨(k:ℕ)+1, hk⟩ ≤ H.times hex.choose := by
+            rcases (Nat.succ_le_of_lt hlt).eq_or_lt with heq | hstrict
+            · exact le_of_eq (congrArg H.times (Fin.ext heq))
+            · exact le_of_lt (H.increasing ⟨(k:ℕ)+1, hk⟩ hex.choose hstrict)
+          linarith
+        · have : H.times ⟨(hex.choose:ℕ)+1, hj_lt⟩ ≤ H.times k := by
+            rcases (Nat.succ_le_of_lt hgt).eq_or_lt with heq | hstrict
+            · exact le_of_eq (congrArg H.times (Fin.ext heq))
+            · exact le_of_lt (H.increasing ⟨(hex.choose:ℕ)+1, hj_lt⟩ k hstrict)
+          linarith
+      · rw [dif_neg hk]
+    · exact fun h => absurd (Finset.mem_univ _) h
+  · next hnex =>
+    push_neg at hnex
+    symm; apply Finset.sum_eq_zero; intro j _
+    by_cases hj : (j : ℕ) + 1 < H.n
+    · rw [dif_pos hj, Set.indicator_of_notMem, zero_mul]
+      rw [Set.mem_Ico]; push_neg
+      intro hlo; exact hnex j hj hlo
+    · rw [dif_neg hj]
+
+/-- The integral of valueAtTime² on [0,t] equals a sum over partition intervals.
+    Key for connecting the Itô isometry (LHS = sum) to the integral form (RHS). -/
+theorem valueAtTime_sq_integral_eq_sum (H : SimpleProcess F)
+    (hnn : ∀ i : Fin H.n, 0 ≤ H.times i)
+    (t : ℝ) (_ht : 0 ≤ t) (ω : Ω) :
+    ∫ s in Set.Icc 0 t, (H.valueAtTime s ω) ^ 2 ∂volume =
+    ∑ i : Fin H.n, if h : (i : ℕ) + 1 < H.n then
+      (H.values i ω) ^ 2 * (min (H.times ⟨i + 1, h⟩) t - min (H.times i) t)
+    else 0 := by
+  -- Step 1: Express val²(s,ω) as a sum of indicator functions
+  -- val²(s,ω) = ∑_j dite(j+1<n, indicator(Ico, fun _ => v_j²)(s), 0)
+  -- This uses disjointness of the partition intervals.
+  have h_sq_eq : ∀ s, (H.valueAtTime s ω) ^ 2 =
+      ∑ j : Fin H.n, if hj : (j : ℕ) + 1 < H.n then
+        (Set.Ico (H.times j) (H.times ⟨(j:ℕ) + 1, hj⟩)).indicator
+          (fun _ => (H.values j ω) ^ 2) s
+      else 0 := by
+    intro s; unfold valueAtTime
+    split
+    · next hex =>
+      obtain ⟨hj_lt, hs_lo, hs_hi⟩ := hex.choose_spec
+      rw [Finset.sum_eq_single hex.choose]
+      · rw [dif_pos hj_lt, Set.indicator_of_mem (Set.mem_Ico.mpr ⟨hs_lo, hs_hi⟩)]
+      · intro k _ hk_ne
+        by_cases hk : (k : ℕ) + 1 < H.n
+        · rw [dif_pos hk, Set.indicator_of_notMem]
+          rw [Set.mem_Ico]; push_neg; intro hk_lo
+          by_contra hk_hi; push_neg at hk_hi
+          apply hk_ne; ext; by_contra h_val_ne
+          rcases Nat.lt_or_gt_of_ne h_val_ne with hlt | hgt
+          · have : H.times ⟨(k:ℕ)+1, hk⟩ ≤ H.times hex.choose := by
+              rcases (Nat.succ_le_of_lt hlt).eq_or_lt with heq | hstrict
+              · exact le_of_eq (congrArg H.times (Fin.ext heq))
+              · exact le_of_lt (H.increasing ⟨(k:ℕ)+1, hk⟩ hex.choose hstrict)
+            linarith
+          · have : H.times ⟨(hex.choose:ℕ)+1, hj_lt⟩ ≤ H.times k := by
+              rcases (Nat.succ_le_of_lt hgt).eq_or_lt with heq | hstrict
+              · exact le_of_eq (congrArg H.times (Fin.ext heq))
+              · exact le_of_lt (H.increasing ⟨(hex.choose:ℕ)+1, hj_lt⟩ k hstrict)
+            linarith
+        · rw [dif_neg hk]
+      · exact fun h => absurd (Finset.mem_univ _) h
+    · next hnex =>
+      push_neg at hnex
+      simp only [sq, mul_zero]
+      symm; apply Finset.sum_eq_zero; intro j _
+      by_cases hj : (j : ℕ) + 1 < H.n
+      · rw [dif_pos hj, Set.indicator_of_notMem]
+        rw [Set.mem_Ico]; push_neg; intro hlo; exact hnex j hj hlo
+      · rw [dif_neg hj]
+  -- Step 2: Integrate the sum form term by term
+  haveI h_fin_vol : MeasureTheory.IsFiniteMeasure (MeasureTheory.volume.restrict (Set.Icc (0 : ℝ) t)) :=
+    ⟨by rw [Measure.restrict_apply_univ]; exact measure_Icc_lt_top⟩
+  simp_rw [h_sq_eq]
+  rw [MeasureTheory.integral_finset_sum]
+  · -- Show each integrated term equals the target
+    congr 1; ext i
+    by_cases hi : (i : ℕ) + 1 < H.n
+    · simp only [dif_pos hi]
+      -- ∫ s in Icc 0 t, indicator(Ico, fun _ => c)(s) ∂vol
+      -- = ∫ s in (Icc 0 t ∩ Ico), c ∂vol   (by setIntegral_indicator)
+      -- = c * vol(Icc 0 t ∩ Ico).toReal     (by setIntegral_const)
+      rw [MeasureTheory.setIntegral_indicator measurableSet_Ico,
+          MeasureTheory.setIntegral_const, smul_eq_mul, mul_comm]
+      -- Compute volume(Icc 0 t ∩ Ico t_j t_{j+1})
+      congr 1
+      set tj := H.times i
+      set tj1 := H.times ⟨(i:ℕ) + 1, hi⟩
+      have htj_lt : tj < tj1 := H.increasing i ⟨(i:ℕ)+1, hi⟩ (by simp [Fin.lt_def])
+      have htj_nn := hnn i
+      by_cases hle : tj ≤ t
+      · rw [min_eq_left hle]
+        by_cases hle2 : tj1 ≤ t
+        · rw [min_eq_left hle2]
+          have h_inter : Set.Icc 0 t ∩ Set.Ico tj tj1 = Set.Ico tj tj1 := by
+            ext s; simp only [Set.mem_inter_iff, Set.mem_Icc, Set.mem_Ico]
+            exact ⟨fun ⟨_, h2⟩ => h2,
+              fun ⟨h1, h2⟩ => ⟨⟨le_trans htj_nn h1, le_trans (le_of_lt h2) hle2⟩, h1, h2⟩⟩
+          rw [h_inter, Real.volume_real_Ico_of_le (by linarith)]
+        · push_neg at hle2
+          rw [min_eq_right (le_of_lt hle2)]
+          have h_inter : Set.Icc 0 t ∩ Set.Ico tj tj1 = Set.Icc tj t := by
+            ext s; simp only [Set.mem_inter_iff, Set.mem_Icc, Set.mem_Ico]
+            exact ⟨fun ⟨⟨_, hst⟩, hsj, _⟩ => ⟨hsj, hst⟩,
+              fun ⟨hsj, hst⟩ => ⟨⟨le_trans htj_nn hsj, hst⟩, hsj, lt_of_le_of_lt hst hle2⟩⟩
+          rw [h_inter, Real.volume_real_Icc_of_le (by linarith)]
+      · push_neg at hle
+        rw [min_eq_right (le_of_lt hle),
+            min_eq_right (le_trans (le_of_lt hle) (le_of_lt htj_lt))]
+        have h_inter : Set.Icc 0 t ∩ Set.Ico tj tj1 = ∅ := by
+          ext s; simp only [Set.mem_inter_iff, Set.mem_Icc, Set.mem_Ico, Set.mem_empty_iff_false,
+            iff_false, not_and, not_lt]
+          exact fun ⟨_, hst⟩ hsj =>
+            absurd (lt_of_le_of_lt hst (lt_of_lt_of_le hle hsj)) (lt_irrefl _)
+        rw [h_inter]; simp
+    · simp only [dif_neg hi]; simp
+  · -- Integrability of each term
+    intro j _
+    by_cases hj : (j : ℕ) + 1 < H.n
+    · simp only [dif_pos hj]
+      exact (integrable_const ((H.values j ω) ^ 2)).indicator measurableSet_Ico
+    · simp only [dif_neg hj]; exact integrable_zero _ _ _
+
 /-! ## Min-capped reformulation of stochastic integral -/
 
 /-- Key observation: when t_i > t, the summand in stochasticIntegral_at is 0,

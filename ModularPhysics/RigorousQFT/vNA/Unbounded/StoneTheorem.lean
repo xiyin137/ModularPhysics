@@ -541,9 +541,7 @@ structure StoneData (𝒰 : OneParameterUnitaryGroup H) where
   /-- The generator is self-adjoint -/
   selfadj : A.IsSelfAdjoint dense
   /-- U(t) = exp(itA) via the spectral calculus -/
-  generates : ∀ t : ℝ, ∀ x : H, 𝒰.U t x =
-    functionalCalculus (A.spectralMeasure dense selfadj)
-      (fun s => Complex.exp (Complex.I * t * s)) x
+  generates : ∀ t : ℝ, 𝒰.U t = unitaryGroup A dense selfadj t
 
 /-- Stone's theorem: Every strongly continuous one-parameter unitary group has
     a unique self-adjoint generator. -/
@@ -555,7 +553,7 @@ theorem Stone (𝒰 : OneParameterUnitaryGroup H) : ∃ data : StoneData 𝒰, T
     A := 𝒰.generator
     dense := 𝒰.generator_densely_defined
     selfadj := 𝒰.generator_selfadjoint
-    generates := fun t x => by sorry
+    generates := fun t => by sorry
   }
 
 end OneParameterUnitaryGroup
@@ -569,13 +567,18 @@ end OneParameterUnitaryGroup
     operator, we get a one-parameter group via the spectral theorem. -/
 def timeEvolution (Ham : UnboundedOperator H) (hHam : Ham.IsDenselyDefined)
     (hsa : Ham.IsSelfAdjoint hHam) : OneParameterUnitaryGroup H where
-  U := fun t => functionalCalculus (Ham.spectralMeasure hHam hsa)
-    (fun s => Complex.exp (-Complex.I * t * s))
-  unitary_left := fun t => by sorry
-  unitary_right := fun t => by sorry
-  zero := by sorry
-  add := fun s t => by sorry
-  continuous := fun x => by sorry
+  U := fun t => unitaryGroup Ham hHam hsa (-t)
+  unitary_left := fun t => by
+    rw [unitaryGroup_inv]; simp [unitaryGroup_comp_neg]
+  unitary_right := fun t => by
+    rw [unitaryGroup_inv]; simp [unitaryGroup_neg_comp]
+  zero := by simp [unitaryGroup_zero]
+  add := fun s t => by
+    show unitaryGroup Ham hHam hsa (-(s + t)) =
+      unitaryGroup Ham hHam hsa (-s) ∘L unitaryGroup Ham hHam hsa (-t)
+    rw [neg_add, unitaryGroup_mul]
+  continuous := fun x => by
+    exact (unitaryGroup_continuous Ham hHam hsa x).comp continuous_neg
 
 /-- The generator of time evolution is the Hamiltonian (up to a factor of i) -/
 theorem timeEvolution_generator (Ham : UnboundedOperator H) (hHam : Ham.IsDenselyDefined)

@@ -31,7 +31,106 @@ wavelet decomposition infrastructure.
 
 ---
 
-## Recent Updates (2026-02-10)
+## Recent Updates (2026-02-11)
+
+### Session 35 Progress (Isometry Proofs + Itô Formula Roadmap)
+
+**Proved 3 major sorrys:**
+1. `isometry_at` in IsometryAt.lean — FULLY PROVEN
+2. `bilinear_isometry_at` in IsometryAt.lean — FULLY PROVEN (polarization from `isometry_at`)
+3. `bilinear_ito_isometry` in StochasticIntegration.lean — FULLY PROVEN (iterated product convergence)
+
+**New Helper File: `Helpers/IteratedProductConvergence.lean` — 0 sorrys**
+- Main theorem: `iterated_product_integral_tendsto` — If Fₙ→f and Gₙ→g in L²([0,t]×Ω),
+  then E[∫₀ᵗ Fₙ·Gₙ] → E[∫₀ᵗ f·g]
+- Strategy: work on product space, apply `product_integral_tendsto_of_L2_tendsto`, convert via Fubini
+- Key technical fix: `dsimp [Function.uncurry]` needed before `nlinarith` when mixing
+  `Function.uncurry f p` and `f p.1 p.2` forms
+
+**Updated Sorry Count (as of Session 35):**
+- StochasticIntegration.lean: **9 sorrys** (bdg_inequality, quadratic_variation, ito_formula,
+  sde_existence_uniqueness, sde_uniqueness_law, stratonovich_chain_rule,
+  semimartingale_integral_exists, girsanov, martingale_representation)
+- InnerIntegralIntegrability.lean: **3 sorrys** (inner_sq_integral_integrable_of_sub_interval,
+  inner_product_integral_integrable, integrableOn_ae_of_square_integrable)
+- IsometryAt.lean: **0 sorrys** ✅ (was 2)
+- BrownianMotion.lean: **5 sorrys**
+- Basic.lean: **1 sorry**
+- Probability/Basic.lean: **2 sorrys**
+
+---
+
+### Itô Formula Roadmap
+
+**Goal:** Prove `ito_formula` (line 1619 in StochasticIntegration.lean)
+
+**Statement:**
+For C² function f and Itô process dX_t = μ_t dt + σ_t dW_t:
+```
+f(t, X_t) = f(0, X_0) + ∫₀ᵗ [∂_t f + ∂_x f · μ + ½∂²_x f · σ²] ds + ∫₀ᵗ ∂_x f · σ dW
+```
+
+**Dependency Graph:**
+```
+ito_formula
+├── quadratic_variation (or direct partition approach)
+│   ├── ito_isometry ✅
+│   ├── bilinear_ito_isometry ✅
+│   └── compensator property (X²-⟨X⟩ is submartingale)
+├── Taylor expansion infrastructure
+│   ├── taylor_mean_remainder_bound (Mathlib ✅)
+│   └── ContDiff ℝ 2 hypotheses (in theorem statement)
+├── Partition approximation convergence
+│   ├── Simple process stochastic integral infrastructure ✅
+│   └── Riemann sum → integral convergence (needs development)
+└── Integrability infrastructure
+    └── InnerIntegralIntegrability sorrys (3 remaining)
+```
+
+**Proposed Proof Strategy (direct partition approach):**
+
+The standard proof uses partition approximation rather than going through the
+abstract quadratic variation:
+
+1. **Partition**: Take partitions 0 = t₀ < t₁ < ... < tₙ = t with mesh → 0
+2. **Telescope**: f(t, X_t) - f(0, X₀) = Σᵢ [f(tᵢ₊₁, Xᵢ₊₁) - f(tᵢ, Xᵢ)]
+3. **Taylor expand each increment** (using `taylor_mean_remainder_bound` from Mathlib):
+   - f(tᵢ₊₁, Xᵢ₊₁) - f(tᵢ, Xᵢ) ≈ ∂_t f · Δtᵢ + ∂_x f · ΔXᵢ + ½∂²_x f · (ΔXᵢ)²
+4. **Sum the terms**:
+   - Σ ∂_t f · Δtᵢ → ∫₀ᵗ ∂_t f ds (Riemann sum convergence)
+   - Σ ∂_x f · ΔXᵢ = Σ ∂_x f · (μ Δt + σ ΔW) → drift integral + stochastic integral
+   - Σ ½∂²_x f · (ΔXᵢ)² → ½∫₀ᵗ ∂²_x f · σ² ds (key: cross terms vanish, (ΔWᵢ)² → Δtᵢ)
+5. **Error control**: Taylor remainder is O(|ΔXᵢ|³) → 0 in L² as mesh → 0
+
+**Key infrastructure needed:**
+1. **Riemann sum convergence lemma**: Σᵢ g(tᵢ)·(tᵢ₊₁-tᵢ) → ∫₀ᵗ g(s)ds
+   - Available in Mathlib: `integral_hasSum_of_tendsto_intervalIntegral` or similar
+2. **Quadratic variation of BM**: E[(ΔWᵢ)²] = Δtᵢ (from BM properties ✅)
+3. **Cross-term cancellation**: Σᵢ g(tᵢ)·(ΔWᵢ)² → ∫₀ᵗ g(s) ds
+   - Uses: (ΔWᵢ)² - Δtᵢ is mean-zero, sum → 0 in L²
+4. **Stochastic integral as limit**: Σ ∂_x f(tᵢ, Xᵢ) · σᵢ · ΔWᵢ converges to stochastic integral
+
+**Alternative approach for quadratic_variation:**
+
+The `QuadraticVariation` structure has `mono : ∀ ω, Monotone (variation t ω)` (pointwise),
+but `∫₀ˢ σ² ds ≤ ∫₀ᵗ σ² ds` only holds when σ²(·,ω) is IntegrableOn.
+
+Options:
+- (a) Define `variation t ω` using ENNReal integral with toReal (loses monotonicity for ⊤)
+- (b) Weaken QV structure to a.e. monotonicity
+- (c) Add assumption that diffusion is in ItoIntegrableProcess (gives a.e. IntegrableOn)
+- (d) Bypass QV structure entirely — prove Itô formula directly via partitions
+
+**Recommendation**: Option (d) — prove Itô formula directly. The QV theorem can then be a
+corollary (apply Itô formula to f(x) = x²).
+
+**Priority ordering:**
+1. InnerIntegralIntegrability sorrys (3) — enables hRHS and other integrability results
+2. Itô formula via direct partition approach (the main target)
+3. quadratic_variation as corollary of Itô formula
+4. sde_uniqueness_law (uses Grönwall — partially structured)
+
+---
 
 ### Session 34 Progress (Integrand L² Convergence — Structure Complete)
 
@@ -100,12 +199,11 @@ avoids proof-irrelevance issues that made `subst` fail. The zero case becomes tr
 - `Helpers/IsometryAt.lean` — 2 sorrys (isometry convergence helpers)
 - `Helpers/ProductL2Convergence.lean` — product L² convergence helpers
 
-**Updated Sorry Count (as of Session 34):**
-- StochasticIntegration.lean: **14 sorrys** (integrand convergence integrability(4), bilinear_ito_isometry(1),
-  hRHS(1), bdg_inequality(1), and ItoProcess/SDE sorrys)
-- InnerIntegralIntegrability.lean: **3 sorrys**
-- IsometryAt.lean: **2 sorrys**
-- BrownianMotion.lean: **6 sorrys**
+**Updated Sorry Count (as of Session 34, now superseded by Session 35 above):**
+- StochasticIntegration.lean: **14 sorrys** → now **9 sorrys** (Session 35)
+- InnerIntegralIntegrability.lean: **3 sorrys** (unchanged)
+- IsometryAt.lean: **2 sorrys** → now **0 sorrys** ✅ (Session 35)
+- BrownianMotion.lean: **5 sorrys**
 
 ### Session 31 Progress (ItoIntegral.linear — 3/4 sorrys proved)
 
@@ -1107,7 +1205,7 @@ Major fixes implemented to address critical mathematical errors:
 |------|--------|--------|-------|
 | Basic.lean | ✅ Compiles | 1 | `is_martingale_of_bounded` (needs uniform integrability) |
 | BrownianMotion.lean | ✅ Compiles | 6 | time_inversion, eval_unit_is_brownian, Q-Wiener (2), levy_characterization, + 1 |
-| StochasticIntegration.lean | ✅ Compiles | 14 | **`isometry` PROVED**, `linear` structure complete (4 integrability sorrys), ItoProcess/SDE sorrys |
+| StochasticIntegration.lean | ✅ Compiles | 10 | **`isometry` PROVED**, `linear` integrability PROVED (4→0), ItoProcess/SDE sorrys |
 | Helpers/MergedValueAtTime.lean | ✅ Compiles | 0 | **FULLY PROVEN** - valueAtTime linearity for merged processes |
 | Helpers/CommonRefinement.lean | ✅ Compiles | 0 | **FULLY PROVEN** - common refinement partition infrastructure |
 | Helpers/SimpleProcessLinear.lean | ✅ Compiles | 0 | **FULLY PROVEN** - linear combination of simple integrals |
@@ -1144,6 +1242,47 @@ Major fixes implemented to address critical mathematical errors:
 - Trees/Homogeneity.lean: `bdd_below` theorem FULLY PROVED with proper infrastructure
 - Models/Admissible.lean: `trivialModel.analytical_bound` FULLY PROVED
 - Models/Canonical.lean: `variance_grows` proved for d > 0 case
+
+**Session 36 Progress (Itô Formula Critical Path)**:
+
+**Proved:**
+1. `valueAtTime_jointly_measurable` in CommonRefinement.lean — key infrastructure for Fubini arguments
+2. `valueAtTime_uniform_bounded` in CommonRefinement.lean — uniform bound on step function values
+3. **4 integrability sorrys** in `linear` theorem (StochasticIntegration.lean lines 1187-1240) — via product measure domination + Fubini
+
+**Current Plan - Critical Path to Itô Formula:**
+
+```
+valueAtTime_sq_integral_eq_sum (step function integral identity)
+         ↓
+isometry_at + bilinear_isometry_at (IsometryAt.lean, 2 sorrys)
+         ↓
+bilinear_ito_isometry (StochasticIntegration.lean line 735, 1 sorry)
+         ↓
+combined_sq_integral_eq → linear (already proven given above)
+         ↓
+ito_isometry (already follows from isometry_at)
+         ↓
+quadratic_variation → ito_formula
+```
+
+**Implementation Plan for isometry_at:**
+1. Add `valueAtTime_eq_sum_indicator` — extract indicator sum decomposition as standalone lemma
+2. Add `valueAtTime_sq_integral_eq_sum` — prove ∫₀ᵗ val²(s,ω) ds = ∑ᵢ Hᵢ(ω)² · Δtᵢ_cap
+   - Uses indicator decomposition + `setIntegral_indicator` + `setIntegral_const`
+   - Volume computation: vol(Ico tⱼ tⱼ₊₁ ∩ Icc 0 t) = min(tⱼ₊₁,t) - min(tⱼ,t)
+3. Add Pythagoras lemma (duplicate `sum_sq_integral_eq_sum_integral_sq` from StochasticIntegration.lean)
+4. Prove `isometry_at` via: LHS = ∑ E[Hᵢ²]·Δtᵢ_cap = RHS
+   - LHS side: stochasticIntegral_at_eq_min → Pythagoras → diagonal_term_at
+   - RHS side: valueAtTime_sq_integral_eq_sum → integral_finset_sum
+5. Prove `bilinear_isometry_at` via polarization from `isometry_at`
+
+**Remaining sorrys breakdown:**
+- StochasticIntegration.lean: 10 sorrys (was 14, proved 4 integrability sorrys)
+- IsometryAt.lean: 2 sorrys (isometry_at, bilinear_isometry_at)
+- BrownianMotion.lean: 6 sorrys
+- Probability/Basic.lean: 2 sorrys
+- InnerIntegralIntegrability.lean: 3 sorrys (unused infrastructure, low priority)
 
 **Note**: Remaining sorrys are deep mathematical theorems requiring substantial infrastructure:
 - Canonical model construction (stochastic integrals, distribution theory)

@@ -10,6 +10,7 @@ import ModularPhysics.RigorousQFT.vNA.Spectral.SigmaAdditivity
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralStieltjes
 import ModularPhysics.RigorousQFT.vNA.MeasureTheory.SpectralIntegral
 import Mathlib.MeasureTheory.Integral.Bochner.Basic
+import Mathlib.MeasureTheory.Integral.DominatedConvergence
 import Mathlib.MeasureTheory.Function.SimpleFuncDenseLp
 import Mathlib.MeasureTheory.Integral.Bochner.ContinuousLinearMap
 import Mathlib.MeasureTheory.Measure.Regular
@@ -2609,28 +2610,76 @@ theorem UnboundedOperator.power_add (T : UnboundedOperator H) (hT : T.IsDenselyD
     (hs : s.re = 0) (ht : t.re = 0) :
     T.power hT hsa hpos (s + t) (by simp [Complex.add_re, hs, ht]) =
     T.power hT hsa hpos s hs ∘L T.power hT hsa hpos t ht := by
-  /-
-  PROOF STRUCTURE:
-
-  Define the power functions (where x : ℝ):
-    f_s(x) = if x > 0 then exp(s * log x) else 0
-    f_t(x) = if x > 0 then exp(t * log x) else 0
-    f_{s+t}(x) = if x > 0 then exp((s+t) * log x) else 0
-
-  Key identity: For x > 0,
-    exp((s+t) * log x) = exp(s * log x + t * log x)
-                       = exp(s * log x) * exp(t * log x)
-
-  So f_{s+t} = f_s * f_t pointwise on (0, ∞).
-
-  By functionalCalculus_mul:
-    ∫ (f_s * f_t) dP = (∫ f_s dP) ∘ (∫ f_t dP)
-
-  Therefore T^(s+t) = T^s ∘ T^t.
-  -/
-  -- The key: f_{s+t} = f_s * f_t pointwise, then apply functionalCalculus_mul
-  -- This depends on functionalCalculus_mul which is sorry'd
-  sorry
+  set P := T.spectralMeasure hT hsa
+  -- The power functions
+  let f_s : ℝ → ℂ := fun x => if x > 0 then Complex.exp (s * Complex.log x) else 0
+  let f_t : ℝ → ℂ := fun x => if x > 0 then Complex.exp (t * Complex.log x) else 0
+  -- Norm bound: |exp(u * log x)| ≤ 1 when Re(u) = 0
+  have power_norm_le : ∀ (u : ℂ), u.re = 0 → ∀ x : ℝ,
+      ‖(if x > 0 then Complex.exp (u * Complex.log ↑x) else 0 : ℂ)‖ ≤ 1 := by
+    intro u hu x
+    split_ifs with hx
+    · rw [Complex.norm_exp,
+          show Complex.log (↑x : ℂ) = ↑(Real.log x) from (Complex.ofReal_log (le_of_lt hx)).symm]
+      have : (u * ↑(Real.log x)).re = 0 := by
+        simp [Complex.mul_re, Complex.ofReal_re, Complex.ofReal_im, hu]
+      rw [this, Real.exp_zero]
+    · simp
+  -- Measurability
+  have power_meas : ∀ (u : ℂ), Measurable (fun x : ℝ =>
+      if x > 0 then Complex.exp (u * Complex.log ↑x) else (0 : ℂ)) := by
+    intro u
+    apply Measurable.ite measurableSet_Ioi
+    · exact Complex.continuous_exp.measurable.comp
+        (measurable_const.mul (Complex.measurable_log.comp Complex.continuous_ofReal.measurable))
+    · exact measurable_const
+  -- Integrability
+  have power_int : ∀ (u : ℂ), u.re = 0 → ∀ z : H,
+      MeasureTheory.Integrable (fun (x : ℝ) => if x > 0 then Complex.exp (u * Complex.log ↑x) else 0)
+        (P.diagonalMeasure z) := by
+    intro u hu z
+    haveI := P.diagonalMeasure_isFiniteMeasure z
+    exact (MeasureTheory.integrable_const (1 : ℂ)).mono
+      ((power_meas u).aestronglyMeasurable)
+      (by filter_upwards with x; simp only [norm_one]; exact power_norm_le u hu x)
+  -- Key pointwise identity: f_{s+t} = f_s * f_t
+  have h_eq : (fun x : ℝ => if x > 0 then Complex.exp ((s + t) * Complex.log ↑x) else (0 : ℂ)) =
+      f_s * f_t := by
+    ext x; simp only [Pi.mul_apply, f_s, f_t]
+    split_ifs with hx
+    · rw [add_mul, Complex.exp_add]
+    · simp
+  -- Product norm bound
+  have hfg_bdd : ∃ M, 0 ≤ M ∧ ∀ x, ‖(f_s * f_t) x‖ ≤ M :=
+    ⟨1, zero_le_one, fun x => by
+      simp only [Pi.mul_apply, f_s, f_t]; rw [norm_mul]
+      calc ‖(if x > 0 then Complex.exp (s * Complex.log ↑x) else 0 : ℂ)‖ *
+            ‖(if x > 0 then Complex.exp (t * Complex.log ↑x) else 0 : ℂ)‖
+          ≤ 1 * 1 := by
+            exact mul_le_mul (power_norm_le s hs x) (power_norm_le t ht x)
+              (norm_nonneg _) zero_le_one
+        _ = 1 := mul_one 1⟩
+  -- Product integrability
+  have hfg_int : ∀ z : H, MeasureTheory.Integrable (f_s * f_t) (P.diagonalMeasure z) := by
+    rw [← h_eq]; exact power_int (s + t) (by simp [Complex.add_re, hs, ht])
+  -- Get the functionalCalculus_mul result
+  have hmul := functionalCalculus_mul P f_s f_t
+    (power_int s hs) ⟨1, zero_le_one, power_norm_le s hs⟩
+    (power_int t ht) ⟨1, zero_le_one, power_norm_le t ht⟩
+    hfg_int hfg_bdd (power_meas t)
+  -- Use calc: power(s+t) = fc(f_s*f_t) = fc(f_s) ∘L fc(f_t) = power(s) ∘L power(t)
+  have h_st_re : (s + t).re = 0 := by simp [Complex.add_re, hs, ht]
+  calc T.power hT hsa hpos (s + t) _
+      = functionalCalculus P (f_s * f_t) hfg_int hfg_bdd := by
+          -- power(s+t) = fc(f_{s+t}) definitionally, and f_{s+t} = f_s * f_t
+          show functionalCalculus P
+            (fun x : ℝ => if x > 0 then Complex.exp ((s + t) * Complex.log ↑x) else 0)
+            (power_int (s + t) h_st_re) ⟨1, zero_le_one, power_norm_le (s + t) h_st_re⟩ =
+            functionalCalculus P (f_s * f_t) hfg_int hfg_bdd
+          congr 1
+    _ = functionalCalculus P f_s (power_int s hs) ⟨1, zero_le_one, power_norm_le s hs⟩ ∘L
+        functionalCalculus P f_t (power_int t ht) ⟨1, zero_le_one, power_norm_le t ht⟩ := hmul
+    _ = T.power hT hsa hpos s hs ∘L T.power hT hsa hpos t ht := rfl
 
 /-- For real t, T^{it} is unitary.
 
@@ -2668,153 +2717,309 @@ theorem UnboundedOperator.power_imaginary_unitary (T : UnboundedOperator H)
   -- Depends on functionalCalculus_star, power_add, power_zero (all sorry'd)
   sorry
 
-/-! ### One-parameter unitary groups -/
+/-! ### One-parameter unitary groups
+
+The one-parameter unitary group U(t) = e^{itA} = ∫ exp(itλ) dP(λ) is defined using
+the exponential function directly, not through the `power` function. This is important:
+- `power` uses λ^{it} = exp(it·log λ), which requires positivity and fails at λ = 0
+- The exponential exp(itλ) is defined for all λ ∈ ℝ, works for any self-adjoint operator
+- No positivity hypothesis is needed
+-/
+
+/-- Norm bound: ‖exp(itx)‖ ≤ 1 for real t, x. -/
+private lemma expI_norm_le (t : ℝ) (x : ℝ) :
+    ‖Complex.exp (Complex.I * ↑t * ↑x)‖ ≤ 1 := by
+  rw [Complex.norm_exp]
+  have : (Complex.I * ↑t * ↑x).re = 0 := by
+    simp [Complex.mul_re, Complex.I_re, Complex.I_im, Complex.ofReal_re, Complex.ofReal_im]
+  rw [this, Real.exp_zero]
+
+/-- Measurability of exp(itx) in x for fixed t. -/
+private lemma expI_measurable (t : ℝ) :
+    Measurable (fun x : ℝ => Complex.exp (Complex.I * ↑t * ↑x)) :=
+  Complex.continuous_exp.measurable.comp
+    ((continuous_const.mul Complex.continuous_ofReal).measurable)
+
+open MeasureTheory in
+/-- Integrability of exp(itx) against spectral diagonal measures. -/
+private lemma expI_integrable (P : SpectralMeasure H) (t : ℝ) (z : H) :
+    Integrable (fun x : ℝ => Complex.exp (Complex.I * ↑t * ↑x))
+      (P.diagonalMeasure z) := by
+  haveI := P.diagonalMeasure_isFiniteMeasure z
+  exact (integrable_const (1 : ℂ)).mono
+    (expI_measurable t).aestronglyMeasurable
+    (by filter_upwards with x; simp only [norm_one]; exact expI_norm_le t x)
+
+/-- The functional calculus is proof-irrelevant: it depends only on the function f. -/
+private lemma functionalCalculus_congr (P : SpectralMeasure H) {f g : ℝ → ℂ}
+    (hfg : f = g)
+    (hf_int : ∀ z : H, MeasureTheory.Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (hg_int : ∀ z : H, MeasureTheory.Integrable g (P.diagonalMeasure z))
+    (hg_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖g t‖ ≤ M) :
+    functionalCalculus P f hf_int hf_bdd = functionalCalculus P g hg_int hg_bdd := by
+  subst hfg; rfl
 
 /-- The one-parameter unitary group generated by a self-adjoint operator.
-    U(t) = T^{it} for positive self-adjoint T -/
+    U(t) = e^{itA} = ∫ exp(itλ) dP(λ) where P is the spectral measure of T.
+
+    This uses the exponential function directly (not through `power`),
+    so no positivity hypothesis is needed. -/
 def unitaryGroup (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) : H →L[ℂ] H :=
-  T.power hT hsa hpos (Complex.I * t) (by
-    simp [Complex.mul_re, Complex.I_re, Complex.I_im, Complex.ofReal_re, Complex.ofReal_im])
+    (hsa : T.IsSelfAdjoint hT) (t : ℝ) : H →L[ℂ] H :=
+  let P := T.spectralMeasure hT hsa
+  functionalCalculus P (fun x : ℝ => Complex.exp (Complex.I * ↑t * ↑x))
+    (fun z => expI_integrable P t z)
+    ⟨1, zero_le_one, expI_norm_le t⟩
 
-/-- The group law: U(s) ∘ U(t) = U(s+t) -/
-theorem unitaryGroup_mul (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (s t : ℝ) :
-    unitaryGroup T hT hsa hpos s ∘L unitaryGroup T hT hsa hpos t =
-    unitaryGroup T hT hsa hpos (s + t) := by
-  -- U(s) ∘ U(t) = T^{is} ∘ T^{it} = T^{i(s+t)} = U(s+t)
-  unfold unitaryGroup
-  -- Handle dependent proof argument via suffices + subst
-  suffices key : ∀ (a b c : ℂ) (ha : a.re = 0) (hb : b.re = 0) (hc : c.re = 0),
-      a + b = c →
-      T.power hT hsa hpos a ha ∘L T.power hT hsa hpos b hb =
-      T.power hT hsa hpos c hc by
-    exact key _ _ _ _ _ _ (by push_cast; ring)
-  intro a b c ha hb hc heq
-  subst heq
-  exact (T.power_add hT hsa hpos a b ha hb).symm
-
-/-- U(0) = 1 -/
+set_option maxHeartbeats 400000 in
+open MeasureTheory in
+/-- U(0) = 1. Since exp(i·0·λ) = 1 for all λ, the functional calculus gives
+    the integral of the constant 1, which equals P(ℝ) = 1. -/
 theorem unitaryGroup_zero (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) :
-    unitaryGroup T hT hsa hpos 0 = 1 := by
-  -- U(0) = T^{i·0} = T^0 = 1
-  unfold unitaryGroup
-  suffices key : ∀ (s : ℂ) (hs : s.re = 0), s = 0 →
-      T.power hT hsa hpos s hs = 1 by
-    exact key _ _ (by push_cast; ring)
-  intro s hs heq
-  subst heq
-  exact T.power_zero hT hsa hpos
+    (hsa : T.IsSelfAdjoint hT) :
+    unitaryGroup T hT hsa 0 = 1 := by
+  set P := T.spectralMeasure hT hsa
+  -- exp(I * 0 * x) = 1 for all x, matching Set.univ indicator
+  have hfg : (fun x : ℝ => Complex.exp (Complex.I * ↑(0 : ℝ) * ↑x)) =
+      Set.univ.indicator (fun _ => (1 : ℂ)) := by
+    funext x; simp [Complex.exp_zero]
+  show functionalCalculus P (fun x : ℝ => Complex.exp (Complex.I * ↑(0 : ℝ) * ↑x))
+    (fun z => expI_integrable P 0 z) ⟨1, zero_le_one, expI_norm_le 0⟩ = 1
+  apply ContinuousLinearMap.ext; intro y
+  apply ext_inner_left ℂ; intro x
+  rw [← functionalCalculus_inner, ContinuousLinearMap.one_apply, hfg,
+    P.Bform_indicator_eq_inner Set.univ MeasurableSet.univ, P.univ,
+    ContinuousLinearMap.one_apply]
 
+set_option maxHeartbeats 400000 in
+open MeasureTheory in
+/-- The group law: U(s) ∘ U(t) = U(s+t).
+
+    **Proof:** Uses `functionalCalculus_mul`. The pointwise identity
+    exp(isλ) · exp(itλ) = exp(i(s+t)λ) gives the result. -/
+theorem unitaryGroup_mul (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
+    (hsa : T.IsSelfAdjoint hT) (s t : ℝ) :
+    unitaryGroup T hT hsa s ∘L unitaryGroup T hT hsa t =
+    unitaryGroup T hT hsa (s + t) := by
+  set P := T.spectralMeasure hT hsa
+  set f_s := fun x : ℝ => Complex.exp (Complex.I * ↑s * ↑x)
+  set f_t := fun x : ℝ => Complex.exp (Complex.I * ↑t * ↑x)
+  -- Pointwise identity: exp(isλ) · exp(itλ) = exp(i(s+t)λ)
+  have h_eq : (fun x : ℝ => Complex.exp (Complex.I * ↑(s + t) * ↑x)) = f_s * f_t := by
+    ext x; simp only [Pi.mul_apply, f_s, f_t]
+    rw [← Complex.exp_add]; congr 1; push_cast; ring
+  -- Product norm bound
+  have hfg_bdd : ∃ M, 0 ≤ M ∧ ∀ x, ‖(f_s * f_t) x‖ ≤ M :=
+    ⟨1, zero_le_one, fun x => by
+      simp only [Pi.mul_apply, f_s, f_t, norm_mul]
+      calc ‖Complex.exp (Complex.I * ↑s * ↑x)‖ * ‖Complex.exp (Complex.I * ↑t * ↑x)‖
+          ≤ 1 * 1 := mul_le_mul (expI_norm_le s x) (expI_norm_le t x)
+            (norm_nonneg _) zero_le_one
+        _ = 1 := mul_one 1⟩
+  -- Product integrability
+  have hfg_int : ∀ z : H, Integrable (f_s * f_t) (P.diagonalMeasure z) := by
+    rw [← h_eq]; exact fun z => expI_integrable P (s + t) z
+  -- Apply functionalCalculus_mul
+  have hmul := functionalCalculus_mul P f_s f_t
+    (fun z => expI_integrable P s z) ⟨1, zero_le_one, expI_norm_le s⟩
+    (fun z => expI_integrable P t z) ⟨1, zero_le_one, expI_norm_le t⟩
+    hfg_int hfg_bdd (expI_measurable t)
+  -- Use show + congr 1 pattern (same as power_add):
+  -- U(s) ∘L U(t) = fc(f_s * f_t) = U(s+t)
+  have h_eq_sym := h_eq.symm
+  calc unitaryGroup T hT hsa s ∘L unitaryGroup T hT hsa t
+      = functionalCalculus P (f_s * f_t) hfg_int hfg_bdd := by
+          show functionalCalculus P f_s
+            (fun z => expI_integrable P s z) ⟨1, zero_le_one, expI_norm_le s⟩ ∘L
+            functionalCalculus P f_t
+            (fun z => expI_integrable P t z) ⟨1, zero_le_one, expI_norm_le t⟩ =
+            functionalCalculus P (f_s * f_t) hfg_int hfg_bdd
+          exact hmul.symm
+    _ = unitaryGroup T hT hsa (s + t) := by
+          show functionalCalculus P (f_s * f_t) hfg_int hfg_bdd =
+            functionalCalculus P (fun x : ℝ => Complex.exp (Complex.I * ↑(s + t) * ↑x))
+            (fun z => expI_integrable P (s + t) z) ⟨1, zero_le_one, expI_norm_le (s + t)⟩
+          congr 1
+
+set_option maxHeartbeats 400000 in
 open MeasureTheory in
 /-- U(t)* = U(-t)
 
     **Proof:** Uses `functionalCalculus_star`:
-    - U(t)* = (T^{it})* = ∫ conj(λ^{it}) dP = ∫ λ^{-it} dP = T^{-it} = U(-t)
-    Depends on: `functionalCalculus_star`. -/
+    U(t)* = (∫ exp(itλ) dP)* = ∫ conj(exp(itλ)) dP = ∫ exp(-itλ) dP = U(-t) -/
 theorem unitaryGroup_inv (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) :
-    ContinuousLinearMap.adjoint (unitaryGroup T hT hsa hpos t) =
-    unitaryGroup T hT hsa hpos (-t) := by
-  unfold unitaryGroup UnboundedOperator.power
+    (hsa : T.IsSelfAdjoint hT) (t : ℝ) :
+    ContinuousLinearMap.adjoint (unitaryGroup T hT hsa t) =
+    unitaryGroup T hT hsa (-t) := by
   set P := T.spectralMeasure hT hsa
-  set f_it := fun x : ℝ => if x > 0 then Complex.exp (Complex.I * ↑t * Complex.log ↑x)
-    else (0 : ℂ)
-  set f_neg := fun x : ℝ => if x > 0 then Complex.exp (Complex.I * ↑(-t) * Complex.log ↑x)
-    else (0 : ℂ)
-  -- Key identity: star ∘ f_it = f_neg
-  have hsfg : star ∘ f_it = f_neg := by
+  set f_t := fun x : ℝ => Complex.exp (Complex.I * ↑t * ↑x)
+  set f_neg := fun x : ℝ => Complex.exp (Complex.I * ↑(-t) * ↑x)
+  -- Key identity: star ∘ f_t = f_neg
+  have hsfg : star ∘ f_t = f_neg := by
     funext x
-    simp only [Function.comp, f_it, f_neg]
-    split_ifs with hx
-    · have hx_nn : (0 : ℝ) ≤ x := le_of_lt hx
-      have hlog_real : Complex.log (↑x : ℂ) = ↑(Real.log x) :=
-        (Complex.ofReal_log hx_nn).symm
-      rw [hlog_real]
-      have star_exp : ∀ z : ℂ, star (Complex.exp z) = Complex.exp (star z) := by
-        intro z; simp [Complex.exp_conj]
-      rw [star_exp]
-      congr 1
-      simp only [star_mul', Complex.star_def, Complex.conj_I, Complex.conj_ofReal]
-      push_cast; ring
-    · simp [star_zero]
-  -- Norm bound: ‖f_it x‖ ≤ 1 for all x
-  have hf_norm_le : ∀ x, ‖f_it x‖ ≤ 1 := by
-    intro x; simp only [f_it]
-    split_ifs with hx
-    · rw [show Complex.log (↑x : ℂ) = ↑(Real.log x) from
-        (Complex.ofReal_log (le_of_lt hx)).symm, Complex.norm_exp]
-      have hre : (Complex.I * ↑t * ↑(Real.log x)).re = 0 := by
-        simp [Complex.mul_re, Complex.I_re, Complex.I_im,
-          Complex.ofReal_re, Complex.ofReal_im]
-      rw [hre, Real.exp_zero]
-    · simp
-  -- Measurability of f_it
-  have hf_meas : Measurable f_it := by
-    apply Measurable.ite (measurableSet_Ioi)
-    · exact Complex.continuous_exp.measurable.comp
-        (measurable_const.mul (Complex.measurable_log.comp Complex.continuous_ofReal.measurable))
-    · exact measurable_const
-  -- Measurability of star ∘ f_it
-  have hsf_meas : Measurable (star ∘ f_it) :=
-    continuous_star.measurable.comp hf_meas
-  -- Norm bound for star ∘ f_it
-  have hsf_norm_le : ∀ x, ‖(star ∘ f_it) x‖ ≤ 1 := by
-    intro x; simp only [Function.comp, norm_star]; exact hf_norm_le x
-  -- Integrability of f_it (bounded measurable function against finite measure)
-  have hf_int : ∀ z : H, Integrable f_it (P.diagonalMeasure z) := by
-    intro z; haveI := P.diagonalMeasure_isFiniteMeasure z
-    exact (integrable_const (1 : ℂ)).mono hf_meas.aestronglyMeasurable
-      (by filter_upwards with x; simp only [norm_one]; exact hf_norm_le x)
-  have hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f_it t‖ ≤ M := ⟨1, zero_le_one, hf_norm_le⟩
-  -- Star integrability and boundedness (from scratch, same argument)
-  have hsf_int : ∀ z : H, Integrable (star ∘ f_it) (P.diagonalMeasure z) := by
+    simp only [Function.comp, f_t, f_neg]
+    have star_exp : ∀ z : ℂ, star (Complex.exp z) = Complex.exp (star z) := by
+      intro z; simp [Complex.exp_conj]
+    rw [star_exp]
+    congr 1
+    simp only [star_mul', Complex.star_def, Complex.conj_I, Complex.conj_ofReal]
+    push_cast; ring
+  -- Norm bound for star ∘ f_t
+  have hsf_norm_le : ∀ x, ‖(star ∘ f_t) x‖ ≤ 1 := by
+    intro x; simp only [Function.comp, norm_star]; exact expI_norm_le t x
+  -- Measurability of star ∘ f_t
+  have hsf_meas : Measurable (star ∘ f_t) :=
+    continuous_star.measurable.comp (expI_measurable t)
+  -- Integrability of star ∘ f_t
+  have hsf_int : ∀ z : H, Integrable (star ∘ f_t) (P.diagonalMeasure z) := by
     intro z; haveI := P.diagonalMeasure_isFiniteMeasure z
     exact (integrable_const (1 : ℂ)).mono hsf_meas.aestronglyMeasurable
       (by filter_upwards with x; simp only [norm_one]; exact hsf_norm_le x)
-  have hsf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(star ∘ f_it) t‖ ≤ M :=
+  have hsf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(star ∘ f_t) t‖ ≤ M :=
     ⟨1, zero_le_one, hsf_norm_le⟩
-  -- Apply functionalCalculus_star then use function equality
-  have h_star := functionalCalculus_star P f_it hf_int hf_bdd hsf_int hsf_bdd
-  rw [h_star]
-  -- Goal: functionalCalculus P (star ∘ f_it) ... = functionalCalculus P f_neg ...
-  -- Since star ∘ f_it = f_neg and functionalCalculus is proof-irrelevant
-  -- (uses Classical.choose on a Prop depending only on Bform P f),
-  -- it suffices to show the function arguments are equal.
-  unfold functionalCalculus
-  show sesquilinearToOperator (Bform P (star ∘ f_it)) _ _ _ =
-       sesquilinearToOperator (Bform P f_neg) _ _ _
-  congr 1
-  simp only [hsfg]
+  -- Apply functionalCalculus_star
+  have h_star := functionalCalculus_star P f_t
+    (fun z => expI_integrable P t z) ⟨1, zero_le_one, expI_norm_le t⟩
+    hsf_int hsf_bdd
+  -- U(t)* = fc(star ∘ f_t) = fc(f_neg) = U(-t)
+  calc ContinuousLinearMap.adjoint (unitaryGroup T hT hsa t)
+      = functionalCalculus P (star ∘ f_t) hsf_int hsf_bdd := by
+          show ContinuousLinearMap.adjoint (functionalCalculus P f_t
+            (fun z => expI_integrable P t z) ⟨1, zero_le_one, expI_norm_le t⟩) =
+            functionalCalculus P (star ∘ f_t) hsf_int hsf_bdd
+          exact h_star
+    _ = unitaryGroup T hT hsa (-t) := by
+          show functionalCalculus P (star ∘ f_t) hsf_int hsf_bdd =
+            functionalCalculus P f_neg
+            (fun z => expI_integrable P (-t) z) ⟨1, zero_le_one, expI_norm_le (-t)⟩
+          congr 1
 
 /-- U(-t) ∘ U(t) = 1 (left inverse) -/
 theorem unitaryGroup_neg_comp (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) :
-    unitaryGroup T hT hsa hpos (-t) ∘L unitaryGroup T hT hsa hpos t = 1 := by
+    (hsa : T.IsSelfAdjoint hT) (t : ℝ) :
+    unitaryGroup T hT hsa (-t) ∘L unitaryGroup T hT hsa t = 1 := by
   rw [unitaryGroup_mul, neg_add_cancel, unitaryGroup_zero]
 
 /-- U(t) ∘ U(-t) = 1 (right inverse) -/
 theorem unitaryGroup_comp_neg (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (t : ℝ) :
-    unitaryGroup T hT hsa hpos t ∘L unitaryGroup T hT hsa hpos (-t) = 1 := by
+    (hsa : T.IsSelfAdjoint hT) (t : ℝ) :
+    unitaryGroup T hT hsa t ∘L unitaryGroup T hT hsa (-t) = 1 := by
   rw [unitaryGroup_mul, add_neg_cancel, unitaryGroup_zero]
 
-/-- Strong continuity: t ↦ U(t)x is continuous for all x
+/-- The integral ∫ exp(its) dμ(s) is continuous in t for any finite measure μ.
+    Uses Lebesgue dominated convergence with constant bound 1. -/
+private lemma continuous_integral_cexp (μ : MeasureTheory.Measure ℝ)
+    [MeasureTheory.IsFiniteMeasure μ] :
+    Continuous (fun t : ℝ => ∫ s, Complex.exp (Complex.I * ↑t * ↑s) ∂μ) := by
+  apply continuous_iff_continuousAt.mpr; intro t₀
+  apply MeasureTheory.tendsto_integral_filter_of_dominated_convergence (fun _ => 1)
+  · -- AEStronglyMeasurable for each t near t₀
+    filter_upwards with t
+    exact (expI_measurable t).aestronglyMeasurable
+  · -- Norm bound: ‖exp(its)‖ ≤ 1
+    filter_upwards with t
+    filter_upwards with s using expI_norm_le t s
+  · -- Bound integrable on finite measure
+    exact MeasureTheory.integrable_const 1
+  · -- Pointwise limit: exp(its) → exp(it₀s) as t → t₀ for each fixed s
+    filter_upwards with s
+    exact (Complex.continuous_exp.comp
+      ((continuous_const.mul Complex.continuous_ofReal).mul continuous_const)).continuousAt
 
-    **Reference:** Reed-Simon Theorem VIII.8
-
-    **Proof sketch:** The function t ↦ λ^{it} = exp(it·log λ) is continuous in t.
-    By dominated convergence for spectral integrals:
-      ‖U(t+h)x - U(t)x‖² = ∫ |λ^{i(t+h)} - λ^{it}|² dμ_x(λ) → 0 as h → 0
-    where μ_x is the spectral measure associated to x.
-
-    This requires the theory of integration against spectral measures. -/
+-- Strong continuity: t ↦ U(t)x is continuous for all x
+-- Reference: Reed-Simon Theorem VIII.8
+-- Proof: weak continuity (DCT) + isometry (U(t)*U(t)=I) → strong continuity
+set_option maxHeartbeats 800000 in
+open MeasureTheory in
 theorem unitaryGroup_continuous (T : UnboundedOperator H) (hT : T.IsDenselyDefined)
-    (hsa : T.IsSelfAdjoint hT) (hpos : T.IsPositive) (x : H) :
-    Continuous (fun t => unitaryGroup T hT hsa hpos t x) := by
-  -- FOUNDATIONAL: Reed-Simon VIII.8
-  -- Requires dominated convergence for spectral integrals
-  sorry
+    (hsa : T.IsSelfAdjoint hT) (x : H) :
+    Continuous (fun t => unitaryGroup T hT hsa t x) := by
+  set P := T.spectralMeasure hT hsa
+  -- Step 1: Each ∫ exp(its) dμ_z(s) is continuous in t
+  have h_int_cont : ∀ z : H, Continuous (fun t : ℝ =>
+      ∫ s, Complex.exp (Complex.I * ↑t * ↑s) ∂(P.diagonalMeasure z)) :=
+    fun z => continuous_integral_cexp (P.diagonalMeasure z)
+  -- Step 2: spectralIntegral of exp(it·) is continuous in t
+  have h_si_cont : ∀ y : H, Continuous (fun t : ℝ =>
+      P.spectralIntegral (fun s => Complex.exp (Complex.I * ↑t * ↑s)) y x) := by
+    intro y; unfold SpectralMeasure.spectralIntegral
+    exact continuous_const.mul
+      ((((h_int_cont (y + x)).sub (h_int_cont (y - x))).sub
+        (continuous_const.mul (h_int_cont (y + Complex.I • x)))).add
+        (continuous_const.mul (h_int_cont (y - Complex.I • x))))
+  -- Step 3: ⟨y, U(t)x⟩ is continuous in t (weak continuity)
+  have h_weak : ∀ y : H, Continuous (fun t =>
+      @inner ℂ H _ y (unitaryGroup T hT hsa t x)) := by
+    intro y; convert h_si_cont y using 1; ext t
+    show @inner ℂ H _ y (functionalCalculus P
+      (fun s => Complex.exp (Complex.I * ↑t * ↑s))
+      (fun z => expI_integrable P t z) ⟨1, zero_le_one, expI_norm_le t⟩ x) = _
+    exact spectral_theorem T hT hsa _ _ _ y x
+  -- Step 4: U(t) is isometric: ‖U(t)x‖ = ‖x‖
+  have h_iso : ∀ t, ‖unitaryGroup T hT hsa t x‖ = ‖x‖ := by
+    intro t
+    have h_adj_comp : ContinuousLinearMap.adjoint (unitaryGroup T hT hsa t) ∘L
+        unitaryGroup T hT hsa t = 1 := by
+      rw [unitaryGroup_inv, unitaryGroup_neg_comp]
+    have h_inner_eq : @inner ℂ H _ (unitaryGroup T hT hsa t x)
+        (unitaryGroup T hT hsa t x) = @inner ℂ H _ x x := by
+      rw [← ContinuousLinearMap.adjoint_inner_right (unitaryGroup T hT hsa t) x
+        (unitaryGroup T hT hsa t x), ← ContinuousLinearMap.comp_apply,
+        h_adj_comp, ContinuousLinearMap.one_apply]
+    rw [inner_self_eq_norm_sq_to_K, inner_self_eq_norm_sq_to_K] at h_inner_eq
+    have h_sq : ‖unitaryGroup T hT hsa t x‖ ^ 2 = ‖x‖ ^ 2 := by exact_mod_cast h_inner_eq
+    calc ‖unitaryGroup T hT hsa t x‖
+        = Real.sqrt (‖unitaryGroup T hT hsa t x‖ ^ 2) :=
+          (Real.sqrt_sq (norm_nonneg _)).symm
+      _ = Real.sqrt (‖x‖ ^ 2) := by rw [h_sq]
+      _ = ‖x‖ := Real.sqrt_sq (norm_nonneg _)
+  -- Step 5: Strong continuity from weak continuity + isometry
+  rw [continuous_iff_continuousAt]; intro t₀
+  rw [Metric.continuousAt_iff]; intro ε hε
+  -- Re⟨U(t₀)x, U(t)x⟩ is continuous at t = t₀
+  have h_re_cont : ContinuousAt (fun t =>
+      (@inner ℂ H _ (unitaryGroup T hT hsa t₀ x)
+        (unitaryGroup T hT hsa t x)).re) t₀ :=
+    Complex.continuous_re.continuousAt.comp
+      (h_weak (unitaryGroup T hT hsa t₀ x)).continuousAt
+  -- At t = t₀: Re⟨U(t₀)x, U(t₀)x⟩ = ‖x‖²
+  have h_at_t₀ : (@inner ℂ H _ (unitaryGroup T hT hsa t₀ x)
+      (unitaryGroup T hT hsa t₀ x)).re = ‖x‖ ^ 2 := by
+    have := inner_self_eq_norm_sq_to_K (𝕜 := ℂ) (unitaryGroup T hT hsa t₀ x)
+    rw [this, h_iso t₀]; norm_cast
+  -- Find δ such that |Re⟨U(t₀)x, U(t)x⟩ - ‖x‖²| < ε²/4 when dist t t₀ < δ
+  have hε2 : (0 : ℝ) < ε ^ 2 / 4 := by positivity
+  obtain ⟨δ, hδ, hδε⟩ := Metric.continuousAt_iff.mp h_re_cont (ε ^ 2 / 4) hε2
+  refine ⟨δ, hδ, fun t ht => ?_⟩
+  -- ‖U(t)x - U(t₀)x‖² < ε², hence ‖U(t)x - U(t₀)x‖ < ε
+  have h_re_close : |(@inner ℂ H _ (unitaryGroup T hT hsa t₀ x)
+      (unitaryGroup T hT hsa t x)).re - ‖x‖ ^ 2| < ε ^ 2 / 4 := by
+    have := hδε ht; rw [Real.dist_eq, h_at_t₀] at this; exact this
+  -- ‖U(t)x - U(t₀)x‖² = 2‖x‖² - 2*Re⟨U(t)x, U(t₀)x⟩
+  have h_ns := @norm_sub_sq ℂ H _ _ _ (unitaryGroup T hT hsa t x)
+    (unitaryGroup T hT hsa t₀ x)
+  rw [h_iso t, h_iso t₀] at h_ns
+  -- Bridge: RCLike.re and .re are definitionally equal for ℂ
+  change ‖unitaryGroup T hT hsa t x - unitaryGroup T hT hsa t₀ x‖ ^ 2 =
+    ‖x‖ ^ 2 - 2 * (@inner ℂ H _ (unitaryGroup T hT hsa t x)
+      (unitaryGroup T hT hsa t₀ x)).re + ‖x‖ ^ 2 at h_ns
+  -- Re⟨U(t)x, U(t₀)x⟩ = Re⟨U(t₀)x, U(t)x⟩ (from conjugate symmetry)
+  have h_re_sym : (@inner ℂ H _ (unitaryGroup T hT hsa t x)
+      (unitaryGroup T hT hsa t₀ x)).re =
+      (@inner ℂ H _ (unitaryGroup T hT hsa t₀ x)
+        (unitaryGroup T hT hsa t x)).re := by
+    have h := inner_conj_symm (𝕜 := ℂ) (unitaryGroup T hT hsa t₀ x)
+      (unitaryGroup T hT hsa t x)
+    -- h : conj ⟪U(t)x, U(t₀)x⟫ = ⟪U(t₀)x, U(t)x⟫
+    have conj_re_eq : ∀ z : ℂ, ((starRingEnd ℂ) z).re = z.re := fun z => by simp
+    rw [← conj_re_eq]; exact congr_arg Complex.re h
+  rw [h_re_sym] at h_ns
+  -- h_ns : ‖...‖² = ‖x‖² - 2 * Re⟪U(t₀)x, U(t)x⟫ + ‖x‖²
+  -- h_re_close : |Re⟪U(t₀)x, U(t)x⟫ - ‖x‖²| < ε²/4
+  have h_bound : ‖unitaryGroup T hT hsa t x - unitaryGroup T hT hsa t₀ x‖ ^ 2 <
+      ε ^ 2 := by linarith [(abs_lt.mp h_re_close).1]
+  rw [dist_eq_norm]
+  exact lt_of_pow_lt_pow_left₀ 2 (le_of_lt hε) h_bound
 
 end

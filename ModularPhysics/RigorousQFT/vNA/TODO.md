@@ -36,25 +36,35 @@ This module develops von Neumann algebra foundations for rigorous QFT, including
 |------|--------|--------|
 | `MeasureTheory/SpectralIntegral.lean` | Complete | 0 |
 | `MeasureTheory/CaratheodoryExtension.lean` | Complete | 0 |
-| `MeasureTheory/SpectralStieltjes.lean` | In Progress | ~5 |
+| `MeasureTheory/SpectralStieltjes.lean` | Nearly Complete | 1 (`complexMeasure_eq_inner`) |
 
 ### Spectral Theorem & Functional Calculus
 
 | File | Status | Sorrys |
 |------|--------|--------|
-| `Unbounded/Spectral.lean` | **In Progress** | ~7 (PVM + spectral_theorem sorry-free!) |
+| `Unbounded/Spectral.lean` | **Nearly Complete** | 2 (spectral_theorem + FC + unitary group fully sorry-free!) |
 
-**Key achievements:**
+**Sorry-free results:**
 - `spectral_theorem_pvm`: PVM existence — **sorry-free**
 - `spectral_theorem`: `⟨x, f(T)y⟩ = P.spectralIntegral f x y` — **sorry-free**
 - `functionalCalculus_star`: `(f(T))* = f̄(T)` — **sorry-free**
+- `functionalCalculus_mul`: `f(T)g(T) = (fg)(T)` — **sorry-free**
+- `functionalCalculus_inner`: `⟨x, f(T)y⟩ = Bform P f x y` — **sorry-free**
+- `power_add`: `T^(s+t) = T^s ∘ T^t` — **sorry-free** (via `functionalCalculus_mul`)
+- `unitaryGroup`: `U(t) = e^{itA} = ∫ exp(itλ) dP(λ)` — **redefined using exp(itλ) directly**
+- `unitaryGroup_zero`: `U(0) = 1` — **sorry-free** (no positivity needed!)
+- `unitaryGroup_mul`: `U(s) ∘ U(t) = U(s+t)` — **sorry-free**
 - `unitaryGroup_inv`: `U(t)* = U(-t)` — **sorry-free**
+- `unitaryGroup_neg_comp`/`unitaryGroup_comp_neg` — **sorry-free**
+- `unitaryGroup_continuous`: `t ↦ U(t)x` is continuous — **sorry-free** (DCT + weak→strong via isometry)
+- `power` integrability/boundedness — **sorry-free** (uses `Re(s) = 0` hypothesis)
 
-**Remaining sorrys in Spectral.lean:**
-- `functionalCalculus_mul` — multiplicativity f(T)g(T) = (fg)(T)
-- `power` integrability/boundedness (2 sorrys)
-- `power_zero`, `power_add` — depend on functionalCalculus_mul
-- `unitaryGroup_continuous` — dominated convergence
+**Key change:** `unitaryGroup` no longer uses `power` (λ^{it}). It uses `exp(itλ)` directly,
+which removes the positivity requirement and makes U(0)=1 trivially true.
+
+**Remaining sorrys in Spectral.lean (2):**
+- `power_zero` — requires spectral support argument: P((-∞,0]) = 0 for positive T (isolated, not on critical path)
+- `power_imaginary_unitary` — depends on `power_zero` (isolated, not on critical path)
 
 ### Stone's Theorem
 
@@ -99,22 +109,23 @@ for all bounded measurable f and does not depend on the Cayley transform.
 - Uses `functionalCalculus` (sesquilinear form) instead of `UnboundedCFC`
 - Proof: `functionalCalculus_inner` + definitional equality of Bform and spectralIntegral
 
-### Step 4: Complete functionalCalculus properties ← NEXT
+### ✅ Step 4: Complete functionalCalculus properties — MOSTLY DONE
 **File:** `Unbounded/Spectral.lean`
 
-- `functionalCalculus_mul`: from P(E∩F)=P(E)P(F) via simple function approximation
-- `power` integrability/boundedness: need spectral support argument for positive T
-- `power_zero`, `power_add`: follow from functionalCalculus_mul
+- ✅ `functionalCalculus_mul`: **sorry-free** (SimpleFunc.induction + DCT + adjoint trick)
+- ✅ `power` integrability/boundedness: **sorry-free** (added `Re(s) = 0` hypothesis)
+- `power_zero`: needs spectral support argument for positive T
+- `power_add`: now easy from `functionalCalculus_mul`
 - `unitaryGroup_continuous`: dominated convergence
 
-### Step 5: Stone's Theorem — Forward Direction
+### ✅ Step 5: Stone's Theorem — Forward Direction — DONE
 **File:** `Unbounded/Spectral.lean`
 
-Once functionalCalculus_mul is complete:
-- Group property: `U(s)U(t) = U(s+t)` — uses `power_add`
-- U(0) = 1 — uses `power_zero`
-- U(t)* = U(-t) — **already proven** (uses `functionalCalculus_star`)
-- **Only remaining sorry**: `unitaryGroup_continuous` — dominated convergence
+All properties of the one-parameter unitary group are **sorry-free**:
+- `unitaryGroup_zero`: `U(0) = 1` — **sorry-free**
+- `unitaryGroup_mul`: `U(s)U(t) = U(s+t)` — **sorry-free**
+- `unitaryGroup_inv`: `U(t)* = U(-t)` — **sorry-free**
+- `unitaryGroup_continuous`: `t ↦ U(t)x` is continuous — **sorry-free** (DCT + weak→strong)
 
 ### Step 6: Stone's Theorem — Inverse Direction (HARDEST)
 **File:** `Unbounded/StoneTheorem.lean`
@@ -127,28 +138,32 @@ Once functionalCalculus_mul is complete:
 ```
 [Steps 1-3]  PVM + spectral_theorem                    ✅ ALL DONE (sorry-free!)
     ↓
-[Step 4]     functionalCalculus_mul                     ← NEXT
+[Step 4]     functionalCalculus_mul + power             ✅ MOSTLY DONE (FC mul sorry-free!)
     ↓
-[Step 5]     Stone forward direction                    (mostly proven already)
+[Step 5]     Stone forward direction                    ✅ DONE (all unitary group properties sorry-free!)
     ↓
-[Step 6]     Stone inverse direction                    ← HARDEST (mollification)
+[Step 6]     Stone inverse direction                    ← NEXT/HARDEST (mollification)
 ```
 
 ## Sorry Summary by File
 
 | File | Sorrys | Category |
 |------|--------|----------|
-| `Unbounded/Spectral.lean` | 7 | FC mul (1) + power (3) + continuity (1) + FC mul dep (2) |
+| `Unbounded/Spectral.lean` | 2 | power_zero (1) + power_imaginary_unitary (1) — both isolated, not on critical path |
 | `Unbounded/StoneTheorem.lean` | ~9 | Stone's theorem (inverse direction hardest) |
-| `MeasureTheory/SpectralStieltjes.lean` | ~5 | Stieltjes measure infrastructure |
-| **Total (on critical path)** | **~21** | |
+| `MeasureTheory/SpectralStieltjes.lean` | 1 | `complexMeasure_eq_inner` |
+| **Total (on critical path)** | **~10** | |
 
 ### Sorry-Free Key Results
 - `spectral_theorem_pvm`: PVM existence
 - `spectral_theorem`: spectral representation ⟨x, f(T)y⟩ = ∫ f d⟨x, P y⟩
 - `functionalCalculus_star`: (f(T))* = f̄(T)
+- `functionalCalculus_mul`: f(T)g(T) = (fg)(T)
 - `functionalCalculus_inner`: ⟨x, f(T)y⟩ = Bform P f x y
+- `unitaryGroup_zero`: U(0) = 1
+- `unitaryGroup_mul`: U(s)U(t) = U(s+t)
 - `unitaryGroup_inv`: U(t)* = U(-t)
+- `unitaryGroup_continuous`: t ↦ U(t)x is continuous (DCT + weak→strong)
 - `UnboundedOperator.spectralMeasure`: spectral measure definition
 - `UnboundedOperator.spectralCayley`: Cayley transform definition
 - `UnboundedOperator.spectralMeasure_eq_RMK`: agreement with RMK
