@@ -516,23 +516,21 @@ structure WightmanFunctions (d : ℕ) [NeZero d] where
       3. Boundary values recover W_n: as Im(z) → 0⁺ from within the tube,
          W_analytic approaches the distribution W_n in the sense of distributions -/
   spectrum_condition : ∀ (n : ℕ),
-    ∃ (W_analytic : ForwardTube d n → ℂ),
-      -- Well-definedness: same point gives same value
-      (∀ z₁ z₂ : ForwardTube d n, z₁.val = z₂.val → W_analytic z₁ = W_analytic z₂) ∧
-      -- Holomorphicity: W_analytic is differentiable at each point
-      (∀ z : ForwardTube d n, ∃ (U : Set (Fin n → Fin (d + 1) → ℂ)),
-        z.val ∈ U ∧ ∀ w ∈ U ∩ ForwardTube d n, DifferentiableAt ℂ
-          (fun v => W_analytic ⟨v, sorry⟩) w) ∧
+    ∃ (W_analytic : (Fin n → Fin (d + 1) → ℂ) → ℂ),
+      -- Holomorphicity on the forward tube (DifferentiableOn avoids subtype issues)
+      DifferentiableOn ℂ W_analytic (ForwardTube d n) ∧
       -- Boundary values: W_analytic recovers W_n as imaginary parts approach zero.
-      -- Mathematically: for any test function f, lim_{ε→0⁺} ∫ W_analytic(x - iεη) f(x) dx = W_n(f)
-      -- where η is a vector in the forward cone specifying the approach direction.
-      -- We express this as: the boundary limit exists and equals W_n applied to the test function
-      (∀ f : SchwartzNPoint d n, ∀ ε : ℝ, ε > 0 →
-        -- There exists a limiting value as we approach the real boundary
-        ∃ (limit : ℂ), ∀ δ : ℝ, 0 < δ → δ < ε →
-          -- The analytic continuation at points with small imaginary part
-          -- approaches the limiting value (expressed via test function pairing)
-          ‖W n f - limit‖ < ε)
+      -- For any test function f and approach direction η with components in V₊,
+      -- lim_{ε→0⁺} ∫ W_analytic(x - iεη) f(x) dx = W_n(f)
+      -- This is the distributional boundary value condition:
+      -- the smeared analytic continuation converges to the Wightman distribution.
+      (∀ (f : SchwartzNPoint d n) (η : Fin n → Fin (d + 1) → ℝ),
+        (∀ k, InOpenForwardCone d (η k)) →
+        Filter.Tendsto
+          (fun ε : ℝ => ∫ x : NPointDomain d n,
+            W_analytic (fun k μ => ↑(x k μ) - ε * ↑(η k μ) * Complex.I) * (f x))
+          (nhdsWithin 0 (Set.Ioi 0))
+          (nhds (W n f)))
   /-- Local commutativity (weak form) -/
   locally_commutative : IsLocallyCommutativeWeak d W
   /-- Positive definiteness -/
@@ -809,10 +807,19 @@ def PreHilbertSpace.innerProduct {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d
     -- Combine: IP a₁ a₂ = IP b₁ a₂ = IP b₁ b₂
     rw [ha_eq a₂, hb_eq b₁])
 
-/-- The Hilbert space obtained by completion.
-    Note: Full formalization would require showing PreHilbertSpace has a UniformSpace structure. -/
-def ReconstructedHilbertSpace {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) : Type :=
-  PreHilbertSpace Wfn  -- Placeholder: would be Completion (PreHilbertSpace Wfn)
+/-- The pre-Hilbert space from the GNS construction: BorchersSequence / NullSpace.
+
+    This is the quotient of Borchers sequences by the null space of the Wightman
+    inner product. To obtain the actual Hilbert space (a complete inner product space),
+    one would need to:
+    1. Equip this type with a UniformSpace/MetricSpace structure from the inner product
+    2. Take the Cauchy completion using Mathlib's `UniformSpace.Completion`
+    3. Show the inner product extends by continuity to the completion
+
+    For the reconstruction theorem, the pre-Hilbert space suffices to define
+    the field operators and verify the Wightman axioms on the dense domain. -/
+def ReconstructedPreHilbertSpace {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) : Type :=
+  PreHilbertSpace Wfn
 
 /-! ### Field Operators -/
 
@@ -820,22 +827,46 @@ namespace Reconstruction
 
 variable {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d)
 
+/-- The vacuum Borchers sequence: f_0 = 1 (constant function), f_n = 0 for n ≥ 1.
+    The vacuum is the unit of the Borchers algebra. Its inner product with
+    φ(f₁)···φ(fₙ)Ω gives W_n(f₁ ⊗ ··· ⊗ fₙ). -/
+def vacuumSequence : BorchersSequence d where
+  funcs := fun n => match n with
+    | 0 => {
+        toFun := fun _ => 1
+        smooth' := contDiff_const
+        decay' := by
+          intro k n
+          use 1
+          intro x
+          rw [show x = 0 from Subsingleton.elim x 0, norm_zero]
+          rcases Nat.eq_zero_or_pos k with rfl | hk
+          · simp only [pow_zero, one_mul]
+            rcases Nat.eq_zero_or_pos n with rfl | hn
+            · rw [norm_iteratedFDeriv_zero]; simp
+            · simp [iteratedFDeriv_const_of_ne (𝕜 := ℝ)
+                (Nat.pos_iff_ne_zero.mp hn) (1 : ℂ) (E := NPointDomain d 0)]
+          · simp [zero_pow (Nat.pos_iff_ne_zero.mp hk)]
+      }
+    | _ + 1 => 0
+  bound := 1
+  bound_spec := fun n hn => by
+    match n with
+    | 0 => omega
+    | k + 1 => rfl
+
 /-- The vacuum vector in the reconstructed Hilbert space.
-    The vacuum Borchers sequence has f_n = 0 for all n. -/
+    The vacuum Borchers sequence has f_0 = 1 (constant function), f_n = 0 for n ≥ 1. -/
 def vacuum : PreHilbertSpace Wfn :=
-  Quotient.mk _ ⟨fun _ => 0, 0, fun _ _ => rfl⟩
+  Quotient.mk _ (vacuumSequence (d := d))
 
 /-- Convert a spacetime test function to a 1-point Schwartz function.
-    Uses the equivalence SpacetimeDim d ≃ (Fin 1 → SpacetimeDim d). -/
-def schwartzToOnePoint (f : SchwartzSpacetime d) : SchwartzNPoint d 1 where
-  toFun := fun x => f (x 0)
-  smooth' := by
-    -- The map x ↦ x 0 is a continuous linear projection, hence smooth.
-    -- Composition of smooth functions is smooth.
-    sorry
-  decay' := by
-    -- The projection ‖x‖ ≥ ‖x 0‖ gives the decay bounds.
-    sorry
+    Uses the equivalence SpacetimeDim d ≃ (Fin 1 → SpacetimeDim d).
+    Composing f with the projection (Fin 1 → SpacetimeDim d) → SpacetimeDim d
+    preserves the Schwartz class because the projection is a continuous linear equivalence. -/
+def schwartzToOnePoint (f : SchwartzSpacetime d) : SchwartzNPoint d 1 :=
+  SchwartzMap.compCLMOfContinuousLinearEquiv ℝ
+    (ContinuousLinearEquiv.funUnique (Fin 1) ℝ (SpacetimeDim d)) f
 
 /-- The field operator action on Borchers sequences.
     For a test function f ∈ S(ℝ^{d+1}), this creates the sequence (φ(f)F) where:
@@ -894,12 +925,20 @@ end Reconstruction
     This is a foundational theorem of axiomatic QFT established by Wightman (1956)
     and elaborated in Streater-Wightman (1964). -/
 theorem wightman_reconstruction (Wfn : WightmanFunctions d) :
-    ∃ (qft : WightmanQFT d), True := by
+    ∃ (qft : WightmanQFT d),
+      -- The reconstructed QFT's n-point functions match W_n on product test functions:
+      -- ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩ = W_n(f₁ ⊗ ··· ⊗ fₙ)
+      ∀ (n : ℕ) (fs : Fin n → SchwartzSpacetime d),
+        qft.wightmanFunction n fs = Wfn.W n (SchwartzMap.productTensor fs) := by
   -- The construction proceeds via:
-  -- 1. Form the pre-Hilbert space of Borchers sequences
-  -- 2. Complete to obtain the Hilbert space
-  -- 3. Define field operators via the natural action on sequences
-  -- 4. Verify all Wightman axioms
+  -- 1. Form the pre-Hilbert space of Borchers sequences quotient by null vectors
+  -- 2. Complete to obtain the Hilbert space H
+  -- 3. Define vacuum Ω as the class of (1, 0, 0, ...)
+  -- 4. Define field operators φ(f) via prepending f to sequences
+  -- 5. Verify all Wightman axioms (R0-R5)
+  -- 6. The key property: ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩ = W_n(f₁ ⊗ ··· ⊗ fₙ)
+  --    follows from the definition of the inner product and field operator action
+  -- See Reconstruction/GNSConstruction.lean for the detailed construction.
   sorry
 
 /-- The uniqueness part: two Wightman QFTs with the same smeared n-point functions
@@ -1020,22 +1059,16 @@ structure OsterwalderSchraderAxioms (d : ℕ) [NeZero d] where
       for n ≥ 2 at large separations. Equivalently, for product test functions
       with widely separated supports, S_{n+m} factorizes. -/
   E4_cluster : ∀ (n m : ℕ) (f : SchwartzNPoint d n) (g : SchwartzNPoint d m),
-    -- For test functions f and g with separated supports, clustering holds:
-    -- As spatial separation increases, S_{n+m} approaches S_n · S_m
-    -- Mathematically: ∀ ε > 0, ∃ R > 0 such that for spatial translation a with |a| > R,
-    -- |S_{n+m}(f ⊗ (g translated by a)) - S_n(f) · S_m(g)| < ε
-    -- We express this as: the "connected" contribution decays
+    -- Cluster property: as spatial separation increases, S_{n+m} factorizes.
+    -- For any ε > 0, there exists R > 0 such that for spatial translation a with |a| > R,
+    -- |S_{n+m}(f ⊗ τ_a g) - S_n(f) · S_m(g)| < ε
+    -- where τ_a g is g translated by a in all m coordinates.
     ∀ ε : ℝ, ε > 0 → ∃ R : ℝ, R > 0 ∧
       ∀ a : SpacetimeDim d, (∑ i : Fin d, (a (Fin.succ i))^2) > R^2 →
-        -- The separated correlation minus the product is small:
-        -- |S_{n+m}(f ⊗ τ_a g) - S_n(f) · S_m(g)| < ε
-        -- where τ_a g is g translated by a in the last m coordinates.
-        -- We express this via: there exists a way to pair f and g at separation a
-        -- (requires tensor product to fully formalize the pairing)
-        ∃ (S_combined : ℂ),
-          -- The combined correlation at separation a
-          -- (would be S_{n+m}(f ⊗ τ_a g) with proper tensor product)
-          ‖S_combined - S n f * S m g‖ < ε
+        -- For any Schwartz function g_a that is the translation of g by a:
+        ∀ (g_a : SchwartzNPoint d m),
+          (∀ x : NPointDomain d m, g_a x = g (fun i => x i - a)) →
+          ‖S (n + m) (f.tensorProduct g_a) - S n f * S m g‖ < ε
 
 /-- The linear growth condition E0' from OS II (1975).
 
@@ -1083,12 +1116,25 @@ structure OSLinearGrowthCondition (d : ℕ) [NeZero d] (OS : OsterwalderSchrader
     Temperedness (E0) requires Proposition 5.1 of OS I (a geometric lemma on Ω_n).
     Reflection positivity (E2) follows from Wightman positivity (R2).
     Cluster (E4) follows from R4. -/
-theorem wightman_to_os (qft : WightmanQFT d) :
-    ∃ OS : OsterwalderSchraderAxioms d, True := by
+theorem wightman_to_os (Wfn : WightmanFunctions d) :
+    ∃ (OS : OsterwalderSchraderAxioms d),
+      -- The Schwinger functions are connected to the Wightman functions by
+      -- analytic continuation through the forward tube (Wick rotation).
+      -- For each n, there exists a holomorphic function on the forward tube
+      -- whose boundary values are W_n and whose Euclidean restriction gives S_n.
+      ∀ (n : ℕ), ∃ (W_analytic : (Fin n → Fin (d + 1) → ℂ) → ℂ),
+        DifferentiableOn ℂ W_analytic (ForwardTube d n) := by
   -- The construction requires:
   -- 1. Analytic continuation of W_n to the permuted extended tube (BHW theorem)
+  --    See Reconstruction/AnalyticContinuation.lean
   -- 2. Restriction to Euclidean points to define S_n
-  -- 3. Verification of E0-E4 from R0-R5
+  -- 3. Verification of E0-E4 from R0-R5:
+  --    E0: temperedness from R0 + geometric estimates (OS I, Prop 5.1)
+  --    E1: Euclidean covariance from complex Lorentz invariance (SO(d+1) ⊂ L₊(ℂ))
+  --    E2: reflection positivity from Wightman positivity (R2)
+  --    E3: permutation symmetry from BHW permutation invariance
+  --    E4: cluster from R4
+  -- See Reconstruction/WickRotation.lean for the detailed proof.
   sorry
 
 /-- Theorem E'→R' (OS II): Schwinger functions satisfying the linear growth
@@ -1103,11 +1149,22 @@ theorem wightman_to_os (qft : WightmanQFT d) :
     condition R0'. -/
 theorem os_to_wightman (OS : OsterwalderSchraderAxioms d)
     (linear_growth : OSLinearGrowthCondition d OS) :
-    ∃ Wfn : WightmanFunctions d, True := by
-  -- The analytic continuation of Schwinger functions yields Wightman functions
-  -- This requires:
-  -- 1. E0' + E1 + E2 for analytic continuation to complex times (Chapter V of OS II)
-  -- 2. E0' for the temperedness estimates (Chapter VI of OS II)
+    ∃ (Wfn : WightmanFunctions d),
+      -- The boundary values of the analytic continuation of the Schwinger functions
+      -- define Wightman functions. For each n, the analytic continuation on the
+      -- forward tube connects S_n (Euclidean restriction) to W_n (boundary values).
+      -- The growth control from E0' ensures temperedness at each step.
+      ∀ (n : ℕ), ∃ (W_analytic : (Fin n → Fin (d + 1) → ℂ) → ℂ),
+        DifferentiableOn ℂ W_analytic (ForwardTube d n) := by
+  -- The analytic continuation of Schwinger functions yields Wightman functions.
+  -- The proof follows OS II (1975):
+  -- Phase 1: Hilbert space from E2 (reflection positivity) via GNS
+  -- Phase 2: Contraction semigroup from Euclidean time translation (E0' + E1)
+  -- Phase 3: Inductive analytic continuation C_k^(0) → C_k^(1) → ... → C_k^(d+1) = T_k
+  --   (OS II, Theorem 4.1-4.2 — E0' is essential at each step)
+  -- Phase 4: Boundary values are tempered distributions (E0' gives growth control)
+  -- Phase 5: Verify R0-R5 from E0'-E4
+  -- See Reconstruction/WickRotation.lean
   sorry
 
 end

@@ -8,11 +8,10 @@ The reconstruction takes Schwinger functions as given input — nuclear spaces a
 
 ### Critical Path for OS Reconstruction
 
-1. **Fix OSLinearGrowthCondition definition** (sorry in definition! — line 499)
-2. **Schwartz tensor product** → blocks WightmanInnerProduct, fieldOperatorAction
-3. **GNS construction steps** → borchersSetoid.trans, PreHilbertSpace.innerProduct
-4. **wightman_to_os** (R→E, easier direction via Wick rotation)
-5. **os_to_wightman** (E'→R', the hard theorem — analytic continuation + E0')
+1. **Schwartz tensor product sorrys** → smooth'/decay' for conjTensorProduct, prependField
+2. **Field operator well-definedness** → fieldOperator quotient lift
+3. **wightman_to_os** (R→E, needs BHW + analytic continuation)
+4. **os_to_wightman** (E'→R', the hard theorem — analytic continuation + E0')
 
 ### What Does NOT Block Reconstruction
 
@@ -35,54 +34,94 @@ but not for the OS reconstruction theorems themselves.
 | Spacetime/Metric.lean | 0 | Complete |
 | WightmanAxioms.lean | 1 | WightmanDistribution needs tensor product |
 | OperatorDistribution.lean | 1 | momentum_eq_generator (Stone theorem, not blocking) |
-| **Reconstruction.lean** | **12** | **TOP PRIORITY** |
+| SchwartzTensorProduct.lean | 10 | Schwartz smooth'/decay' for tensor ops |
+| **Reconstruction.lean** | **5** | Core theorems + field operator |
+| **Reconstruction/AnalyticContinuation.lean** | **14** | NEW: Tube domains, BHW, edge-of-wedge |
+| **Reconstruction/GNSConstruction.lean** | **5** | NEW: Vacuum, field ops, GNS property |
+| **Reconstruction/WickRotation.lean** | **24** | NEW: OS↔Wightman bridge |
 | NuclearSpaces/NuclearOperator.lean | 4 | Deferred (not blocking reconstruction) |
 | NuclearSpaces/NuclearSpace.lean | 4 | Deferred |
 | NuclearSpaces/BochnerMinlos.lean | 6 | Deferred |
-| NuclearSpaces/SchwartzNuclear.lean | 7 | Deferred |
+| NuclearSpaces/SchwartzNuclear.lean | 8 | Deferred |
 | NuclearSpaces/EuclideanMeasure.lean | 6 | Deferred |
-| **Total** | **~39** | |
+| **Total** | **~88** | |
 
-## Reconstruction.lean Sorry Breakdown (12 sorrys)
+## Recent Progress
 
-### Infrastructure (blocking)
-- `OSLinearGrowthCondition.growth_estimate`: **Sorry in definition!** Replace with Schwartz seminorm
-- `WightmanInnerProduct`: Needs tensor product f̄_m ⊗ g_{n-m}
-- `fieldOperatorAction`: Needs tensor product (prepend f to sequence)
+### Proven (no sorry)
+- `WightmanInnerProduct_hermitian` — Hermiticity of inner product ⟨F,G⟩ = conj(⟨G,F⟩)
+- `null_inner_product_zero` — Null vector annihilation ⟨X,X⟩.re=0 → ⟨X,Y⟩=0
+- `PreHilbertSpace.innerProduct` — Well-definedness on quotient (via Cauchy-Schwarz)
+- `borchersSetoid.trans` — Transitivity of GNS equivalence relation
+- `preHilbert_inner_pos` — Positive semi-definiteness on quotient
+- `preHilbert_inner_real` — Inner product real on diagonal
+- `schwartzToOnePoint` — Via compCLMOfContinuousLinearEquiv (no more sorry!)
+- `fieldOperatorAction` — Borchers sequence level (uses prependField)
+- Full sesquilinearity infrastructure (add, smul, neg, sub in both arguments)
 
-### GNS Construction
-- `borchersSetoid.trans`: Transitivity (Cauchy-Schwarz)
-- `PreHilbertSpace.innerProduct`: Well-definedness on quotient (Cauchy-Schwarz)
-- `fieldOperator`: Well-definedness on quotient
+### Infrastructure Created (with sorrys for proofs)
+- `Reconstruction/AnalyticContinuation.lean` — ComplexLorentzGroup, tube domains,
+  Bargmann-Hall-Wightman, edge-of-the-wedge, Jost lemma, SchwingerFromWightman
+- `Reconstruction/GNSConstruction.lean` — Vacuum sequence, field operator properties,
+  GNS reproduces Wightman functions
+- `Reconstruction/WickRotation.lean` — constructSchwingerFunctions, OS↔Wightman bridge,
+  EuclideanSemigroup, AnalyticContinuationRegion, constructWightmanFunctions,
+  IsWickRotationPair, wightman_to_os_full, os_to_wightman_full
+
+## Reconstruction.lean Sorry Breakdown (5 sorrys)
+
+### Field Operator
+- `fieldOperator`: Well-definedness on quotient (needs null vector preservation)
 
 ### Main Theorems
-- `wightman_reconstruction`: Full GNS → WightmanQFT
+- `wightman_reconstruction`: Full GNS → WightmanQFT + reproduces Wightman functions
 - `wightman_uniqueness`: Uniqueness up to unitary equivalence
 
-### OS Bridge (the main goal)
-- `wightman_to_os` (R→E): Wick rotation, straightforward
-- `os_to_wightman` (E'→R'): **THE HARD THEOREM** — needs:
-  - Pre-Hilbert space from E2 (reflection positivity)
-  - Contraction semigroup from E0'+E1
-  - Inductive analytic continuation (OS II Thm 4.1-4.2)
-  - Boundary values → Wightman distributions (E0' essential)
-  - Verify R0-R5
+### OS Bridge
+- `wightman_to_os` (R→E): Produces OS axioms with analytic continuation on forward tube
+- `os_to_wightman` (E'→R'): Produces Wightman functions from OS axioms + linear growth
 
-### WightmanFunctions.spectrum_condition (2 sorrys)
-- Holomorphicity in ForwardTube (dependent type)
-- Boundary values of analytic continuation
+## AnalyticContinuation.lean Sorry Breakdown (14 sorrys)
 
-## Architecture (Reconstruction Focus)
+### Complex Lorentz Group
+- `ComplexLorentzGroup.ofReal`: metric_preserving, proper, orthochronous
+- `ComplexLorentzGroup.ofEuclidean`: metric_preserving, proper, orthochronous
+
+### Tube Domains
+- `euclidean_ordered_in_forwardTube`: Ordered Euclidean points in forward tube
+- `euclidean_distinct_in_permutedTube`: Distinct Euclidean points in permuted tube
+
+### Key Theorems
+- `edge_of_the_wedge`: Bogoliubov's theorem
+- `bargmann_hall_wightman`: Extension to permuted extended tube
+- `jost_lemma`: Spacelike commutativity at Jost points
+- `schwinger_euclidean_invariant`, `schwinger_permutation_symmetric`
+
+## WickRotation.lean Sorry Breakdown (24 sorrys)
+
+### OS↔Wightman Construction
+- `constructedSchwinger_symmetric`: BHW permutation symmetry
+- `constructedSchwinger_cluster`: Cluster property
+- `osPreHilbertSpace`: 10 sorrys (WightmanFunctions construction from OS data)
+- `AnalyticContinuationRegion`: Definition correct, sorrys in theorems using it
+- `inductive_analytic_continuation`: OS II Theorem 4.1
+- `full_analytic_continuation`: Forward tube reached after d+1 steps
+- `boundary_values_tempered`: E0' ensures tempered boundary values
+- `constructWightmanFunctions`: 7 fields sorry'd (normalized through hermitian)
+- `wightman_to_os_full`, `os_to_wightman_full`: Wick rotation pair property
+
+## Architecture
 
 ```
 Layer 0 (DONE): Metric, Lorentz, Poincare, Basic — 0 sorrys
     ↓
 OperatorDistribution.lean ──> WightmanAxioms.lean
     ↓                              ↓
-    └──────────> Reconstruction.lean ←── NEW: TensorProduct infrastructure
+    └──────────> Reconstruction.lean ←── SchwartzTensorProduct.lean
                      ↓
-              os_to_wightman (E'→R')  ←── NEW: AnalyticContinuation infrastructure
-              wightman_to_os (R→E)
+              Reconstruction/AnalyticContinuation.lean  (tube domains, BHW)
+              Reconstruction/GNSConstruction.lean       (vacuum, field ops)
+              Reconstruction/WickRotation.lean          (OS↔Wightman bridge)
 ```
 
 Nuclear spaces / Minlos are a SEPARATE development line for constructive QFT.
@@ -93,3 +132,5 @@ Nuclear spaces / Minlos are a SEPARATE development line for constructive QFT.
   - Note: Lemma 8.8 has a gap (fixed in OS II)
 - **OS II**: "reconstruction theorem II.pdf" — Linear growth E0' (§IV.1),
   analytic continuation (§V), temperedness estimates (§VI)
+- **Streater-Wightman**: "PCT, Spin and Statistics, and All That" — Chapter 3
+- **Glimm-Jaffe**: "Quantum Physics" — Chapter 19 (reconstruction)

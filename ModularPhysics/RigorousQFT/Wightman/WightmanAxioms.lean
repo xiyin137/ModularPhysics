@@ -8,6 +8,7 @@ import Mathlib.Analysis.Distribution.TemperedDistribution
 import Mathlib.Analysis.SpecialFunctions.Complex.Analytic
 import ModularPhysics.RigorousQFT.Wightman.Basic
 import ModularPhysics.RigorousQFT.Wightman.OperatorDistribution
+import ModularPhysics.RigorousQFT.Wightman.SchwartzTensorProduct
 
 /-!
 # Wightman Axioms
@@ -256,27 +257,42 @@ abbrev NPointSpacetime (d n : ℕ) := Fin n → Fin (d + 1) → ℝ
 /-- Schwartz space on n copies of spacetime -/
 abbrev SchwartzNPointSpace (d n : ℕ) := SchwartzMap (NPointSpacetime d n) ℂ
 
-/-- The Wightman n-point function as a distribution on n-point test functions.
+/-- The Wightman n-point function on product test functions.
 
-    The smeared Wightman function W_n(F) for F ∈ 𝒮(ℝ^{n(d+1)}) is defined by:
-      W_n(F) = ∫ dx₁...dxₙ W_n(x₁,...,xₙ) F(x₁,...,xₙ)
+    W_n(f₁, ..., fₙ) = ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩
 
-    For product test functions F = f₁ ⊗ ... ⊗ fₙ, this equals ⟨Ω, φ(f₁)...φ(fₙ)Ω⟩.
-    The nuclear theorem guarantees extension to general test functions. -/
-def WightmanDistribution (qft : WightmanQFT d) (n : ℕ) :
-    SchwartzNPointSpace d n → ℂ :=
-  fun F => sorry  -- Would require tensor product infrastructure to properly define
+    This is defined for factored test functions (f₁,...,fₙ) where each fᵢ ∈ 𝒮(ℝ^{d+1}).
+    Extension to general test functions F ∈ 𝒮(ℝ^{n(d+1)}) requires the nuclear
+    theorem for Schwartz spaces, which guarantees that the multilinear functional
+    on 𝒮(ℝ^{d+1})^⊗n extends uniquely to a continuous linear functional on
+    the completed projective tensor product 𝒮(ℝ^{n(d+1)}). -/
+def WightmanDistributionProduct (qft : WightmanQFT d) (n : ℕ) :
+    (Fin n → SchwartzSpacetime d) → ℂ :=
+  qft.wightmanFunction n
 
-/-- Temperedness of Wightman functions: W_n extends to a continuous linear
-    functional on the Schwartz space 𝒮(ℝ^{n(d+1)}).
+/-- The nuclear theorem guarantees that the multilinear Wightman n-point function
+    extends to a continuous linear functional on the full Schwartz space 𝒮(ℝ^{n(d+1)}).
 
-    Mathematically, this means f ↦ W_n(f) is a tempered distribution, i.e.,
-    there exist C > 0 and seminorm indices such that |W_n(f)| ≤ C · ‖f‖_{α,β}
-    for all test functions f.
+    This is the content of the Schwartz nuclear theorem: since 𝒮(ℝ^{d+1}) is nuclear,
+    the completed projective tensor product 𝒮(ℝ^{d+1}) ⊗̂_π ··· ⊗̂_π 𝒮(ℝ^{d+1})
+    is isomorphic (as a topological vector space) to 𝒮(ℝ^{n(d+1)}).
 
-    This is expressed as continuity with respect to the Schwartz topology. -/
+    Therefore the multilinear functional (f₁,...,fₙ) ↦ ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩
+    has a unique continuous linear extension to 𝒮(ℝ^{n(d+1)}). -/
+theorem wightmanDistribution_extends (qft : WightmanQFT d) (n : ℕ) :
+    ∃ (W_n : SchwartzNPointSpace d n →L[ℂ] ℂ),
+      ∀ fs : Fin n → SchwartzSpacetime d,
+        W_n (SchwartzMap.productTensor fs) = qft.wightmanFunction n fs := by
+  sorry
+
+/-- Temperedness of Wightman functions: The multilinear Wightman n-point function
+    (f₁,...,fₙ) ↦ ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩ is separately continuous in each argument.
+
+    Full temperedness (continuity of the extension to 𝒮(ℝ^{n(d+1)})) follows from
+    the nuclear theorem; see `wightmanDistribution_extends`. -/
 def WightmanTempered (qft : WightmanQFT d) (n : ℕ) : Prop :=
-  Continuous (WightmanDistribution d qft n)
+  ∀ (i : Fin n) (fs : Fin n → SchwartzSpacetime d),
+    Continuous (fun f => qft.wightmanFunction n (Function.update fs i f))
 
 /-! ### Analytic Continuation -/
 
@@ -331,19 +347,28 @@ structure WightmanAnalyticity (qft : WightmanQFT d) where
 
 /-- Boundary values of the analytic continuation recover Wightman functions.
 
-    For any approach direction η with each component in V₊ and any collection of
-    spacetime points x₁,...,xₙ, the limit from within the forward tube is:
+    For any approach direction η with each component in V₊ and any real configuration x,
+    the limit from within the forward tube exists:
       lim_{ε→0⁺} W_analytic(x₁ - iεη₁, ..., xₙ - iεηₙ) exists
 
     The distributional boundary values, paired with test functions, equal the
     Wightman n-point functions: ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩.
 
     This is a deep analytic result connecting holomorphic functions to distributional
-    boundary values via the Vladimirov-Wightman theory. -/
+    boundary values via the Vladimirov-Wightman theory.
+
+    Ref: Streater-Wightman, "PCT, Spin and Statistics", Theorem 3-7 -/
 theorem wightman_analyticity_boundary (qft : WightmanQFT d)
-    (ha : WightmanAnalyticity d qft) (n : ℕ) (fs : Fin n → SchwartzSpacetime d) :
-    ∃ limit : ℂ, limit = qft.wightmanFunction n fs := by
-  exact ⟨_, rfl⟩  -- Existence is trivial; the content is in connecting to analytic continuation
+    (ha : WightmanAnalyticity d qft) (n : ℕ)
+    (x : Fin n → Fin (d + 1) → ℝ)
+    (η : Fin n → Fin (d + 1) → ℝ) (hη : ∀ k, InOpenForwardCone d (η k)) :
+    -- The limit of the analytic continuation from within the forward tube exists
+    ∃ (limit : ℂ), Filter.Tendsto
+      (fun ε : ℝ => ha.analyticContinuation n
+        (fun k μ => ↑(x k μ) - ε * ↑(η k μ) * Complex.I))
+      (nhdsWithin 0 (Set.Ioi 0))
+      (nhds limit) := by
+  sorry
 
 end
 

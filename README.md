@@ -46,6 +46,7 @@ ModularPhysics/
 │   ├── SPDE/
 │   │   ├── EKMS/
 │   │   ├── Examples/
+│   │   ├── Helpers/
 │   │   ├── Nonstandard/
 │   │   │   ├── Anderson/
 │   │   │   ├── Foundation/
@@ -54,14 +55,17 @@ ModularPhysics/
 │   │   └── RegularityStructures/
 │   │       ├── Models/
 │   │       └── Trees/
-│   ├── vNA/
-│   │   ├── MeasureTheory/
-│   │   ├── Spectral/
-│   │   │   └── FunctionalCalculusFromCFC/
-│   │   └── Unbounded/
-│   └── Wightman/
-│       ├── Groups/
-│       └── Spacetime/
+│   ├── Wightman/
+│   │   ├── Groups/
+│   │   ├── NuclearSpaces/
+│   │   ├── Reconstruction/
+│   │   └── Spacetime/
+│   └── vNA/
+│       ├── Bochner/
+│       ├── MeasureTheory/
+│       ├── Spectral/
+│       │   └── Helpers/
+│       └── Unbounded/
 ├── StringAlgebra/
 │   ├── Linfinity/
 │   ├── MZV/
@@ -71,6 +75,7 @@ ModularPhysics/
 │   │   ├── Analytic/
 │   │   │   ├── Applications/
 │   │   │   │   └── Helpers/
+│   │   │   ├── Helpers/
 │   │   │   ├── HodgeTheory/
 │   │   │   │   ├── Helpers/
 │   │   │   │   └── Infrastructure/
@@ -107,12 +112,12 @@ ModularPhysics/
 
 ### StringGeometry
 
-Develops mathematical foundations for string theory geometry. Current focus is definition of supermanifolds, integration, and super Riemann surfaces; moduli theory to be developed later.
+Develops mathematical foundations for string theory geometry. Current focus is on developing infrastructure of Riemann surfaces, definition of supermanifolds, integration, and super Riemann surfaces; moduli theory to be developed later.
 
 ### StringAlgebra
 
-At a beginning stage with many placeholder definitions. Covers L-infinity algebras, multiple zeta values, and vertex operator algebras. Current focus is developing L-infinity algebra and BV formalism.
+At a beginning stage with many placeholder definitions. Covers L-infinity algebras, multiple zeta values, and vertex operator algebras. Current focus is on developing L-infinity algebra and the Batalin-Vilkovisky formalism.
 
 ### RigorousQFT
 
-At an early stage with many placeholders. Covers the Wightman axioms, von Neumann algebras, and stochastic PDE methods for constructive QFT. Current focus is developing functional analysis infrastructure and stochastic differential equations.
+Covers the Wightman axioms, von Neumann algebras, and stochastic PDE methods for constructive QFT. Current focus is on developing functional analysis infrastructure, stochastic differential equations, and establishing the Osterwalder-Schrader reconstruction theorem.
