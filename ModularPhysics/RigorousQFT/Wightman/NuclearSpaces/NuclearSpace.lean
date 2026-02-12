@@ -123,9 +123,20 @@ structure NuclearFrechet where
   seminorms_mono : ∀ n x, seminorms n x ≤ seminorms (n + 1) x
   /-- The seminorms separate points (Hausdorff condition) -/
   separating : ∀ x, (∀ n, seminorms n x = 0) → x = 0
+  /-- Each defining seminorm is continuous with respect to the topology -/
+  continuous_seminorms : ∀ n,
+    @Continuous Space ℝ instTopologicalSpace inferInstance (seminorms n)
+  /-- Every continuous seminorm on the space is bounded by some defining seminorm
+      (the defining seminorms generate the topology). -/
+  seminorms_generating : ∀ (p : Seminorm ℝ Space),
+    @Continuous Space ℝ instTopologicalSpace inferInstance p →
+    ∃ (n : ℕ) (C : ℝ), 0 < C ∧ ∀ x, p x ≤ C * seminorms n x
   /-- Nuclear condition: for each n, pₙ is nuclearly dominated by pₙ₊₁.
       There exist linear functionals bounded by pₙ₊₁ and summable coefficients
-      that provide a nuclear-type bound on pₙ. -/
+      that provide a nuclear-type bound on pₙ.
+
+      Note: The functionals are given as linear maps, but they are automatically
+      continuous because they are bounded by the continuous seminorm pₙ₊₁. -/
   nuclear_step : ∀ (n : ℕ),
     ∃ (φ : ℕ → Space →ₗ[ℝ] ℝ) (c : ℕ → ℝ),
       (∀ k, 0 ≤ c k) ∧

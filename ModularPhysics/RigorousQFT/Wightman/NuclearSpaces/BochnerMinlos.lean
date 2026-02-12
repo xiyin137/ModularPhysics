@@ -213,21 +213,4 @@ theorem gaussianCharacteristicFunctional_posdef {H : Type*}
     IsPositiveDefiniteFn (gaussianCharacteristicFunctional A hA_pos) := by
   sorry
 
-/-! ### Free Field Characteristic Functional -/
-
-/-- The free field characteristic functional for a scalar field of mass m on ℝᵈ:
-    C(f) = exp(-½ ⟨f, (-Δ + m²)⁻¹ f⟩_{L²})
-
-    This is a Gaussian characteristic functional where A = (-Δ + m²)⁻¹ is the
-    Green's function (propagator) of the Klein-Gordon operator.
-
-    When the Schwartz space S(ℝᵈ) is shown to be nuclear (SchwartzNuclear.lean),
-    Minlos' theorem gives a probability measure μ on S'(ℝᵈ) = tempered distributions. -/
-def freeFieldCharacteristic (d : ℕ) (m : ℝ) (_hm : 0 < m) :
-    (EuclideanSpace ℝ (Fin d) → ℝ) → ℂ :=
-  -- In the full construction, this would use the Fourier transform:
-  -- ⟨f, (-Δ+m²)⁻¹ f⟩ = ∫ |f̂(k)|² / (|k|² + m²) dk
-  -- For now, we define the quadratic form abstractly
-  fun _f => sorry
-
 end

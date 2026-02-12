@@ -4,6 +4,7 @@ Released under Apache 2.0 license.
 Authors: ModularPhysics Contributors
 -/
 import Mathlib.Analysis.Distribution.SchwartzSpace
+import Mathlib.Analysis.Fourier.FourierTransform
 import ModularPhysics.RigorousQFT.Wightman.NuclearSpaces.BochnerMinlos
 import ModularPhysics.RigorousQFT.Wightman.NuclearSpaces.SchwartzNuclear
 
@@ -15,11 +16,11 @@ reconstruction theorem, providing the measure-theoretic foundation for Euclidean
 
 ## Main Definitions
 
-* `FreeFieldQuadraticForm` - The quadratic form ⟨f, (-Δ+m²)⁻¹ f⟩ for a free scalar field.
-* `FreeFieldCharacteristic` - C(f) = exp(-½ ⟨f, (-Δ+m²)⁻¹ f⟩), the free field
-  characteristic functional.
-* `euclideanMeasure` - The Gaussian probability measure on S'(ℝᵈ) for the free field.
-* `SchwingerFromMeasure` - Schwinger functions as moments of the Euclidean measure.
+* `freeFieldForm` - The quadratic form Q(f) = ∫ |f̂(k)|² / (|k|² + m²) dk, defined
+  concretely using the Fourier transform.
+* `freeFieldCharacteristic` - C(f) = exp(-½ Q(f)), the free field characteristic functional.
+* `euclideanMeasure_exists` - Existence of the Gaussian probability measure on S'(ℝᵈ).
+* `schwingerTwoPoint` - Schwinger functions as moments of the Euclidean measure.
 
 ## Mathematical Background
 
@@ -70,41 +71,99 @@ from the characteristic functional C. This is why:
 noncomputable section
 
 open MeasureTheory Complex SchwartzMap
-open scoped SchwartzMap
+open scoped SchwartzMap FourierTransform
 
 variable (d : ℕ) (m : ℝ)
 
 /-! ### The Free Field Quadratic Form -/
 
-/-- The free field quadratic form on Schwartz space:
-    Q(f) = ⟨f, (-Δ + m²)⁻¹ f⟩_{L²} = ∫ |f̂(k)|² / (|k|² + m²) dk
+/-- The **propagator weight function**: `w(k) = 1 / (‖k‖² + m²)`.
 
-    This is computed in Fourier space where the propagator is diagonal.
-    The quadratic form is non-negative since (-Δ + m²) is a positive operator
-    (for m > 0), hence its inverse is also positive. -/
-structure FreeFieldQuadraticForm where
-  /-- The mass parameter (must be positive) -/
-  mass : ℝ
-  mass_pos : 0 < mass
-  /-- The spacetime dimension -/
-  dim : ℕ
-  /-- The quadratic form Q(f) = ⟨f, (-Δ+m²)⁻¹ f⟩ on Schwartz functions.
-      Defined via Fourier transform: Q(f) = ∫ |f̂(k)|²/(|k|²+m²) dk -/
-  form : 𝓢(EuclideanSpace ℝ (Fin dim), ℝ) → ℝ
-  /-- Q is non-negative -/
-  form_nonneg : ∀ f, 0 ≤ form f
-  /-- Q is a quadratic form: Q(αf) = α² Q(f) -/
-  form_smul : ∀ (α : ℝ) (f), form (α • f) = α ^ 2 * form f
-  /-- Q satisfies the parallelogram law -/
-  form_parallelogram : ∀ f g, form (f + g) + form (f - g) = 2 * form f + 2 * form g
-  /-- Q is continuous with respect to the Schwartz topology -/
-  form_continuous : Continuous form
+    This is the Fourier-space representation of the Green's function
+    `(-Δ + m²)⁻¹` for the Klein-Gordon operator. -/
+def propagatorWeight (d : ℕ) (m : ℝ) : EuclideanSpace ℝ (Fin d) → ℝ :=
+  fun k => 1 / (‖k‖ ^ 2 + m ^ 2)
 
-/-- The associated bilinear form: B(f,g) = ¼[Q(f+g) - Q(f-g)]. -/
-def FreeFieldQuadraticForm.bilinearForm (Q : FreeFieldQuadraticForm) :
-    𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →
-    𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) → ℝ :=
-  fun f g => (Q.form (f + g) - Q.form (f - g)) / 4
+/-- The propagator weight is non-negative when m ≥ 0. -/
+theorem propagatorWeight_nonneg (_hm : 0 ≤ m) (k : EuclideanSpace ℝ (Fin d)) :
+    0 ≤ propagatorWeight d m k := by
+  unfold propagatorWeight
+  apply div_nonneg one_pos.le
+  positivity
+
+/-- The propagator weight is bounded above by 1/m² when m > 0. -/
+theorem propagatorWeight_le (hm : 0 < m) (k : EuclideanSpace ℝ (Fin d)) :
+    propagatorWeight d m k ≤ 1 / m ^ 2 := by
+  unfold propagatorWeight
+  apply div_le_div_of_nonneg_left one_pos.le
+  · positivity
+  · linarith [sq_nonneg ‖k‖]
+
+/-- The free field quadratic form on Schwartz space, defined concretely via
+    Fourier transform:
+
+    `Q(f) = ∫ₖ |f̂(k)|² / (‖k‖² + m²) dk`
+
+    where `f̂ = 𝓕 f` is the Fourier transform of f (viewed as a ℂ-valued function).
+    This integral is the Fourier-space representation of `⟨f, (-Δ + m²)⁻¹ f⟩_{L²}`. -/
+def freeFieldForm (d : ℕ) (m : ℝ)
+    (f : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) : ℝ :=
+  ∫ k : EuclideanSpace ℝ (Fin d),
+    ‖𝓕 (fun x => (f x : ℂ)) k‖ ^ 2 * propagatorWeight d m k
+
+/-- The associated bilinear form: B(f,g) = ¼[Q(f+g) - Q(f-g)].
+
+    For the free field, this equals `⟨f, (-Δ+m²)⁻¹ g⟩_{L²}`, i.e.,
+    the inner product weighted by the propagator. -/
+def freeFieldBilinearForm (d : ℕ) (m : ℝ)
+    (f g : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) : ℝ :=
+  (freeFieldForm d m (f + g) - freeFieldForm d m (f - g)) / 4
+
+/-! ### Properties of the Free Field Quadratic Form -/
+
+/-- The free field quadratic form is non-negative: Q(f) ≥ 0.
+    The integrand |f̂(k)|² / (‖k‖² + m²) is pointwise non-negative. -/
+theorem freeFieldForm_nonneg (hm : 0 ≤ m)
+    (f : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) :
+    0 ≤ freeFieldForm d m f := by
+  unfold freeFieldForm
+  apply integral_nonneg
+  intro k
+  apply mul_nonneg
+  · exact sq_nonneg _
+  · exact propagatorWeight_nonneg d m hm k
+
+/-- The free field quadratic form at 0 is 0.
+    Proof: 0̂ = 0 (Fourier transform of zero), so the integrand vanishes pointwise. -/
+theorem freeFieldForm_zero : freeFieldForm d m 0 = 0 := by
+  -- Q(0) = ∫ ‖𝓕(0)‖² · w dk = ∫ 0 dk = 0
+  -- since 𝓕(0) = 0 (Fourier transform of zero function is zero)
+  sorry
+
+/-- The free field quadratic form is homogeneous of degree 2: Q(αf) = α² Q(f).
+    This follows from linearity of the Fourier transform: (αf)^ = α f̂. -/
+theorem freeFieldForm_smul (α : ℝ)
+    (f : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) :
+    freeFieldForm d m (α • f) = α ^ 2 * freeFieldForm d m f := by
+  -- 𝓕(α · f) = α · 𝓕(f) by linearity, so ‖𝓕(αf)(k)‖² = α² · ‖𝓕(f)(k)‖²
+  -- Then Q(αf) = ∫ α² · ‖f̂(k)‖² · w(k) dk = α² · Q(f)
+  sorry
+
+/-- The free field quadratic form satisfies the parallelogram law. -/
+theorem freeFieldForm_parallelogram
+    (f g : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) :
+    freeFieldForm d m (f + g) + freeFieldForm d m (f - g) =
+    2 * freeFieldForm d m f + 2 * freeFieldForm d m g := by
+  sorry
+
+/-- The free field quadratic form is continuous on Schwartz space.
+    This follows from:
+    1. The Fourier transform is continuous on Schwartz space
+    2. The L² norm squared is continuous
+    3. The propagator weight 1/(|k|²+m²) is bounded -/
+theorem freeFieldForm_continuous (hm : 0 < m) :
+    Continuous (freeFieldForm d m) := by
+  sorry
 
 /-! ### Free Field Characteristic Functional -/
 
@@ -114,49 +173,40 @@ def FreeFieldQuadraticForm.bilinearForm (Q : FreeFieldQuadraticForm) :
     This is a continuous positive-definite functional with C(0) = 1,
     so by Minlos' theorem (applied to the nuclear space S(ℝᵈ)),
     it determines a unique probability measure on S'(ℝᵈ). -/
-def FreeFieldCharacteristic (Q : FreeFieldQuadraticForm) :
-    𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) → ℂ :=
-  fun f => exp (-(1/2 : ℂ) * ↑(Q.form f))
-
-/-- The quadratic form at 0 is 0: Q(0) = Q(0 • f) = 0² Q(f) = 0. -/
-theorem FreeFieldQuadraticForm.form_zero (Q : FreeFieldQuadraticForm)
-    (f : 𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ)) :
-    Q.form 0 = 0 := by
-  have h := Q.form_smul 0 f
-  simp [zero_smul] at h
-  linarith [Q.form_nonneg f]
+def freeFieldCharacteristic (d : ℕ) (m : ℝ)
+    (f : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) : ℂ :=
+  exp (-(1/2 : ℂ) * ↑(freeFieldForm d m f))
 
 /-- The free field characteristic functional at 0 equals 1. -/
-theorem FreeFieldCharacteristic_zero (Q : FreeFieldQuadraticForm) :
-    FreeFieldCharacteristic Q 0 = 1 := by
-  simp only [FreeFieldCharacteristic]
-  -- Need some f to apply form_zero; use 0 itself via form_smul
-  have hform : Q.form 0 = 0 := by
-    have h := Q.form_smul 0 0
-    simp at h
-    linarith [Q.form_nonneg 0]
-  rw [hform]
+theorem freeFieldCharacteristic_zero :
+    freeFieldCharacteristic d m 0 = 1 := by
+  simp only [freeFieldCharacteristic, freeFieldForm_zero]
   simp
 
 /-- The free field characteristic functional is continuous. -/
-theorem FreeFieldCharacteristic_continuous (Q : FreeFieldQuadraticForm) :
-    Continuous (FreeFieldCharacteristic Q) := by
+theorem freeFieldCharacteristic_continuous (hm : 0 < m) :
+    Continuous (freeFieldCharacteristic d m) := by
   apply Continuous.cexp
   apply Continuous.mul continuous_const
-  exact continuous_ofReal.comp Q.form_continuous
+  exact continuous_ofReal.comp (freeFieldForm_continuous d m hm)
 
-/-- The free field characteristic functional is positive-definite. -/
-theorem FreeFieldCharacteristic_posdef (Q : FreeFieldQuadraticForm) :
-    IsPositiveDefiniteFn (FreeFieldCharacteristic Q) := by
+/-- The free field characteristic functional is positive-definite.
+
+    This follows from the fact that exp(-½ Q(f)) where Q is a positive quadratic
+    form is positive-definite. The kernel K(f,g) = exp(-½ Q(f-g)) is positive-definite
+    because Q is a positive quadratic form, so exp(-½ Q) is a positive-definite function
+    (this uses the Schur product theorem and the Taylor expansion of exp). -/
+theorem freeFieldCharacteristic_posdef :
+    IsPositiveDefiniteFn (freeFieldCharacteristic d m) := by
   sorry
 
 /-- The free field characteristic functional is a `CharacteristicFunctional`. -/
-def FreeFieldCharacteristicFunctional (Q : FreeFieldQuadraticForm) :
-    CharacteristicFunctional (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ)) where
-  toFun := FreeFieldCharacteristic Q
-  continuous_toFun := FreeFieldCharacteristic_continuous Q
-  positive_definite := FreeFieldCharacteristic_posdef Q
-  eval_zero := FreeFieldCharacteristic_zero Q
+def freeFieldCharacteristicFunctional (hm : 0 < m) :
+    CharacteristicFunctional (𝓢(EuclideanSpace ℝ (Fin d), ℝ)) where
+  toFun := freeFieldCharacteristic d m
+  continuous_toFun := freeFieldCharacteristic_continuous d m hm
+  positive_definite := freeFieldCharacteristic_posdef d m
+  eval_zero := freeFieldCharacteristic_zero d m
 
 /-! ### Euclidean Measure via Minlos -/
 
@@ -166,7 +216,7 @@ def FreeFieldCharacteristicFunctional (Q : FreeFieldQuadraticForm) :
     free field characteristic functional, there exists a unique probability
     measure μ on the dual space S'(ℝᵈ) (= tempered distributions) such that:
 
-    C(f) = ∫_{S'(ℝᵈ)} exp(i φ(f)) dμ(φ) = exp(-½ ⟨f, (-Δ+m²)⁻¹ f⟩)
+    C(f) = ∫_{S'(ℝᵈ)} exp(i φ(f)) dμ(φ) = exp(-½ Q(f))
 
     This is a Gaussian measure (the "Euclidean free field measure").
 
@@ -174,15 +224,16 @@ def FreeFieldCharacteristicFunctional (Q : FreeFieldQuadraticForm) :
     1. Defining Schwinger functions as moments of μ
     2. Verifying the OS axioms E0'-E4
     3. Applying the OS reconstruction theorem to get a Wightman QFT -/
-theorem euclideanMeasure_exists (Q : FreeFieldQuadraticForm)
-    [inst : MeasurableSpace (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ)] :
-    ∃ (μ : Measure (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ)),
+theorem euclideanMeasure_exists (hm : 0 < m)
+    [inst : MeasurableSpace (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ)] :
+    ∃ (μ : Measure (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ)),
       IsProbabilityMeasure μ ∧
-      ∀ f, FreeFieldCharacteristic Q f =
+      ∀ (f : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)),
+        freeFieldCharacteristic d m f =
         ∫ ω, exp (↑(ω f) * I) ∂μ := by
-  haveI : NuclearSpace (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ)) :=
-    SchwartzMap.instNuclearSpace Q.dim
-  exact minlos_theorem (FreeFieldCharacteristicFunctional Q)
+  haveI : NuclearSpace (𝓢(EuclideanSpace ℝ (Fin d), ℝ)) :=
+    SchwartzMap.instNuclearSpace d
+  exact minlos_theorem (freeFieldCharacteristicFunctional d m hm)
 
 /-! ### Schwinger Functions from the Euclidean Measure -/
 
@@ -192,23 +243,23 @@ theorem euclideanMeasure_exists (Q : FreeFieldQuadraticForm)
 
     For the free field, this equals the Green's function:
     S₂(x, y) = (-Δ + m²)⁻¹(x, y) -/
-def schwingerTwoPoint (Q : FreeFieldQuadraticForm)
-    [MeasurableSpace (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ)]
-    (μ : Measure (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ))
-    (δ_x δ_y : 𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ)) : ℂ :=
-  ∫ ω : (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ),
+def schwingerTwoPoint
+    [MeasurableSpace (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ)]
+    (μ : Measure (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ))
+    (δ_x δ_y : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) : ℂ :=
+  ∫ ω : (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ),
     (↑(ω δ_x) : ℂ) * ↑(ω δ_y) ∂μ
 
 /-- The two-point Schwinger function equals the bilinear form of the propagator.
-    S₂(f, g) = B(f, g) where B is the bilinear form of Q. -/
-theorem schwingerTwoPoint_eq_bilinear (Q : FreeFieldQuadraticForm)
-    [MeasurableSpace (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ)]
-    (μ : Measure (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ))
+    S₂(f, g) = B(f, g) where B is the polarized bilinear form of Q. -/
+theorem schwingerTwoPoint_eq_bilinear
+    [MeasurableSpace (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ)]
+    (μ : Measure (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ))
     (_hμ : IsProbabilityMeasure μ)
-    (_hchar : ∀ f, FreeFieldCharacteristic Q f =
-      ∫ ω : (𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ) →L[ℝ] ℝ), exp (↑(ω f) * I) ∂μ)
-    (f g : 𝓢(EuclideanSpace ℝ (Fin Q.dim), ℝ)) :
-    schwingerTwoPoint Q μ f g = ↑(Q.bilinearForm f g) := by
+    (_hchar : ∀ f, freeFieldCharacteristic d m f =
+      ∫ ω : (𝓢(EuclideanSpace ℝ (Fin d), ℝ) →L[ℝ] ℝ), exp (↑(ω f) * I) ∂μ)
+    (f g : 𝓢(EuclideanSpace ℝ (Fin d), ℝ)) :
+    schwingerTwoPoint d μ f g = ↑(freeFieldBilinearForm d m f g) := by
   sorry
 
 end

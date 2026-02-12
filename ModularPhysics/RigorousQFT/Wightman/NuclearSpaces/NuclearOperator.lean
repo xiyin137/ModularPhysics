@@ -247,6 +247,10 @@ structure HilbertNuclearRepresentation (T : H₁ →L[𝕜] H₂) where
   leftVectors : ℕ → H₁
   /-- Right singular vectors (orthonormal in H₂) -/
   rightVectors : ℕ → H₂
+  /-- Left singular vectors are orthonormal -/
+  leftVectors_orthonormal : Orthonormal 𝕜 leftVectors
+  /-- Right singular vectors are orthonormal -/
+  rightVectors_orthonormal : Orthonormal 𝕜 rightVectors
   /-- Singular values are non-negative -/
   singularValues_nonneg : ∀ n, singularValues n ≥ 0
   /-- Summability: Σₙ |λₙ| < ∞ (trace class condition) -/
@@ -273,8 +277,11 @@ def HilbertNuclearRepresentation.toNuclearRepresentation
               _ = |rep.singularValues n| * ‖rep.leftVectors n‖ := by
                   rw [RCLike.norm_ofReal, innerSL_apply_norm]
         _ ≤ rep.singularValues n * 1 * 1 := by
-            sorry -- Uses orthonormality: ‖leftVectors n‖ = 1, ‖rightVectors n‖ = 1,
-                  -- and |singularValues n| = singularValues n (nonneg)
+            have hln : ‖rep.leftVectors n‖ = 1 := rep.leftVectors_orthonormal.1 n
+            have hrn : ‖rep.rightVectors n‖ = 1 := rep.rightVectors_orthonormal.1 n
+            have hsn : |rep.singularValues n| = rep.singularValues n :=
+              abs_of_nonneg (rep.singularValues_nonneg n)
+            rw [hln, hrn, hsn]
         _ = rep.singularValues n := by ring
     · exact rep.summable_singularValues
   hasSum x := by
