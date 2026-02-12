@@ -1,5 +1,30 @@
 # Wightman QFT Module — TODO
 
+## TOP PRIORITY: OS Reconstruction Theorems
+
+**Key insight**: Nuclear spaces / Minlos are NOT needed for the OS reconstruction theorems.
+The reconstruction takes Schwinger functions as given input — nuclear spaces are about
+*constructing* those Schwinger functions (upstream), not about reconstructing Wightman QFT.
+
+### Critical Path for OS Reconstruction
+
+1. **Fix OSLinearGrowthCondition definition** (sorry in definition! — line 499)
+2. **Schwartz tensor product** → blocks WightmanInnerProduct, fieldOperatorAction
+3. **GNS construction steps** → borchersSetoid.trans, PreHilbertSpace.innerProduct
+4. **wightman_to_os** (R→E, easier direction via Wick rotation)
+5. **os_to_wightman** (E'→R', the hard theorem — analytic continuation + E0')
+
+### What Does NOT Block Reconstruction
+
+- Nuclear operator properties (NuclearOperator.lean)
+- Nuclear space closure properties (NuclearSpace.lean)
+- Schwartz nuclearity (SchwartzNuclear.lean)
+- Bochner-Minlos theorems (BochnerMinlos.lean)
+- Free field measure (EuclideanMeasure.lean)
+
+These are needed for *constructive QFT* (building concrete examples of Schwinger functions)
+but not for the OS reconstruction theorems themselves.
+
 ## Status Overview
 
 | File | Sorrys | Status |
@@ -8,141 +33,63 @@
 | Groups/Lorentz.lean | 0 | Complete |
 | Groups/Poincare.lean | 0 | Complete |
 | Spacetime/Metric.lean | 0 | Complete |
-| WightmanAxioms.lean | 1 | Definitions complete; 1 sorry in `momentum_eq_generator` |
-| OperatorDistribution.lean | 1 | Definitions complete; 1 sorry |
-| Reconstruction.lean | 12 | Main theorems stated; proofs need infrastructure |
-| NuclearSpaces/NuclearOperator.lean | 5 | Core definitions proven; some properties sorry'd |
-| NuclearSpaces/NuclearSpace.lean | 4 | Definition + NuclearFrechet complete; closure properties sorry'd |
-| NuclearSpaces/BochnerMinlos.lean | 7 | Bochner + Minlos stated; proofs sorry'd |
-| NuclearSpaces/SchwartzNuclear.lean | 7 | S(R^n) nuclear stated; Hermite infrastructure sorry'd |
-| NuclearSpaces/EuclideanMeasure.lean | 2 | Free field measure connected to Minlos; 2 sorrys |
-| **Total** | **39** | |
+| WightmanAxioms.lean | 1 | WightmanDistribution needs tensor product |
+| OperatorDistribution.lean | 1 | momentum_eq_generator (Stone theorem, not blocking) |
+| **Reconstruction.lean** | **12** | **TOP PRIORITY** |
+| NuclearSpaces/NuclearOperator.lean | 4 | Deferred (not blocking reconstruction) |
+| NuclearSpaces/NuclearSpace.lean | 4 | Deferred |
+| NuclearSpaces/BochnerMinlos.lean | 6 | Deferred |
+| NuclearSpaces/SchwartzNuclear.lean | 7 | Deferred |
+| NuclearSpaces/EuclideanMeasure.lean | 6 | Deferred |
+| **Total** | **~39** | |
 
-## Sorry Breakdown by File
+## Reconstruction.lean Sorry Breakdown (12 sorrys)
 
-### Reconstruction.lean (12 sorrys)
+### Infrastructure (blocking)
+- `OSLinearGrowthCondition.growth_estimate`: **Sorry in definition!** Replace with Schwartz seminorm
+- `WightmanInnerProduct`: Needs tensor product f̄_m ⊗ g_{n-m}
+- `fieldOperatorAction`: Needs tensor product (prepend f to sequence)
 
-Core OS reconstruction infrastructure:
+### GNS Construction
+- `borchersSetoid.trans`: Transitivity (Cauchy-Schwarz)
+- `PreHilbertSpace.innerProduct`: Well-definedness on quotient (Cauchy-Schwarz)
+- `fieldOperator`: Well-definedness on quotient
 
-- `WightmanInnerProduct`: Tensor product f_m tensor g_{n-m} in SchwartzNPoint
-- `borchersSetoid.trans`: Transitivity of GNS equivalence (needs Cauchy-Schwarz)
-- `PreHilbertSpace.innerProduct` well-definedness: Quotient compatibility
-- `spectrum_condition` (2): Holomorphicity + boundary values of analytic continuation
-- `fieldOperatorAction`: Tensor product construction for field operators
-- `fieldOperator` well-definedness: Respects Borchers equivalence
-- `wightman_reconstruction`: Main reconstruction theorem
+### Main Theorems
+- `wightman_reconstruction`: Full GNS → WightmanQFT
 - `wightman_uniqueness`: Uniqueness up to unitary equivalence
-- `wightman_to_os`: Wightman -> Schwinger functions (Wick rotation)
-- `os_to_wightman`: OS axioms + linear growth -> Wightman (analytic continuation)
-- `OSLinearGrowthCondition.growth_estimate`: Sobolev norm formula
 
-### WightmanAxioms.lean (1 sorry)
+### OS Bridge (the main goal)
+- `wightman_to_os` (R→E): Wick rotation, straightforward
+- `os_to_wightman` (E'→R'): **THE HARD THEOREM** — needs:
+  - Pre-Hilbert space from E2 (reflection positivity)
+  - Contraction semigroup from E0'+E1
+  - Inductive analytic continuation (OS II Thm 4.1-4.2)
+  - Boundary values → Wightman distributions (E0' essential)
+  - Verify R0-R5
 
-- `momentum_eq_generator`: Stone theorem generator = momentum operator
+### WightmanFunctions.spectrum_condition (2 sorrys)
+- Holomorphicity in ForwardTube (dependent type)
+- Boundary values of analytic continuation
 
-### OperatorDistribution.lean (1 sorry)
-
-- `momentum_eq_generator`: Same as above (uniqueness of limits)
-
-### NuclearSpaces/NuclearOperator.lean (5 sorrys)
-
-- `IsNuclearOperator.add` (2): Interleaved summability + HasSum for sum of nuclear ops
-- `isCompactOperator`: Nuclear => compact (finite-rank approximation)
-- `opNorm_le_nuclearNorm`: ||T|| <= ||T||_1 (norm bound from representation)
-- `toNuclearRepresentation`: Hilbert SVD orthonormality bound
-
-### NuclearSpaces/NuclearSpace.lean (4 sorrys)
-
-- `finiteDimensional`: Finite-dim spaces are nuclear
-- `subspace_nuclear`: Closed subspaces of nuclear spaces are nuclear
-- `product_nuclear`: Countable products of nuclear spaces are nuclear
-- `NuclearFrechet.toNuclearSpace`: Nuclear Frechet presentation => NuclearSpace class
-
-### NuclearSpaces/BochnerMinlos.lean (7 sorrys)
-
-- `conj_neg`: Positive-definite => phi(-x) = conj(phi(x))
-- `norm_le_eval_zero`: Positive-definite => |phi(x)| <= phi(0)
-- `bochner_theorem`: Bochner's theorem (finite-dim, needs Fourier inversion)
-- `minlos_theorem`: Minlos' theorem (nuclearity => tightness => Kolmogorov extension)
-- `minlos_unique`: Uniqueness of Minlos measure
-- `gaussianCharacteristicFunctional_posdef`: Gaussian exp(-1/2 <f,Af>) is positive-definite
-- `freeFieldCharacteristic`: Placeholder definition (returns sorry)
-
-### NuclearSpaces/SchwartzNuclear.lean (7 sorrys)
-
-- `schwartzSeminorm_mono`: Seminorm monotonicity p_{k1,l1} <= p_{k2,l2}
-- `nuclearFrechet` (3): seminorms_mono, separating, nuclear_step (Hermite expansion)
-- `hermiteFunction_schwartz`: Hermite functions are Schwartz
-- `hermiteFunction_orthonormal`: L^2 orthonormality
-- `hermiteFunction_seminorm_decay`: Rapid decay p_{k,l}(h_m) <= C * m^{-N}
-
-### NuclearSpaces/EuclideanMeasure.lean (2 sorrys)
-
-- `FreeFieldCharacteristic_posdef`: exp(-1/2 Q(f)) is positive-definite
-- `schwingerTwoPoint_eq_bilinear`: S_2(f,g) = B(f,g) (moment calculation)
-
-## Priority Roadmap
-
-### High Priority (Blocking main results)
-
-1. **Tensor product infrastructure** for Reconstruction.lean
-   - Need proper tensor product of Schwartz test functions
-   - Blocks: WightmanInnerProduct, fieldOperatorAction, reconstruction theorem
-
-2. **Minlos' theorem proof** (BochnerMinlos.lean)
-   - Finite-dim Bochner (Fourier inversion)
-   - Projective family from characteristic functional
-   - Nuclearity => tightness (the key step)
-   - Kolmogorov extension
-
-3. **Hermite function theory** (SchwartzNuclear.lean)
-   - Hermite functions in Schwartz space
-   - Orthonormality in L^2
-   - Seminorm decay estimates
-   - Blocks: S(R^n) nuclearity proof
-
-### Medium Priority (Core infrastructure)
-
-4. **Nuclear operator properties** (NuclearOperator.lean)
-   - Sum of nuclear operators (interleaving)
-   - Nuclear => compact
-   - Operator norm <= nuclear norm
-
-5. **Nuclear space closure properties** (NuclearSpace.lean)
-   - Finite-dimensional, subspace, product nuclearity
-   - NuclearFrechet => NuclearSpace
-
-6. **Positive-definite function theory** (BochnerMinlos.lean)
-   - conj_neg, norm_le_eval_zero
-   - Gaussian positivity
-
-### Lower Priority (Can be deferred)
-
-7. **Reconstruction.lean main proofs**
-   - GNS construction, field operators, reconstruction
-   - These are deep results depending on all infrastructure above
-
-8. **OS <-> Wightman bridge**
-   - wightman_to_os, os_to_wightman
-   - Requires analytic continuation + distribution theory
-
-## Architecture
+## Architecture (Reconstruction Focus)
 
 ```
-Basic.lean ─────────────────┐
-Groups/Lorentz.lean ────────┤
-Groups/Poincare.lean ───────┤
-Spacetime/Metric.lean ──────┤
-                            ├──> WightmanAxioms.lean ──> OperatorDistribution.lean
-                            │
-NuclearSpaces/              │
-  NuclearOperator.lean ─────┤
-       |                    │
-  NuclearSpace.lean ────────┤
-       |          \         │
-  SchwartzNuclear  BochnerMinlos
-       \            /       │
-    EuclideanMeasure.lean ──┤
-                            │
-                            └──> Reconstruction.lean (OS <-> Wightman)
+Layer 0 (DONE): Metric, Lorentz, Poincare, Basic — 0 sorrys
+    ↓
+OperatorDistribution.lean ──> WightmanAxioms.lean
+    ↓                              ↓
+    └──────────> Reconstruction.lean ←── NEW: TensorProduct infrastructure
+                     ↓
+              os_to_wightman (E'→R')  ←── NEW: AnalyticContinuation infrastructure
+              wightman_to_os (R→E)
 ```
+
+Nuclear spaces / Minlos are a SEPARATE development line for constructive QFT.
+
+## Key Mathematical References
+
+- **OS I**: "Reconstruction theorem I.pdf" — Theorem R→E (§5), Theorem E→R (§4)
+  - Note: Lemma 8.8 has a gap (fixed in OS II)
+- **OS II**: "reconstruction theorem II.pdf" — Linear growth E0' (§IV.1),
+  analytic continuation (§V), temperedness estimates (§VI)

@@ -8,6 +8,7 @@ import Mathlib.Analysis.Distribution.TemperedDistribution
 import Mathlib.Analysis.InnerProductSpace.GramSchmidtOrtho
 import Mathlib.Topology.UniformSpace.Completion
 import ModularPhysics.RigorousQFT.Wightman.WightmanAxioms
+import ModularPhysics.RigorousQFT.Wightman.SchwartzTensorProduct
 
 /-!
 # Wightman Reconstruction Theorem
@@ -50,6 +51,10 @@ open scoped SchwartzMap
 open Topology
 
 variable (d : ℕ) [NeZero d]
+
+-- Many inner product theorems only use d : ℕ, not [NeZero d].
+-- Suppress the auto-inclusion warning for these infrastructure lemmas.
+set_option linter.unusedSectionVars false
 
 /-! ### Properties of Wightman Functions -/
 
@@ -136,31 +141,337 @@ def IsLocallyCommutativeWeak (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : Pr
 
 /-! ### Positive Definiteness -/
 
-/-- The Borchers class of test function sequences -/
+/-- The Borchers class of test function sequences.
+
+    A Borchers sequence is a finitely supported sequence of Schwartz n-point functions.
+    The n-th component f_n ∈ S(ℝ^{n(d+1)}, ℂ) is a test function on n copies of spacetime.
+
+    The `funcs` field is indexed by all n ∈ ℕ, with `bound_spec` ensuring all
+    components beyond `bound` are zero. This simplifies algebraic operations
+    (addition, scalar multiplication, etc.) compared to a dependent-type formulation. -/
 structure BorchersSequence (d : ℕ) where
-  /-- The length of the sequence -/
-  len : ℕ
   /-- For each n, a test function on n copies of spacetime -/
-  funcs : (n : ℕ) → (n ≤ len) → SchwartzNPoint d n
+  funcs : (n : ℕ) → SchwartzNPoint d n
+  /-- A bound on the support: all components beyond this are zero -/
+  bound : ℕ
+  /-- All components beyond the bound are zero -/
+  bound_spec : ∀ n, bound < n → funcs n = 0
+
+/-! ### Borchers Sequence Algebra -/
+
+namespace BorchersSequence
+
+variable {d : ℕ}
+
+instance : Zero (BorchersSequence d) where
+  zero := ⟨fun _ => 0, 0, fun _ _ => rfl⟩
+
+instance : Add (BorchersSequence d) where
+  add F G := ⟨fun n => F.funcs n + G.funcs n, max F.bound G.bound,
+    fun n hn => by simp [F.bound_spec n (by omega), G.bound_spec n (by omega)]⟩
+
+instance : Neg (BorchersSequence d) where
+  neg F := ⟨fun n => -(F.funcs n), F.bound, fun n hn => by simp [F.bound_spec n hn]⟩
+
+instance : SMul ℂ (BorchersSequence d) where
+  smul c F := ⟨fun n => c • (F.funcs n), F.bound, fun n hn => by simp [F.bound_spec n hn]⟩
+
+instance : Sub (BorchersSequence d) where
+  sub F G := ⟨fun n => F.funcs n - G.funcs n, max F.bound G.bound,
+    fun n hn => by simp [F.bound_spec n (by omega), G.bound_spec n (by omega)]⟩
+
+@[simp] theorem zero_funcs (n : ℕ) : (0 : BorchersSequence d).funcs n = 0 := rfl
+@[simp] theorem add_funcs (F G : BorchersSequence d) (n : ℕ) :
+    (F + G).funcs n = F.funcs n + G.funcs n := rfl
+@[simp] theorem neg_funcs (F : BorchersSequence d) (n : ℕ) :
+    (-F).funcs n = -(F.funcs n) := rfl
+@[simp] theorem smul_funcs (c : ℂ) (F : BorchersSequence d) (n : ℕ) :
+    (c • F).funcs n = c • (F.funcs n) := rfl
+@[simp] theorem sub_funcs (F G : BorchersSequence d) (n : ℕ) :
+    (F - G).funcs n = F.funcs n - G.funcs n := rfl
+@[simp] theorem smul_bound (c : ℂ) (F : BorchersSequence d) : (c • F).bound = F.bound := rfl
+@[simp] theorem neg_bound (F : BorchersSequence d) : (-F).bound = F.bound := rfl
+@[simp] theorem sub_bound (F G : BorchersSequence d) :
+    (F - G).bound = max F.bound G.bound := rfl
+@[simp] theorem add_bound (F G : BorchersSequence d) :
+    (F + G).bound = max F.bound G.bound := rfl
+
+end BorchersSequence
+
+/-! ### Wightman Inner Product -/
 
 /-- The inner product induced by Wightman functions on Borchers sequences.
 
-    The proper definition is: ⟨F, G⟩ = Σ_{n,m} W_{n+m}(f̄_n ⊗ g_m)
-    where f̄_n is complex conjugation and ⊗ is the tensor product of Schwartz functions.
+    ⟨F, G⟩ = Σ_{n ≤ N_F} Σ_{m ≤ N_G} W_{n+m}(f*_n ⊗ g_m)
 
-    This requires the tensor product SchwartzNPoint d n ⊗ SchwartzNPoint d m → SchwartzNPoint d (n+m),
-    which is guaranteed by the nuclear theorem (𝒮 is nuclear). The construction of this
-    tensor product is the main motivation for the NuclearSpaces infrastructure.
+    where:
+    - f*_n is the Borchers involution: f*_n(x₁,...,xₙ) = conj(f_n(xₙ,...,x₁))
+    - f*_n ⊗ g_m is the external tensor product in SchwartzNPoint d (n+m)
+    - W_{n+m} evaluates the (n+m)-point function on the tensor product
 
-    TODO: Replace sorry with actual tensor product once NuclearSpaces/SchwartzNuclear.lean
-    provides the nuclear tensor product. -/
+    The Borchers involution includes both conjugation AND argument reversal. This is
+    essential for the Hermiticity of the inner product: ⟨F, G⟩ = conj(⟨G, F⟩).
+
+    Since `F.funcs n = 0` for `n > F.bound` and `G.funcs m = 0` for `m > G.bound`,
+    the sum is effectively finite.
+
+    Reference: Streater-Wightman, "PCT, Spin and Statistics", §3.4 -/
 def WightmanInnerProduct (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
     (F G : BorchersSequence d) : ℂ :=
-  ∑ n ∈ Finset.range (F.len + G.len + 1),
-    ∑ m ∈ Finset.range (n + 1),
-      if _hn : m ≤ F.len ∧ n - m ≤ G.len then
-        W n sorry  -- Requires tensor product: f̄_m ⊗ g_{n-m} ∈ SchwartzNPoint d n
-      else 0
+  ∑ n ∈ Finset.range (F.bound + 1),
+    ∑ m ∈ Finset.range (G.bound + 1),
+      W (n + m) ((F.funcs n).conjTensorProduct (G.funcs m))
+
+/-! ### Inner Product Range Extension
+
+The key technical lemma: extending the summation range beyond the bound doesn't
+change the inner product, because extra terms have zero Schwartz functions and
+W is linear (W_k(0) = 0). This enables proving sesquilinearity when adding
+sequences with different bounds. -/
+
+/-- The inner product with explicit summation bounds. -/
+def WightmanInnerProductN (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (F G : BorchersSequence d) (N₁ N₂ : ℕ) : ℂ :=
+  ∑ n ∈ Finset.range N₁,
+    ∑ m ∈ Finset.range N₂,
+      W (n + m) ((F.funcs n).conjTensorProduct (G.funcs m))
+
+/-- The standard inner product equals the N-bounded version with the natural bounds. -/
+theorem WightmanInnerProduct_eq_N (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (F G : BorchersSequence d) :
+    WightmanInnerProduct d W F G = WightmanInnerProductN d W F G (F.bound + 1) (G.bound + 1) :=
+  rfl
+
+/-- Extending the second summation range doesn't change the inner product
+    when W is ℂ-linear and the extra terms have zero Schwartz functions. -/
+theorem WightmanInnerProductN_extend_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G : BorchersSequence d) (N₁ N₂ : ℕ)
+    (hN₂ : G.bound + 1 ≤ N₂) :
+    WightmanInnerProductN d W F G N₁ N₂ = WightmanInnerProductN d W F G N₁ (G.bound + 1) := by
+  unfold WightmanInnerProductN
+  apply Finset.sum_congr rfl
+  intro n _
+  -- Goal: ∑ m ∈ range N₂, ... = ∑ m ∈ range (G.bound + 1), ...
+  -- sum_subset gives: small ⊆ big → (extra = 0) → ∑ small = ∑ big
+  symm
+  apply Finset.sum_subset (Finset.range_mono hN₂)
+  intro m hm₂ hm₁
+  have hm : G.bound < m := by
+    simp only [Finset.mem_range] at hm₁ hm₂; omega
+  rw [G.bound_spec m hm, SchwartzMap.conjTensorProduct_zero_right, (hlin _).map_zero]
+
+/-- Extending the first summation range doesn't change the inner product. -/
+theorem WightmanInnerProductN_extend_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G : BorchersSequence d) (N₁ N₂ : ℕ)
+    (hN₁ : F.bound + 1 ≤ N₁) :
+    WightmanInnerProductN d W F G N₁ N₂ = WightmanInnerProductN d W F G (F.bound + 1) N₂ := by
+  unfold WightmanInnerProductN
+  -- Goal: ∑ n ∈ range N₁, (∑ m ...) = ∑ n ∈ range (F.bound+1), (∑ m ...)
+  symm
+  apply Finset.sum_subset (Finset.range_mono hN₁)
+  intro n hn₂ hn₁
+  have hn : F.bound < n := by
+    simp only [Finset.mem_range] at hn₁ hn₂; omega
+  -- The inner sum is zero because F.funcs n = 0
+  apply Finset.sum_eq_zero
+  intro m _
+  rw [F.bound_spec n hn, SchwartzMap.conjTensorProduct_zero_left, (hlin _).map_zero]
+
+/-- Key lemma: the inner product can be computed using any sufficiently large bounds. -/
+theorem WightmanInnerProduct_eq_extended (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G : BorchersSequence d) (N₁ N₂ : ℕ)
+    (hN₁ : F.bound + 1 ≤ N₁) (hN₂ : G.bound + 1 ≤ N₂) :
+    WightmanInnerProduct d W F G = WightmanInnerProductN d W F G N₁ N₂ := by
+  rw [WightmanInnerProduct_eq_N,
+    ← WightmanInnerProductN_extend_right d W hlin F G (F.bound + 1) N₂ hN₂,
+    ← WightmanInnerProductN_extend_left d W hlin F G N₁ N₂ hN₁]
+
+/-! ### Inner Product Sesquilinearity -/
+
+/-- The inner product is additive in the second argument. -/
+theorem WightmanInnerProduct_add_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G₁ G₂ : BorchersSequence d) :
+    WightmanInnerProduct d W F (G₁ + G₂) =
+    WightmanInnerProduct d W F G₁ + WightmanInnerProduct d W F G₂ := by
+  -- Use a common bound for all three inner products
+  have hN₁ : F.bound + 1 ≤ F.bound + 1 := le_refl _
+  have hN₂_sum : (G₁ + G₂).bound + 1 ≤ max G₁.bound G₂.bound + 1 := le_refl _
+  have hN₂_1 : G₁.bound + 1 ≤ max G₁.bound G₂.bound + 1 :=
+    Nat.succ_le_succ (le_max_left _ _)
+  have hN₂_2 : G₂.bound + 1 ≤ max G₁.bound G₂.bound + 1 :=
+    Nat.succ_le_succ (le_max_right _ _)
+  rw [WightmanInnerProduct_eq_extended d W hlin F (G₁ + G₂)
+        (F.bound + 1) (max G₁.bound G₂.bound + 1) hN₁ hN₂_sum,
+      WightmanInnerProduct_eq_extended d W hlin F G₁
+        (F.bound + 1) (max G₁.bound G₂.bound + 1) hN₁ hN₂_1,
+      WightmanInnerProduct_eq_extended d W hlin F G₂
+        (F.bound + 1) (max G₁.bound G₂.bound + 1) hN₁ hN₂_2]
+  -- Now all three sums use the same range, so we can combine pointwise
+  simp only [WightmanInnerProductN, BorchersSequence.add_funcs,
+    SchwartzMap.conjTensorProduct_add_right, (hlin _).map_add]
+  rw [← Finset.sum_add_distrib]
+  congr 1; ext n
+  rw [← Finset.sum_add_distrib]
+
+/-- The inner product is additive in the first argument (with conjugation). -/
+theorem WightmanInnerProduct_add_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F₁ F₂ G : BorchersSequence d) :
+    WightmanInnerProduct d W (F₁ + F₂) G =
+    WightmanInnerProduct d W F₁ G + WightmanInnerProduct d W F₂ G := by
+  have hN₁_sum : (F₁ + F₂).bound + 1 ≤ max F₁.bound F₂.bound + 1 := le_refl _
+  have hN₁_1 : F₁.bound + 1 ≤ max F₁.bound F₂.bound + 1 :=
+    Nat.succ_le_succ (le_max_left _ _)
+  have hN₁_2 : F₂.bound + 1 ≤ max F₁.bound F₂.bound + 1 :=
+    Nat.succ_le_succ (le_max_right _ _)
+  have hN₂ : G.bound + 1 ≤ G.bound + 1 := le_refl _
+  rw [WightmanInnerProduct_eq_extended d W hlin (F₁ + F₂) G
+        (max F₁.bound F₂.bound + 1) (G.bound + 1) hN₁_sum hN₂,
+      WightmanInnerProduct_eq_extended d W hlin F₁ G
+        (max F₁.bound F₂.bound + 1) (G.bound + 1) hN₁_1 hN₂,
+      WightmanInnerProduct_eq_extended d W hlin F₂ G
+        (max F₁.bound F₂.bound + 1) (G.bound + 1) hN₁_2 hN₂]
+  simp only [WightmanInnerProductN, BorchersSequence.add_funcs,
+    SchwartzMap.conjTensorProduct_add_left, (hlin _).map_add]
+  rw [← Finset.sum_add_distrib]
+  congr 1; ext n
+  rw [← Finset.sum_add_distrib]
+
+/-- The inner product scales linearly in the second argument. -/
+theorem WightmanInnerProduct_smul_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (c : ℂ) (F G : BorchersSequence d) :
+    WightmanInnerProduct d W F (c • G) = c * WightmanInnerProduct d W F G := by
+  simp only [WightmanInnerProduct, BorchersSequence.smul_funcs, BorchersSequence.smul_bound,
+    SchwartzMap.conjTensorProduct_smul_right, (hlin _).map_smul, smul_eq_mul]
+  rw [Finset.mul_sum]; congr 1; ext n
+  rw [Finset.mul_sum]
+
+/-- The inner product with zero on the left vanishes. -/
+theorem WightmanInnerProduct_zero_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (G : BorchersSequence d) :
+    WightmanInnerProduct d W (0 : BorchersSequence d) G = 0 := by
+  unfold WightmanInnerProduct
+  apply Finset.sum_eq_zero; intro n _
+  apply Finset.sum_eq_zero; intro m _
+  simp [(hlin _).map_zero]
+
+/-- The inner product with zero on the right vanishes. -/
+theorem WightmanInnerProduct_zero_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F : BorchersSequence d) :
+    WightmanInnerProduct d W F (0 : BorchersSequence d) = 0 := by
+  unfold WightmanInnerProduct
+  apply Finset.sum_eq_zero; intro n _
+  apply Finset.sum_eq_zero; intro m _
+  simp [(hlin _).map_zero]
+
+/-- The inner product depends only on the funcs of the right argument. -/
+theorem WightmanInnerProduct_congr_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F : BorchersSequence d) (G₁ G₂ : BorchersSequence d)
+    (hg : ∀ n, G₁.funcs n = G₂.funcs n) :
+    WightmanInnerProduct d W F G₁ = WightmanInnerProduct d W F G₂ := by
+  rw [WightmanInnerProduct_eq_extended d W hlin F G₁
+        (F.bound + 1) (max G₁.bound G₂.bound + 1) le_rfl
+        (Nat.succ_le_succ (le_max_left _ _)),
+      WightmanInnerProduct_eq_extended d W hlin F G₂
+        (F.bound + 1) (max G₁.bound G₂.bound + 1) le_rfl
+        (Nat.succ_le_succ (le_max_right _ _))]
+  simp only [WightmanInnerProductN]
+  congr 1; ext n; congr 1; ext m; rw [hg m]
+
+/-- The inner product depends only on the funcs of the left argument. -/
+theorem WightmanInnerProduct_congr_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F₁ F₂ : BorchersSequence d) (G : BorchersSequence d)
+    (hf : ∀ n, F₁.funcs n = F₂.funcs n) :
+    WightmanInnerProduct d W F₁ G = WightmanInnerProduct d W F₂ G := by
+  rw [WightmanInnerProduct_eq_extended d W hlin F₁ G
+        (max F₁.bound F₂.bound + 1) (G.bound + 1)
+        (Nat.succ_le_succ (le_max_left _ _)) le_rfl,
+      WightmanInnerProduct_eq_extended d W hlin F₂ G
+        (max F₁.bound F₂.bound + 1) (G.bound + 1)
+        (Nat.succ_le_succ (le_max_right _ _)) le_rfl]
+  simp only [WightmanInnerProductN]
+  congr 1; ext n; congr 1; ext m; rw [hf n]
+
+/-- The inner product is anti-additive (negation) in the first argument. -/
+theorem WightmanInnerProduct_neg_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G : BorchersSequence d) :
+    WightmanInnerProduct d W (-F) G = -(WightmanInnerProduct d W F G) := by
+  simp only [WightmanInnerProduct, BorchersSequence.neg_funcs, BorchersSequence.neg_bound]
+  simp_rw [SchwartzMap.conjTensorProduct_neg_left,
+    show ∀ k (x : SchwartzNPoint d k), W k (-x) = -(W k x) from
+      fun k x => (hlin k).map_neg x]
+  simp [Finset.sum_neg_distrib]
+
+/-- The inner product is anti-additive (negation) in the second argument. -/
+theorem WightmanInnerProduct_neg_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G : BorchersSequence d) :
+    WightmanInnerProduct d W F (-G) = -(WightmanInnerProduct d W F G) := by
+  simp only [WightmanInnerProduct, BorchersSequence.neg_funcs, BorchersSequence.neg_bound]
+  simp_rw [SchwartzMap.conjTensorProduct_neg_right,
+    show ∀ k (x : SchwartzNPoint d k), W k (-x) = -(W k x) from
+      fun k x => (hlin k).map_neg x]
+  simp [Finset.sum_neg_distrib]
+
+/-- The inner product is subtractive in the second argument. -/
+theorem WightmanInnerProduct_sub_right (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G₁ G₂ : BorchersSequence d) :
+    WightmanInnerProduct d W F (G₁ - G₂) =
+    WightmanInnerProduct d W F G₁ - WightmanInnerProduct d W F G₂ := by
+  -- G₁ - G₂ and G₁ + (-G₂) have the same funcs pointwise
+  rw [WightmanInnerProduct_congr_right d W hlin F (G₁ - G₂) (G₁ + (-G₂))
+    (fun n => by simp [sub_eq_add_neg])]
+  rw [WightmanInnerProduct_add_right d W hlin F G₁ (-G₂),
+      WightmanInnerProduct_neg_right d W hlin F G₂]
+  ring
+
+/-- The inner product is subtractive in the first argument. -/
+theorem WightmanInnerProduct_sub_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F₁ F₂ G : BorchersSequence d) :
+    WightmanInnerProduct d W (F₁ - F₂) G =
+    WightmanInnerProduct d W F₁ G - WightmanInnerProduct d W F₂ G := by
+  rw [WightmanInnerProduct_congr_left d W hlin (F₁ - F₂) (F₁ + (-F₂)) G
+    (fun n => by simp [sub_eq_add_neg])]
+  rw [WightmanInnerProduct_add_left d W hlin F₁ (-F₂) G,
+      WightmanInnerProduct_neg_left d W hlin F₂ G]
+  ring
+
+/-- Conjugate linearity of the inner product in the first argument:
+    ⟨c·F, G⟩ = c̄·⟨F, G⟩ -/
+theorem WightmanInnerProduct_smul_left (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (c : ℂ) (F G : BorchersSequence d) :
+    WightmanInnerProduct d W (c • F) G = starRingEnd ℂ c * WightmanInnerProduct d W F G := by
+  simp only [WightmanInnerProduct, BorchersSequence.smul_funcs, BorchersSequence.smul_bound,
+    SchwartzMap.conjTensorProduct_smul_left, (hlin _).map_smul, smul_eq_mul]
+  rw [Finset.mul_sum]; congr 1; ext n
+  rw [Finset.mul_sum]
+
+/-! ### Expansion of ⟨F-G, F-G⟩ -/
+
+/-- The setoid condition equals ⟨F-G, F-G⟩: expanding the inner product on the difference. -/
+theorem WightmanInnerProduct_expand_diff (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
+    (hlin : ∀ n, IsLinearMap ℂ (W n))
+    (F G : BorchersSequence d) :
+    WightmanInnerProduct d W (F - G) (F - G) =
+    WightmanInnerProduct d W F F + WightmanInnerProduct d W G G
+    - WightmanInnerProduct d W F G - WightmanInnerProduct d W G F := by
+  rw [WightmanInnerProduct_sub_left d W hlin F G (F - G),
+      WightmanInnerProduct_sub_right d W hlin F F G,
+      WightmanInnerProduct_sub_right d W hlin G F G]
+  ring
 
 /-- Positive definiteness of Wightman functions -/
 def IsPositiveDefinite (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : Prop :=
@@ -226,6 +537,176 @@ structure WightmanFunctions (d : ℕ) [NeZero d] where
   locally_commutative : IsLocallyCommutativeWeak d W
   /-- Positive definiteness -/
   positive_definite : IsPositiveDefinite d W
+  /-- Hermiticity: W_n(f̃) = conj(W_n(f)) where f̃(x₁,...,xₙ) = conj(f(xₙ,...,x₁)).
+
+      This is the standard Hermiticity axiom for Wightman functions at the distribution level:
+        W_n(x₁,...,xₙ)* = W_n(xₙ,...,x₁)
+
+      In the weak formulation: if g(x) = conj(f(rev(x))) for all x, then W_n(g) = conj(W_n(f)).
+      Here `Fin.rev` reverses the argument order: (x₁,...,xₙ) ↦ (xₙ,...,x₁). -/
+  hermitian : ∀ (n : ℕ) (f g : SchwartzNPoint d n),
+    (∀ x : NPointDomain d n, g.toFun x = starRingEnd ℂ (f.toFun (fun i => x (Fin.rev i)))) →
+    W n g = starRingEnd ℂ (W n f)
+
+/-! ### Inner Product Hermiticity and Cauchy-Schwarz -/
+
+/-- Dependent type transport for Wightman functions: if k₁ = k₂ and two test functions
+    have the same pointwise values (modulo the Fin.cast reindexing), then W gives the same value.
+    This handles the n+m ↔ m+n identification. -/
+private theorem W_eq_of_cast {d : ℕ}
+    (W : (k : ℕ) → SchwartzNPoint d k → ℂ)
+    (k₁ k₂ : ℕ) (hk : k₁ = k₂)
+    (f : SchwartzNPoint d k₁) (g : SchwartzNPoint d k₂)
+    (hfg : ∀ x, f x = g (fun i => x (Fin.cast hk.symm i))) :
+    W k₁ f = W k₂ g := by
+  subst hk; congr 1; ext x; exact hfg x
+
+/-- Key reversal identity for Hermiticity:
+    (f.conjTP g) x = (g.conjTP f).borchersConj (x ∘ Fin.cast ...)
+
+    Both sides reduce to conj(f(A)) * g(B) (after mul_comm), where A, B are
+    reindexings of x. The coordinate arithmetic is verified by omega. -/
+private theorem conjTP_eq_borchersConj_conjTP {d n m : ℕ}
+    (f : SchwartzNPoint d n) (g : SchwartzNPoint d m)
+    (x : NPointDomain d (n + m)) :
+    (f.conjTensorProduct g) x =
+      ((g.conjTensorProduct f).borchersConj)
+        (fun i => x (Fin.cast (Nat.add_comm n m).symm i)) := by
+  simp only [SchwartzMap.borchersConj_apply, SchwartzMap.conjTensorProduct_apply,
+    map_mul, starRingEnd_self_apply]
+  rw [mul_comm]
+  -- Both sides: g(arg_g) * conj(f(arg_f)). Show arguments match.
+  congr 1
+  · -- g factor: splitLast n m x = fun k => splitFirst m n (z ∘ rev) (rev k)
+    congr 1; ext k; simp only [splitFirst, splitLast]
+    congr 1; ext; simp [Fin.val_natAdd, Fin.val_rev, Fin.val_castAdd, Fin.val_cast]; omega
+  · -- conj(f) factor: peel starRingEnd then f
+    congr 1; congr 1; ext k; simp only [splitFirst, splitLast]
+    congr 1; ext; simp [Fin.val_natAdd, Fin.val_rev, Fin.val_castAdd, Fin.val_cast]; omega
+
+/-- The Wightman inner product satisfies Hermiticity: ⟨F, G⟩ = conj(⟨G, F⟩).
+
+    This follows from the Hermiticity axiom on Wightman functions:
+    W_n(f̃) = conj(W_n(f)) where f̃(x) = conj(f(rev(x))).
+
+    The proof has three steps:
+    1. Pull conjugation through the double sum
+    2. Apply the Hermiticity axiom to each term: conj(W_k(h)) = W_k(borchersConj(h))
+    3. Use the reversal identity to identify borchersConj(g* ⊗ f) with f* ⊗ g
+       (up to the n+m ↔ m+n type transport)
+    4. Swap summation indices -/
+theorem WightmanInnerProduct_hermitian {d : ℕ} [NeZero d]
+    (Wfn : WightmanFunctions d) (F G : BorchersSequence d) :
+    WightmanInnerProduct d Wfn.W F G = starRingEnd ℂ (WightmanInnerProduct d Wfn.W G F) := by
+  simp only [WightmanInnerProduct, map_sum]
+  -- Swap the summation order in the LHS via sum_comm
+  rw [Finset.sum_comm]
+  -- After sum_comm + congr/ext, the goal for each (m, n) pair is:
+  -- W (m+n) (F_m.conjTP G_n) = conj(W (n+m) (G_n.conjTP F_m))
+  congr 1; ext n; congr 1; ext m
+  -- Step 1: Use Hermiticity axiom to rewrite conj(W(n+m)(h)) = W(n+m)(h.borchersConj)
+  rw [← Wfn.hermitian (n + m) ((G.funcs n).conjTensorProduct (F.funcs m))
+    (((G.funcs n).conjTensorProduct (F.funcs m)).borchersConj) (fun _ => rfl)]
+  -- Goal: W (m+n) (F_m.conjTP G_n) = W (n+m) ((G_n.conjTP F_m).borchersConj)
+  -- Step 2: Transport via m+n = n+m and the reversal identity
+  exact W_eq_of_cast Wfn.W (m + n) (n + m) (Nat.add_comm m n)
+    ((F.funcs m).conjTensorProduct (G.funcs n))
+    (((G.funcs n).conjTensorProduct (F.funcs m)).borchersConj)
+    (fun x => conjTP_eq_borchersConj_conjTP (F.funcs m) (G.funcs n) x)
+
+/-- If at² + bt ≥ 0 for all real t, with a ≥ 0, then b = 0.
+    This is the key algebraic lemma for the Cauchy-Schwarz argument. -/
+private theorem quadratic_nonneg_linear_zero
+    (a b : ℝ) (ha : 0 ≤ a) (h : ∀ t : ℝ, 0 ≤ a * t ^ 2 + b * t) :
+    b = 0 := by
+  by_cases ha0 : a = 0
+  · have h1 := h 1; have h2 := h (-1); simp [ha0] at h1 h2; linarith
+  · have ha_pos : 0 < a := lt_of_le_of_ne ha (Ne.symm ha0)
+    have h4a_pos : (0 : ℝ) < 4 * a := by linarith
+    have key := h (-b / (2 * a))
+    have calc_eq : a * (-b / (2 * a)) ^ 2 + b * (-b / (2 * a)) = -(b ^ 2) / (4 * a) := by
+      field_simp; ring
+    rw [calc_eq] at key
+    have hbsq_nonpos : b ^ 2 ≤ 0 := by
+      rwa [le_div_iff₀ h4a_pos, zero_mul, neg_nonneg] at key
+    exact sq_eq_zero_iff.mp (le_antisymm hbsq_nonpos (sq_nonneg b))
+
+/-- Quadratic expansion: ⟨X + tY, X + tY⟩.re = ⟨X,X⟩.re + 2t·Re⟨X,Y⟩ + t²·⟨Y,Y⟩.re -/
+private theorem inner_product_quadratic_re {d : ℕ} [NeZero d]
+    (Wfn : WightmanFunctions d) (X Y : BorchersSequence d) (t : ℝ) :
+    (WightmanInnerProduct d Wfn.W (X + (↑t : ℂ) • Y) (X + (↑t : ℂ) • Y)).re =
+    (WightmanInnerProduct d Wfn.W X X).re +
+    2 * (WightmanInnerProduct d Wfn.W X Y).re * t +
+    (WightmanInnerProduct d Wfn.W Y Y).re * t ^ 2 := by
+  have hlin := Wfn.linear
+  -- Expand using sesquilinearity + Hermiticity
+  rw [WightmanInnerProduct_add_left d Wfn.W hlin,
+      WightmanInnerProduct_add_right d Wfn.W hlin X,
+      WightmanInnerProduct_add_right d Wfn.W hlin ((↑t : ℂ) • Y),
+      WightmanInnerProduct_smul_right d Wfn.W hlin _ X,
+      WightmanInnerProduct_smul_left d Wfn.W hlin _ Y,
+      WightmanInnerProduct_smul_left d Wfn.W hlin _ Y,
+      WightmanInnerProduct_smul_right d Wfn.W hlin _ Y,
+      WightmanInnerProduct_hermitian Wfn Y X]
+  -- Simplify conj(↑t) = ↑t for real t, then distribute .re
+  simp only [Complex.conj_ofReal, Complex.add_re, Complex.mul_re,
+    Complex.ofReal_re, Complex.ofReal_im, Complex.conj_re, Complex.conj_im]
+  ring
+
+/-- If ⟨X, X⟩.re = 0 (X is null), then ⟨X, Y⟩ = 0 for all Y.
+
+    Proof uses the quadratic argument with Hermiticity:
+    1. For real t: ⟨X+tY, X+tY⟩.re = 2t·Re(⟨X,Y⟩) + t²·⟨Y,Y⟩.re ≥ 0 → Re(⟨X,Y⟩) = 0
+    2. For I•Y: ⟨X, I•Y⟩.re = -Im(⟨X,Y⟩) = 0 → Im(⟨X,Y⟩) = 0
+    3. Reconstruct: ⟨X,Y⟩ = 0 -/
+theorem null_inner_product_zero {d : ℕ} [NeZero d]
+    (Wfn : WightmanFunctions d)
+    (X Y : BorchersSequence d)
+    (hX : (WightmanInnerProduct d Wfn.W X X).re = 0) :
+    WightmanInnerProduct d Wfn.W X Y = 0 := by
+  have hlin := Wfn.linear
+  set w := WightmanInnerProduct d Wfn.W X Y with hw_def
+  -- Step 1: Show w.re = 0 using the quadratic argument with real scalars
+  have hre : w.re = 0 := by
+    -- For all real t: ⟨X + (↑t)•Y, X + (↑t)•Y⟩.re ≥ 0
+    -- After expansion: this equals ⟨Y,Y⟩.re * t² + 2 * w.re * t
+    -- (using ⟨X,X⟩.re = 0, Hermiticity, and (z + conj z).re = 2*z.re)
+    -- By quadratic_nonneg_linear_zero: 2 * w.re = 0
+    apply mul_left_cancel₀ (two_ne_zero (α := ℝ))
+    rw [mul_zero]
+    apply quadratic_nonneg_linear_zero (WightmanInnerProduct d Wfn.W Y Y).re
+    · exact Wfn.positive_definite Y
+    · intro t
+      rw [show (WightmanInnerProduct d Wfn.W Y Y).re * t ^ 2 + 2 * w.re * t =
+        (WightmanInnerProduct d Wfn.W (X + (↑t : ℂ) • Y) (X + (↑t : ℂ) • Y)).re from by
+          rw [inner_product_quadratic_re Wfn X Y t, hX]; ring]
+      exact Wfn.positive_definite _
+  -- Step 2: Show w.im = 0 by applying step 1 to I•Y
+  have him : w.im = 0 := by
+    -- ⟨X, I•Y⟩ = I * w by linearity, and (I * w).re = -w.im
+    have hIw : WightmanInnerProduct d Wfn.W X (Complex.I • Y) = Complex.I * w := by
+      rw [WightmanInnerProduct_smul_right d Wfn.W hlin Complex.I X Y]
+    -- Apply the same quadratic argument to Z = I•Y:
+    -- ⟨X, Z⟩.re = (I*w).re = 0*w.re - 1*w.im = -w.im
+    -- From the quadratic argument: ⟨X, Z⟩.re = 0, so w.im = 0
+    have hIw_re : (Complex.I * w).re = -w.im := by
+      simp [Complex.mul_re, Complex.I_re, Complex.I_im]
+    -- Apply the quadratic argument to X and Z = I•Y
+    have hre_Z : (WightmanInnerProduct d Wfn.W X (Complex.I • Y)).re = 0 := by
+      apply mul_left_cancel₀ (two_ne_zero (α := ℝ))
+      rw [mul_zero]
+      apply quadratic_nonneg_linear_zero (WightmanInnerProduct d Wfn.W (Complex.I • Y) (Complex.I • Y)).re
+      · exact Wfn.positive_definite _
+      · intro t
+        rw [show (WightmanInnerProduct d Wfn.W (Complex.I • Y) (Complex.I • Y)).re * t ^ 2 +
+          2 * (WightmanInnerProduct d Wfn.W X (Complex.I • Y)).re * t =
+          (WightmanInnerProduct d Wfn.W (X + (↑t : ℂ) • (Complex.I • Y))
+            (X + (↑t : ℂ) • (Complex.I • Y))).re from by
+              rw [inner_product_quadratic_re Wfn X (Complex.I • Y) t, hX]; ring]
+        exact Wfn.positive_definite _
+    rw [hIw] at hre_Z; rw [hIw_re] at hre_Z; linarith
+  -- Step 3: Reconstruct w = 0 from w.re = 0 and w.im = 0
+  exact Complex.ext hre him
 
 /-! ### The Reconstruction -/
 
@@ -252,8 +733,46 @@ def borchersSetoid {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) :
         congr 1; ring
       rw [this]; exact h
     trans := fun {F G H} hFG hGH => by
-      -- Transitivity follows from Cauchy-Schwarz for the Wightman inner product
-      sorry
+      -- Transitivity: if ‖F-G‖²=0 and ‖G-H‖²=0, then ‖F-H‖²=0
+      -- Uses the parallelogram trick with positive definiteness
+      have hlin := Wfn.linear
+      -- Suffices to show ⟨F-H, F-H⟩.re = 0
+      suffices h : (WightmanInnerProduct d Wfn.W (F - H) (F - H)).re = 0 by
+        rw [WightmanInnerProduct_expand_diff d Wfn.W hlin F H] at h; exact h
+      -- (F-H).funcs = ((F-G)+(G-H)).funcs pointwise
+      have hfuncs : ∀ n, (F - H).funcs n = ((F - G) + (G - H)).funcs n :=
+        fun n => by simp [sub_add_sub_cancel]
+      -- Replace ⟨F-H, F-H⟩ with ⟨(F-G)+(G-H), (F-G)+(G-H)⟩
+      have hkey : WightmanInnerProduct d Wfn.W (F - H) (F - H) =
+          WightmanInnerProduct d Wfn.W ((F - G) + (G - H)) ((F - G) + (G - H)) :=
+        (WightmanInnerProduct_congr_left d Wfn.W hlin _ _ _ hfuncs).trans
+          (WightmanInnerProduct_congr_right d Wfn.W hlin _ _ _ hfuncs)
+      rw [hkey]
+      -- Hypotheses: ⟨F-G, F-G⟩.re = 0 and ⟨G-H, G-H⟩.re = 0
+      have hXX : (WightmanInnerProduct d Wfn.W (F - G) (F - G)).re = 0 := by
+        rw [WightmanInnerProduct_expand_diff d Wfn.W hlin F G]; exact hFG
+      have hYY : (WightmanInnerProduct d Wfn.W (G - H) (G - H)).re = 0 := by
+        rw [WightmanInnerProduct_expand_diff d Wfn.W hlin G H]; exact hGH
+      -- Positive definiteness of (F-G)+(G-H) and (F-G)-(G-H)
+      have hpos1 := Wfn.positive_definite ((F - G) + (G - H))
+      have hpos2 := Wfn.positive_definite ((F - G) - (G - H))
+      -- Expand ⟨A+B, A+B⟩ = ⟨A,A⟩ + ⟨A,B⟩ + (⟨B,A⟩ + ⟨B,B⟩)
+      have hexpand : ∀ A B : BorchersSequence d,
+          WightmanInnerProduct d Wfn.W (A + B) (A + B) =
+          WightmanInnerProduct d Wfn.W A A + WightmanInnerProduct d Wfn.W A B +
+          (WightmanInnerProduct d Wfn.W B A + WightmanInnerProduct d Wfn.W B B) := by
+        intro A B
+        rw [WightmanInnerProduct_add_left d Wfn.W hlin A B,
+            WightmanInnerProduct_add_right d Wfn.W hlin A A B,
+            WightmanInnerProduct_add_right d Wfn.W hlin B A B]
+      rw [hexpand] at hpos1 ⊢
+      -- Expand ⟨A-B, A-B⟩ = ⟨A,A⟩ + ⟨B,B⟩ - ⟨A,B⟩ - ⟨B,A⟩
+      rw [WightmanInnerProduct_expand_diff d Wfn.W hlin (F - G) (G - H)] at hpos2
+      -- Distribute .re over + and -
+      simp only [Complex.add_re, Complex.sub_re] at *
+      -- From hXX, hYY, hpos1, hpos2: linarith concludes
+      -- hpos1: cross ≥ 0, hpos2: -cross ≥ 0, so cross = 0
+      linarith
   }
 
 /-- The pre-Hilbert space constructed from Wightman functions via the GNS construction.
@@ -266,10 +785,29 @@ def PreHilbertSpace {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) : Type :=
 def PreHilbertSpace.innerProduct {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) :
     PreHilbertSpace Wfn → PreHilbertSpace Wfn → ℂ :=
   Quotient.lift₂ (WightmanInnerProduct d Wfn.W) (by
+    -- Quotient.lift₂: ha : a₁ ≈ b₁, hb : a₂ ≈ b₂, goal: IP a₁ a₂ = IP b₁ b₂
     intro a₁ a₂ b₁ b₂ ha hb
-    -- Well-definedness: if F₁ ~ F₂ and G₁ ~ G₂ then ⟨F₁, G₁⟩ = ⟨F₂, G₂⟩
-    -- Follows from Cauchy-Schwarz: |⟨F₁-F₂, G⟩| ≤ ‖F₁-F₂‖·‖G‖ = 0
-    sorry)
+    have hlin := Wfn.linear
+    -- Step 1: a₁ ≈ b₁ means ⟨a₁-b₁, a₁-b₁⟩.re = 0
+    have ha_null : (WightmanInnerProduct d Wfn.W (a₁ - b₁) (a₁ - b₁)).re = 0 := by
+      rw [WightmanInnerProduct_expand_diff d Wfn.W hlin]; exact ha
+    -- Step 2: ⟨a₁, G⟩ = ⟨b₁, G⟩ for all G
+    have ha_eq : ∀ G, WightmanInnerProduct d Wfn.W a₁ G = WightmanInnerProduct d Wfn.W b₁ G := by
+      intro G
+      have h := null_inner_product_zero Wfn (a₁ - b₁) G ha_null
+      rwa [WightmanInnerProduct_sub_left d Wfn.W hlin, sub_eq_zero] at h
+    -- Step 3: a₂ ≈ b₂ means ⟨a₂-b₂, a₂-b₂⟩.re = 0
+    have hb_null : (WightmanInnerProduct d Wfn.W (a₂ - b₂) (a₂ - b₂)).re = 0 := by
+      rw [WightmanInnerProduct_expand_diff d Wfn.W hlin]; exact hb
+    -- Step 4: ⟨F, a₂⟩ = ⟨F, b₂⟩ via Hermiticity + null
+    have hb_eq : ∀ F, WightmanInnerProduct d Wfn.W F a₂ = WightmanInnerProduct d Wfn.W F b₂ := by
+      intro F
+      have h := null_inner_product_zero Wfn (a₂ - b₂) F hb_null
+      rw [WightmanInnerProduct_sub_left d Wfn.W hlin, sub_eq_zero] at h
+      -- h : ⟨a₂, F⟩ = ⟨b₂, F⟩. Use Hermiticity to swap.
+      rw [WightmanInnerProduct_hermitian Wfn F a₂, WightmanInnerProduct_hermitian Wfn F b₂, h]
+    -- Combine: IP a₁ a₂ = IP b₁ a₂ = IP b₁ b₂
+    rw [ha_eq a₂, hb_eq b₁])
 
 /-- The Hilbert space obtained by completion.
     Note: Full formalization would require showing PreHilbertSpace has a UniformSpace structure. -/
@@ -282,23 +820,48 @@ namespace Reconstruction
 
 variable {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d)
 
-/-- The vacuum vector in the reconstructed Hilbert space -/
+/-- The vacuum vector in the reconstructed Hilbert space.
+    The vacuum Borchers sequence has f_n = 0 for all n. -/
 def vacuum : PreHilbertSpace Wfn :=
-  Quotient.mk _ { len := 0, funcs := fun _ _ => 0 }
+  Quotient.mk _ ⟨fun _ => 0, 0, fun _ _ => rfl⟩
+
+/-- Convert a spacetime test function to a 1-point Schwartz function.
+    Uses the equivalence SpacetimeDim d ≃ (Fin 1 → SpacetimeDim d). -/
+def schwartzToOnePoint (f : SchwartzSpacetime d) : SchwartzNPoint d 1 where
+  toFun := fun x => f (x 0)
+  smooth' := by
+    -- The map x ↦ x 0 is a continuous linear projection, hence smooth.
+    -- Composition of smooth functions is smooth.
+    sorry
+  decay' := by
+    -- The projection ‖x‖ ≥ ‖x 0‖ gives the decay bounds.
+    sorry
 
 /-- The field operator action on Borchers sequences.
-    For a test function f, this creates the sequence where φ(f) acts on each term. -/
-def fieldOperatorAction (f : SchwartzSpacetime d) (F : BorchersSequence d) : BorchersSequence d :=
-  { len := F.len + 1
-    funcs := fun n hn => by
-      if h : n = 0 then
-        exact 0
-      else if h' : n ≤ F.len + 1 then
-        -- Insert f at the first position via tensor product
-        -- φ(f₁)···φ(fₙ)Ω ↦ φ(f)φ(f₁)···φ(fₙ)Ω
-        sorry  -- Proper tensor product construction
-      else
-        exact 0 }
+    For a test function f ∈ S(ℝ^{d+1}), this creates the sequence (φ(f)F) where:
+    - (φ(f)F)₀ = 0
+    - (φ(f)F)ₙ₊₁ = f ⊗ Fₙ for n ≥ 0 (prepend f as the first argument)
+
+    The (n+1)-th component is the tensor product of f (as a 1-point function) with
+    the n-th component of F, giving an (n+1)-point test function:
+      (φ(f)F)_{n+1}(x₁,...,x_{n+1}) = f(x₁) · Fₙ(x₂,...,x_{n+1}) -/
+private def fieldOperatorFuncs (f : SchwartzSpacetime d)
+    (g : (n : ℕ) → SchwartzNPoint d n) : (n : ℕ) → SchwartzNPoint d n
+  | 0 => 0
+  | k + 1 => SchwartzMap.prependField f (g k)
+
+def fieldOperatorAction (f : SchwartzSpacetime d) (F : BorchersSequence d) :
+    BorchersSequence d where
+  funcs := fieldOperatorFuncs f F.funcs
+  bound := F.bound + 1
+  bound_spec := fun n hn => by
+    cases n with
+    | zero => omega
+    | succ k =>
+      -- Goal reduces to: prependField f (F.funcs k) = 0
+      -- Since F.bound + 1 < k + 1, we have F.bound < k, so F.funcs k = 0
+      simp only [fieldOperatorFuncs, F.bound_spec k (by omega),
+        SchwartzMap.prependField_zero_right]
 
 /-- The field operator on the pre-Hilbert space -/
 def fieldOperator (f : SchwartzSpacetime d) : PreHilbertSpace Wfn → PreHilbertSpace Wfn :=
@@ -441,7 +1004,7 @@ structure OsterwalderSchraderAxioms (d : ℕ) [NeZero d] where
       This ensures the reconstructed inner product is positive definite. -/
   E2_reflection_positive : ∀ (F : BorchersSequence d),
     -- For sequences supported in τ > 0, the quadratic form is non-negative
-    (∀ n (hn : n ≤ F.len), ∀ x : NPointDomain d n, (F.funcs n hn).toFun x ≠ 0 → x ∈ PositiveTimeRegion d n) →
+    (∀ n, ∀ x : NPointDomain d n, (F.funcs n).toFun x ≠ 0 → x ∈ PositiveTimeRegion d n) →
     (WightmanInnerProduct d S F F).re ≥ 0
   /-- E3: Permutation symmetry - Schwinger functions are symmetric under
       permutation of arguments: S_n(x_{σ(1)},...,x_{σ(n)}) = S_n(x₁,...,xₙ)
@@ -493,18 +1056,39 @@ structure OSLinearGrowthCondition (d : ℕ) [NeZero d] (OS : OsterwalderSchrader
   /-- The bounds are positive -/
   alpha_pos : alpha > 0
   beta_pos : beta > 0
-  /-- The linear growth estimate: |Sₙ(f)| ≤ σₙ ‖f‖_{s,n}
-      where σₙ ≤ α · βⁿ · (n!)^γ bounds the distribution order growth. -/
-  growth_estimate : ∀ (n : ℕ) (f : SchwartzNPoint d n),
-    ‖OS.S n f‖ ≤ alpha * beta ^ n * (n.factorial : ℝ) ^ gamma * sorry
+  /-- The linear growth estimate: |Sₙ(f)| ≤ σₙ · ‖f‖_{s,n}
+      where σₙ ≤ α · βⁿ · (n!)^γ bounds the distribution order growth,
+      and ‖f‖_{s,n} is the Schwartz seminorm of order s on n-point functions.
 
-/-- Theorem R→E (Wightman → OS): A Wightman QFT directly yields Schwinger
-    functions satisfying OS axioms E0-E4 via Wick rotation t → -iτ.
-    This direction is straightforward (no gap). -/
+      This is equation (4.1) of OS II: |Sₙ(f)| ≤ σₙ |f|_s
+      where |f|_s = SchwartzMap.seminorm ℝ s s (f). -/
+  growth_estimate : ∀ (n : ℕ) (f : SchwartzNPoint d n),
+    ‖OS.S n f‖ ≤ alpha * beta ^ n * (n.factorial : ℝ) ^ gamma *
+      SchwartzMap.seminorm ℝ sobolev_index sobolev_index f
+
+/-- Theorem R→E (Wightman → OS): A Wightman QFT yields Schwinger functions
+    satisfying OS axioms E0-E4.
+
+    The construction (OS I, Section 5) uses the Bargmann-Hall-Wightman theorem:
+    - The spectrum condition R3 implies W_n is analytic in the forward tube T_n
+    - BHW extends W_n to the permuted extended tube (invariant under complex Lorentz)
+    - Define S_n by restricting W_n to Euclidean points: S_n(x) = W_n(ix⁰₁, x⃗₁, ...)
+    - Euclidean points lie inside the permuted extended tube, so S_n is real-analytic
+
+    Key subtlety: In the forward tube, Im(z_k - z_{k-1}) ∈ V₊ forces time ordering.
+    But the permuted extended tube covers all orderings, yielding full permutation
+    symmetry (E3). Euclidean invariance (E1) follows from complex Lorentz invariance
+    of W_n: SO(d+1) ⊂ L₊(ℂ) is the subgroup preserving Euclidean points.
+
+    Temperedness (E0) requires Proposition 5.1 of OS I (a geometric lemma on Ω_n).
+    Reflection positivity (E2) follows from Wightman positivity (R2).
+    Cluster (E4) follows from R4. -/
 theorem wightman_to_os (qft : WightmanQFT d) :
     ∃ OS : OsterwalderSchraderAxioms d, True := by
-  -- Wick rotation t → -iτ applied to Wightman functions gives Schwinger functions
-  -- satisfying OS axioms E0-E4. This is Theorem R→E of OS I.
+  -- The construction requires:
+  -- 1. Analytic continuation of W_n to the permuted extended tube (BHW theorem)
+  -- 2. Restriction to Euclidean points to define S_n
+  -- 3. Verification of E0-E4 from R0-R5
   sorry
 
 /-- Theorem E'→R' (OS II): Schwinger functions satisfying the linear growth
