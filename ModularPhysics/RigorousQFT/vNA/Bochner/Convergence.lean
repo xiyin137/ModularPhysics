@@ -4,6 +4,7 @@ Released under Apache 2.0 license.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.vNA.Unbounded.Spectral
+import ModularPhysics.RigorousQFT.vNA.Bochner.FunctionalCalculusLinearity
 import Mathlib.MeasureTheory.Integral.DominatedConvergence
 import Mathlib.MeasureTheory.Integral.Bochner.ContinuousLinearMap
 
@@ -137,13 +138,55 @@ theorem functionalCalculus_norm_sq (P : SpectralMeasure H) (f : ℝ → ℂ)
   rw [← integral_re hint]
   congr 1
 
+/-! ### Simplified norm-squared identity -/
+
+/-- Simplified norm-squared identity that automatically derives the auxiliary
+    hypotheses (star, product) from basic integrability and measurability. -/
+theorem functionalCalculus_norm_sq' (P : SpectralMeasure H) (f : ℝ → ℂ)
+    (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (hf_meas : Measurable f)
+    (x : H) :
+    (‖functionalCalculus P f hf_int hf_bdd x‖ : ℝ)^2 =
+    ∫ t, ‖f t‖^2 ∂(P.diagonalMeasure x) := by
+  -- Derive star hypotheses: star preserves norm and measurability
+  have hf_meas_star : Measurable (star ∘ f) := continuous_star.measurable.comp hf_meas
+  have hsf_int : ∀ z : H, Integrable (star ∘ f) (P.diagonalMeasure z) := by
+    intro z
+    exact (hf_int z).mono (hf_meas_star.aestronglyMeasurable)
+      (Eventually.of_forall fun t => by simp [Function.comp_apply])
+  have hsf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖(star ∘ f) t‖ ≤ M := by
+    obtain ⟨M, hM_nn, hM⟩ := hf_bdd
+    exact ⟨M, hM_nn, fun t => by rw [Function.comp_apply, norm_star]; exact hM t⟩
+  -- Derive |f|² = (star f) * f hypotheses
+  have h_norm_sq_eq : ∀ t, ‖((star ∘ f) * f) t‖ = ‖f t‖ ^ 2 := by
+    intro t; show ‖star (f t) * f t‖ = ‖f t‖ ^ 2
+    rw [norm_mul, norm_star, sq]
+  have hf_bdd' := hf_bdd
+  obtain ⟨M, hM_nn, hM⟩ := hf_bdd'
+  have hff_int : ∀ z : H, Integrable ((star ∘ f) * f) (P.diagonalMeasure z) := by
+    intro z
+    exact ((hf_int z).norm.const_mul M).mono'
+      ((hf_meas_star.mul hf_meas).aestronglyMeasurable)
+      (Eventually.of_forall fun t => by
+        rw [h_norm_sq_eq]
+        calc ‖f t‖ ^ 2 = ‖f t‖ * ‖f t‖ := sq (‖f t‖)
+          _ ≤ M * ‖f t‖ := mul_le_mul_of_nonneg_right (hM t) (norm_nonneg _))
+  have hff_bdd : ∃ M', 0 ≤ M' ∧ ∀ t, ‖((star ∘ f) * f) t‖ ≤ M' :=
+    ⟨M ^ 2, sq_nonneg _, fun t => by
+      rw [h_norm_sq_eq]
+      calc ‖f t‖ ^ 2 = ‖f t‖ * ‖f t‖ := sq (‖f t‖)
+        _ ≤ M * M := mul_le_mul (hM t) (hM t) (norm_nonneg _) (le_trans (norm_nonneg _) (hM t))
+        _ = M ^ 2 := (sq M).symm⟩
+  exact functionalCalculus_norm_sq P f hf_int hf_bdd hsf_int hsf_bdd hff_int hff_bdd hf_meas x
+
 /-! ### Dominated convergence for spectral integrals -/
 
 /-- Dominated convergence in the strong operator topology for spectral integrals:
     If `fₙ → f` pointwise and `‖fₙ(t)‖ ≤ g(t)` with `g²` integrable w.r.t. all
     diagonal spectral measures, then `fₙ(T)x → f(T)x` for all x.
 
-    **Proof sketch:** Using the norm-squared identity:
+    **Proof:** Using the norm-squared identity and linearity:
     `‖fₙ(T)x - f(T)x‖² = ‖(fₙ-f)(T)x‖² = ∫ |fₙ-f|² dμ_x → 0`
     by the scalar dominated convergence theorem, since `|fₙ-f|² ≤ 4g²` and
     `|fₙ(t)-f(t)|² → 0` pointwise. -/
@@ -164,14 +207,94 @@ theorem functionalCalculus_tendsto_SOT (P : SpectralMeasure H)
     (hf_bdd : ∀ n, ∃ M, 0 ≤ M ∧ ∀ t, ‖f n t‖ ≤ M)
     (hflim_int : ∀ z, Integrable flim (P.diagonalMeasure z))
     (hflim_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖flim t‖ ≤ M)
+    -- Measurability hypotheses (needed for norm-squared identity)
+    (hf_meas : ∀ n, Measurable (f n))
+    (hflim_meas : Measurable flim)
     (x : H) :
     Tendsto (fun n => functionalCalculus P (f n) (hf_int n) (hf_bdd n) x)
       atTop (nhds (functionalCalculus P flim hflim_int hflim_bdd x)) := by
-  -- Strategy: Show ‖fₙ(T)x - f(T)x‖ → 0
-  -- By linearity: fₙ(T) - f(T) = (fₙ - f)(T)
-  -- By norm-squared identity: ‖(fₙ-f)(T)x‖² = ∫ |fₙ-f|² dμ_x
-  -- By scalar DCT: ∫ |fₙ-f|² dμ_x → 0 since |fₙ-f|² → 0 pointwise and |fₙ-f|² ≤ 4g²
-  -- Requires: functionalCalculus_sub (linearity infrastructure)
-  sorry
+  -- === Hypotheses for the difference function d n = f n - flim ===
+  obtain ⟨Mg, hMg⟩ := hg_bdd
+  have hMg_nn : 0 ≤ Mg := le_trans (hg_nonneg 0) (hMg 0)
+  -- Integrability of d n
+  have hd_int : ∀ n z, Integrable (f n - flim) (P.diagonalMeasure z) :=
+    fun n z => (hf_int n z).sub (hflim_int z)
+  -- Norm bound: ‖d n t‖ ≤ 2g(t) ≤ 2Mg
+  have hd_bound : ∀ n t, ‖(f n - flim) t‖ ≤ 2 * g t := by
+    intro n t; show ‖f n t - flim t‖ ≤ 2 * g t
+    calc ‖f n t - flim t‖ ≤ ‖f n t‖ + ‖flim t‖ := norm_sub_le _ _
+      _ ≤ g t + g t := add_le_add (hf_bound n t) (hflim_bound t)
+      _ = 2 * g t := by ring
+  have hd_bdd : ∀ n, ∃ M, 0 ≤ M ∧ ∀ t, ‖(f n - flim) t‖ ≤ M := by
+    intro n; exact ⟨2 * Mg, by linarith, fun t =>
+      le_trans (hd_bound n t) (by nlinarith [hMg t])⟩
+  -- Measurability of d n
+  have hd_meas : ∀ n, Measurable (f n - flim) := fun n => (hf_meas n).sub hflim_meas
+  -- === Key identity: fₙ(T) - flim(T) = (fₙ - flim)(T) ===
+  have hsub : ∀ n, functionalCalculus P (f n) (hf_int n) (hf_bdd n) -
+      functionalCalculus P flim hflim_int hflim_bdd =
+      functionalCalculus P (f n - flim) (hd_int n) (hd_bdd n) :=
+    fun n => (P.functionalCalculus_sub (f n) flim (hf_int n) (hf_bdd n)
+      hflim_int hflim_bdd (hd_int n) (hd_bdd n)).symm
+  -- === Norm-squared identity for d n ===
+  have hnorm_sq : ∀ n, (‖functionalCalculus P (f n - flim) (hd_int n) (hd_bdd n) x‖ : ℝ)^2 =
+      ∫ t, ‖(f n - flim) t‖^2 ∂(P.diagonalMeasure x) :=
+    fun n => functionalCalculus_norm_sq' P (f n - flim) (hd_int n) (hd_bdd n) (hd_meas n) x
+  -- === Scalar DCT: ∫ ‖dₙ‖² dμ_x → 0 ===
+  have hint_tend : Tendsto (fun n => ∫ t, ‖(f n - flim) t‖^2 ∂(P.diagonalMeasure x))
+      atTop (nhds 0) := by
+    -- Apply scalar DCT with dominating function 4g²
+    -- The limit function is the zero function (since |fₙ(t) - f(t)|² → 0)
+    have h_lim : ∀ᵐ t ∂(P.diagonalMeasure x),
+        Tendsto (fun n => ‖(f n - flim) t‖ ^ 2) atTop (nhds 0) := by
+      apply Eventually.of_forall; intro t
+      have : Tendsto (fun n => f n t - flim t) atTop (nhds 0) := by
+        rw [show (0 : ℂ) = flim t - flim t from (sub_self _).symm]
+        exact (hf_tend t).sub tendsto_const_nhds
+      have : Tendsto (fun n => ‖f n t - flim t‖) atTop (nhds 0) := by
+        rw [show (0 : ℝ) = ‖(0 : ℂ)‖ from norm_zero.symm]
+        exact continuous_norm.continuousAt.tendsto.comp this
+      rw [show (0 : ℝ) = 0 ^ 2 from (zero_pow two_ne_zero).symm]
+      exact this.pow 2
+    have h_bound : ∀ n, ∀ᵐ t ∂(P.diagonalMeasure x),
+        ‖‖(f n - flim) t‖ ^ 2‖ ≤ 4 * (g t) ^ 2 := by
+      intro n; apply Eventually.of_forall; intro t
+      rw [Real.norm_of_nonneg (sq_nonneg _)]
+      show ‖f n t - flim t‖ ^ 2 ≤ 4 * (g t) ^ 2
+      calc ‖f n t - flim t‖ ^ 2 ≤ (2 * g t) ^ 2 :=
+            sq_le_sq' (by linarith [norm_nonneg (f n t - flim t), hg_nonneg t]) (hd_bound n t)
+        _ = 4 * (g t) ^ 2 := by ring
+    have h_meas : ∀ n, AEStronglyMeasurable (fun t => ‖(f n - flim) t‖ ^ 2)
+        (P.diagonalMeasure x) :=
+      fun n => ((hd_meas n).norm.pow_const 2).aestronglyMeasurable
+    have h_dom_int : Integrable (fun t => 4 * (g t) ^ 2) (P.diagonalMeasure x) := by
+      have : (fun t => 4 * (g t) ^ 2) = (fun t => (4 : ℝ) • (g t) ^ 2) := by
+        ext t; exact (smul_eq_mul _ _).symm
+      rw [this]; exact (hg2_int x).smul (4 : ℝ)
+    have := tendsto_integral_of_dominated_convergence _ h_meas h_dom_int h_bound h_lim
+    simp only [integral_zero] at this
+    exact this
+  -- === Conclude: ‖fₙ(T)x - f(T)x‖ → 0 ===
+  rw [Metric.tendsto_atTop]
+  intro ε hε
+  obtain ⟨N, hN⟩ := (Metric.tendsto_atTop.mp hint_tend) (ε ^ 2) (by positivity)
+  exact ⟨N, fun n hn => by
+    rw [dist_eq_norm]
+    -- ‖fₙ(T)x - f(T)x‖ = ‖(fₙ-f)(T)x‖
+    have h_eq : functionalCalculus P (f n) (hf_int n) (hf_bdd n) x -
+        functionalCalculus P flim hflim_int hflim_bdd x =
+        functionalCalculus P (f n - flim) (hd_int n) (hd_bdd n) x := by
+      rw [← ContinuousLinearMap.sub_apply]; congr 1; exact hsub n
+    rw [h_eq]
+    -- From ‖v‖² < ε², conclude ‖v‖ < ε (using nlinarith)
+    by_contra h_not
+    push_neg at h_not -- ε ≤ ‖v‖
+    have h_sq_ge : ε ^ 2 ≤ (‖functionalCalculus P (f n - flim) (hd_int n) (hd_bdd n) x‖ : ℝ) ^ 2 :=
+      sq_le_sq' (by linarith) h_not
+    have h_int_lt : ∫ t, ‖(f n - flim) t‖ ^ 2 ∂(P.diagonalMeasure x) < ε ^ 2 := by
+      have := hN n hn
+      rw [dist_zero_right, Real.norm_of_nonneg (integral_nonneg fun _ => sq_nonneg _)] at this
+      exact this
+    linarith [hnorm_sq n]⟩
 
 end
