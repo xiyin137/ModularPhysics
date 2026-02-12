@@ -1593,30 +1593,66 @@ end ItoProcess
 
 /-- Itô's formula for a C² function f applied to an Itô process.
 
-    f(t, X_t) = f(0, X_0) + ∫₀ᵗ ∂_t f(s, X_s) ds + ∫₀ᵗ ∂_x f(s, X_s) dX_s
-                + (1/2)∫₀ᵗ ∂²_x f(s, X_s) σ²_s ds
+    f(t, X_t) = f(0, X_0) + ∫₀ᵗ [∂_t f + μ ∂_x f + ½ σ² ∂²_x f](s, X_s) ds
+                + ∫₀ᵗ ∂_x f(s, X_s) σ_s dW_s
 
-    The three integral terms are:
-    - drift_term: ∫₀ᵗ [∂_t f(s, X_s) + ∂_x f(s, X_s) μ_s + (1/2) ∂²_x f(s, X_s) σ²_s] ds
-    - diffusion_term: ∫₀ᵗ ∂_x f(s, X_s) σ_s dW_s (stochastic integral)
+    The conclusion asserts the existence of a stochastic integral process that:
+    (i) starts at 0 (stoch_int 0 = 0 a.s.)
+    (ii) is a martingale (the set-integral property for F_s-measurable sets)
+    (iii) satisfies the Itô formula equation
 
-    We express the drift terms explicitly and the stochastic integral
-    as a process (which is characterised elsewhere via L² limits). -/
-theorem ito_formula {F : Filtration Ω ℝ} {μ : Measure Ω}
+    The martingale property (ii) is the non-trivial content: it asserts that
+    the stochastic integral term is genuinely a stochastic integral ∫₀ᵗ H dW,
+    not just an arbitrary remainder. Without (ii), the formula would be trivially
+    provable by defining stoch_int as the remainder. -/
+theorem ito_formula {F : Filtration Ω ℝ} {μ : Measure Ω} [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
     (f : ℝ → ℝ → ℝ)
     (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
     (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x)) :
     ∃ (stoch_int : ℝ → Ω → ℝ),
-    ∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
+    -- (i) Initial condition: the stochastic integral starts at 0
+    (∀ᵐ ω ∂μ, stoch_int 0 ω = 0) ∧
+    -- (ii) Martingale property: for 0 ≤ s ≤ t and A ∈ F_s, ∫_A M_t = ∫_A M_s
+    (∀ s t : ℝ, 0 ≤ s → s ≤ t →
+      ∀ A : Set Ω, @MeasurableSet Ω (F.σ_algebra s) A →
+      ∫ ω in A, stoch_int t ω ∂μ = ∫ ω in A, stoch_int s ω ∂μ) ∧
+    -- (iii) Itô's formula
+    (∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
       f t (X.process t ω) = f 0 (X.process 0 ω) +
         (∫ (s : ℝ) in Set.Icc 0 t,
           (deriv (fun u => f u (X.process s ω)) s +
            deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
            (1/2) * deriv (deriv (fun x => f s x)) (X.process s ω) * (X.diffusion s ω)^2)
           ∂volume) +
-        stoch_int t ω := by
-  sorry
+        stoch_int t ω) := by
+  -- Define stoch_int as the remainder: f(t, X_t) - f(0, X_0) - ∫₀ᵗ drift ds
+  let drift_integrand : ℝ → Ω → ℝ := fun s ω =>
+    deriv (fun u => f u (X.process s ω)) s +
+    deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
+    (1/2) * deriv (deriv (fun x => f s x)) (X.process s ω) * (X.diffusion s ω)^2
+  refine ⟨fun t ω => f t (X.process t ω) - f 0 (X.process 0 ω) -
+    ∫ s in Set.Icc 0 t, drift_integrand s ω ∂volume, ?_, ?_, ?_⟩
+  · -- (i) Initial condition: stoch_int 0 = 0 a.e.
+    -- stoch_int 0 ω = f(0, X_0 ω) - f(0, X_0 ω) - ∫ on Icc 0 0
+    -- Icc 0 0 = {0} has Lebesgue measure 0, so the integral is 0
+    filter_upwards with ω
+    show f 0 (X.process 0 ω) - f 0 (X.process 0 ω) -
+      ∫ s in Set.Icc 0 0, drift_integrand s ω ∂volume = 0
+    have hmeas_zero : (volume.restrict (Set.Icc (0 : ℝ) 0)) = 0 := by
+      rw [Measure.restrict_eq_zero, Set.Icc_self]
+      simp
+    rw [hmeas_zero, integral_zero_measure]
+    ring
+  · -- (ii) Martingale property: the core content of Itô's formula
+    -- The process M_t = f(t, X_t) - f(0, X_0) - ∫₀ᵗ drift ds is a martingale.
+    -- Proof requires: partition [s,t], Taylor expansion, BM quadratic variation,
+    -- and careful error control. See Helpers/ItoFormula.lean for infrastructure.
+    sorry
+  · -- (iii) Itô's formula: holds by definition of stoch_int as remainder
+    intro t ht
+    filter_upwards with ω
+    ring
 
 /-! ## Stochastic Differential Equations -/
 
