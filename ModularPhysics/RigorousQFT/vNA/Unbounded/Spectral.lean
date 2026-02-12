@@ -2018,6 +2018,59 @@ theorem functionalCalculus_inner (P : SpectralMeasure H) (f : ℝ → ℂ)
   unfold functionalCalculus
   exact sesquilinearToOperator_inner (Bform P f) _ _ _ x y
 
+open MeasureTheory in
+/-- **Polarization diagonal identity**: ⟨x, f(T)x⟩ = ∫ f dμ_x.
+
+    This is the key bridge between the inner product with the functional calculus
+    and the diagonal spectral integral. The proof uses the polarization formula
+    B(x,x) = Q(x), which holds because Q is a genuine quadratic form:
+    - Q(0) = 0 (integral against zero measure)
+    - Q(2x) = 4Q(x) (parallelogram with u = v = x)
+    - Q(x+ix) = Q(x-ix) = 2Q(x) (from Q(ix) = Q(x) and parallelogram)
+    So B(x,x) = (1/4)[4Q(x) - 0 - i·2Q(x) + i·2Q(x)] = Q(x). -/
+theorem functionalCalculus_inner_self (P : SpectralMeasure H) (f : ℝ → ℂ)
+    (hf_int : ∀ z : H, Integrable f (P.diagonalMeasure z))
+    (hf_bdd : ∃ M, 0 ≤ M ∧ ∀ t, ‖f t‖ ≤ M)
+    (x : H) :
+    @inner ℂ H _ x (functionalCalculus P f hf_int hf_bdd x) =
+    ∫ t, f t ∂(P.diagonalMeasure x) := by
+  rw [← functionalCalculus_inner P f hf_int hf_bdd x x]
+  -- Goal: Bform P f x x = Qform P f x
+  -- Only unfold Bform, keep Qform opaque so Qform_smul_I etc. apply
+  simp only [Bform]
+  -- Q(0) = 0: from parallelogram with u = v = 0, we get 2Q(0) = 4Q(0)
+  have hQ0 : Qform P f (0 : H) = 0 := by
+    have hpar := Qform_parallelogram P f 0 0 (hf_int _) (hf_int _) (hf_int _) (hf_int _)
+    simp only [add_zero, sub_self] at hpar
+    linear_combination (-1/2 : ℂ) * hpar
+  -- Q(2x) = 4Q(x): from parallelogram with u = v = x
+  have hQ2x : Qform P f (x + x) = (4 : ℂ) * Qform P f x := by
+    have hpar := Qform_parallelogram P f x x (hf_int _) (hf_int _) (hf_int _) (hf_int _)
+    simp only [sub_self] at hpar
+    rw [hQ0, add_zero] at hpar
+    linear_combination hpar
+  -- Q(x+ix) = Q(x-ix): since i·(x-ix) = x+ix, by Qform_smul_I
+  have hQsym : Qform P f (x + Complex.I • x) = Qform P f (x - Complex.I • x) := by
+    have key : Complex.I • (x - Complex.I • x) = x + Complex.I • x := by
+      simp [smul_sub, smul_smul, Complex.I_mul_I]; abel
+    rw [show x + Complex.I • x = Complex.I • (x - Complex.I • x) from key.symm]
+    exact Qform_smul_I P f (x - Complex.I • x)
+  -- Q(x+ix) + Q(x-ix) = 4Q(x): parallelogram with v = ix, plus Q(ix) = Q(x)
+  have hQsum : Qform P f (x + Complex.I • x) + Qform P f (x - Complex.I • x) =
+      (4 : ℂ) * Qform P f x := by
+    have hpar := Qform_parallelogram P f x (Complex.I • x)
+      (hf_int _) (hf_int _) (hf_int _) (hf_int _)
+    rw [Qform_smul_I P f x] at hpar
+    linear_combination hpar
+  -- Therefore Q(x+ix) = 2Q(x)
+  have hQix : Qform P f (x + Complex.I • x) = (2 : ℂ) * Qform P f x := by
+    linear_combination (1/2 : ℂ) * hQsum + (1/2 : ℂ) * hQsym
+  -- B(x,x) = (1/4)[Q(2x) - Q(0) - iQ(x+ix) + iQ(x-ix)]
+  --   = (1/4)[4Q(x) - 0 - i·2Q(x) + i·2Q(x)] = Q(x)
+  rw [show x - x = (0 : H) from sub_self x, hQ0, hQ2x, ← hQsym, hQix]
+  simp only [Qform]
+  ring
+
 /-! ### Functional Calculus Helper Lemmas -/
 
 open MeasureTheory in

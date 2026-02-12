@@ -87,12 +87,12 @@ def permuteNPointFun (σ : Equiv.Perm (Fin n)) (f : NPointDomain d n → ℂ) : 
 
     Concretely: W_n can be written as a distribution in n-1 difference variables. -/
 def IsTranslationInvariantWeak (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : Prop :=
-  -- W_n depends only on differences: there exists W̃_n such that
-  -- W_n(x₁,...,xₙ) = W̃_n(x₂-x₁, x₃-x₂, ..., xₙ-x_{n-1})
-  ∀ (n : ℕ), n ≥ 1 →
-    ∃ (W' : SchwartzNPoint d (n - 1) → ℂ),
-      ∀ f : SchwartzNPoint d n,
-        W n f = W' sorry  -- Integration over the "center of mass" coordinate
+  -- W_n is translation-invariant: for any translation a and any two Schwartz functions
+  -- f, g such that g(x) = f(x₁+a,...,xₙ+a), we have W_n(f) = W_n(g).
+  -- This avoids needing to construct the translated Schwartz function.
+  ∀ (n : ℕ) (a : SpacetimeDim d) (f g : SchwartzNPoint d n),
+    (∀ x : NPointDomain d n, g.toFun x = f.toFun (fun i => x i + a)) →
+    W n f = W n g
 
 /-- Lorentz covariance: W_n(Λx₁, ..., Λxₙ) = W_n(x₁, ..., xₙ) for all Λ ∈ O(1,d).
 
@@ -104,11 +104,12 @@ def IsTranslationInvariantWeak (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : 
     We express this as invariance under the action of the Lorentz group on n-point
     configurations. -/
 def IsLorentzCovariantWeak (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : Prop :=
-  -- For scalar fields: W_n is Lorentz invariant
-  -- W_n(Λx₁, ..., Λxₙ) = W_n(x₁, ..., xₙ) for all Λ ∈ O(1,d)
-  ∀ (n : ℕ) (Λ : LorentzGroup d) (f : SchwartzNPoint d n),
-    -- The Lorentz-transformed function f_Λ(x) = f(Λ⁻¹x) should give the same value
-    W n f = W n sorry  -- f ∘ Λ⁻¹ (requires Schwartz preservation under linear maps)
+  -- For scalar fields: W_n is Lorentz invariant.
+  -- For any Λ ∈ O(1,d) and Schwartz functions f, g such that g(x) = f(Λ⁻¹x₁,...,Λ⁻¹xₙ),
+  -- we have W_n(f) = W_n(g). Avoids constructing the Lorentz-transformed Schwartz function.
+  ∀ (n : ℕ) (Λ : LorentzGroup d) (f g : SchwartzNPoint d n),
+    (∀ x : NPointDomain d n, g.toFun x = f.toFun (fun i => Matrix.mulVec Λ⁻¹.val (x i))) →
+    W n f = W n g
 
 /-- Local commutativity condition for Wightman functions.
 
@@ -124,14 +125,14 @@ def IsLorentzCovariantWeak (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : Prop
     spacelike-separated supports: if supp(f) and supp(g) are spacelike separated,
     then W₂(f ⊗ g) = W₂(g ⊗ f). -/
 def IsLocallyCommutativeWeak (W : (n : ℕ) → SchwartzNPoint d n → ℂ) : Prop :=
-  -- For n=2: if f, g have spacelike-separated supports, W₂(f,g) = W₂(g,f)
-  -- General n: swapping spacelike-separated arguments preserves W_n
-  ∀ (n : ℕ) (i j : Fin n) (f : SchwartzNPoint d n),
-    -- If points at positions i and j are always spacelike separated in supp(f),
-    -- then swapping indices i and j doesn't change W_n
+  -- For Schwartz functions f, g where g is the swap of coordinates i, j in f,
+  -- and the supports of f have spacelike-separated i-th and j-th arguments,
+  -- we have W_n(f) = W_n(g). Avoids constructing the swapped Schwartz function.
+  ∀ (n : ℕ) (i j : Fin n) (f g : SchwartzNPoint d n),
     (∀ x : NPointDomain d n, f.toFun x ≠ 0 →
       MinkowskiSpace.AreSpacelikeSeparated d (x i) (x j)) →
-    W n f = W n ⟨fun x => f.toFun (fun k => x (Equiv.swap i j k)), sorry, sorry⟩
+    (∀ x : NPointDomain d n, g.toFun x = f.toFun (fun k => x (Equiv.swap i j k))) →
+    W n f = W n g
 
 /-! ### Positive Definiteness -/
 
@@ -142,13 +143,23 @@ structure BorchersSequence (d : ℕ) where
   /-- For each n, a test function on n copies of spacetime -/
   funcs : (n : ℕ) → (n ≤ len) → SchwartzNPoint d n
 
-/-- The inner product induced by Wightman functions on Borchers sequences -/
+/-- The inner product induced by Wightman functions on Borchers sequences.
+
+    The proper definition is: ⟨F, G⟩ = Σ_{n,m} W_{n+m}(f̄_n ⊗ g_m)
+    where f̄_n is complex conjugation and ⊗ is the tensor product of Schwartz functions.
+
+    This requires the tensor product SchwartzNPoint d n ⊗ SchwartzNPoint d m → SchwartzNPoint d (n+m),
+    which is guaranteed by the nuclear theorem (𝒮 is nuclear). The construction of this
+    tensor product is the main motivation for the NuclearSpaces infrastructure.
+
+    TODO: Replace sorry with actual tensor product once NuclearSpaces/SchwartzNuclear.lean
+    provides the nuclear tensor product. -/
 def WightmanInnerProduct (W : (n : ℕ) → SchwartzNPoint d n → ℂ)
     (F G : BorchersSequence d) : ℂ :=
   ∑ n ∈ Finset.range (F.len + G.len + 1),
     ∑ m ∈ Finset.range (n + 1),
       if _hn : m ≤ F.len ∧ n - m ≤ G.len then
-        W n sorry  -- Would need proper tensor product of test functions
+        W n sorry  -- Requires tensor product: f̄_m ⊗ g_{n-m} ∈ SchwartzNPoint d n
       else 0
 
 /-- Positive definiteness of Wightman functions -/
@@ -218,18 +229,46 @@ structure WightmanFunctions (d : ℕ) [NeZero d] where
 
 /-! ### The Reconstruction -/
 
+/-- The GNS equivalence relation on Borchers sequences.
+
+    F ~ G iff ‖F - G‖² = 0, which by sesquilinearity expands to:
+    Re(⟨F,F⟩ + ⟨G,G⟩ - ⟨F,G⟩ - ⟨G,F⟩) = 0.
+
+    This is the correct GNS quotient: we identify sequences whose difference
+    has zero norm, not merely those that individually have zero norm. -/
+def borchersSetoid {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) :
+    Setoid (BorchersSequence d) where
+  r F G :=
+    (WightmanInnerProduct d Wfn.W F F + WightmanInnerProduct d Wfn.W G G
+      - WightmanInnerProduct d Wfn.W F G - WightmanInnerProduct d Wfn.W G F).re = 0
+  iseqv := {
+    refl := fun F => by simp
+    symm := fun {F G} h => by
+      -- The expression is symmetric: swapping F↔G gives the same value
+      have : (WightmanInnerProduct d Wfn.W G G + WightmanInnerProduct d Wfn.W F F
+        - WightmanInnerProduct d Wfn.W G F - WightmanInnerProduct d Wfn.W F G).re =
+        (WightmanInnerProduct d Wfn.W F F + WightmanInnerProduct d Wfn.W G G
+        - WightmanInnerProduct d Wfn.W F G - WightmanInnerProduct d Wfn.W G F).re := by
+        congr 1; ring
+      rw [this]; exact h
+    trans := fun {F G H} hFG hGH => by
+      -- Transitivity follows from Cauchy-Schwarz for the Wightman inner product
+      sorry
+  }
+
 /-- The pre-Hilbert space constructed from Wightman functions via the GNS construction.
-    Vectors are equivalence classes of Borchers sequences modulo null vectors. -/
+    Vectors are equivalence classes of Borchers sequences modulo the null space
+    N = {F : ⟨F, F⟩ = 0}. Two sequences are identified if their difference is null. -/
 def PreHilbertSpace {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) : Type :=
-  Quotient (Setoid.ker (fun F : BorchersSequence d =>
-    (WightmanInnerProduct d Wfn.W F F).re = 0))
+  Quotient (borchersSetoid Wfn)
 
 /-- The inner product on the pre-Hilbert space -/
 def PreHilbertSpace.innerProduct {d : ℕ} [NeZero d] (Wfn : WightmanFunctions d) :
     PreHilbertSpace Wfn → PreHilbertSpace Wfn → ℂ :=
   Quotient.lift₂ (WightmanInnerProduct d Wfn.W) (by
     intro a₁ a₂ b₁ b₂ ha hb
-    -- Need to show well-definedness: if F₁ ~ F₂ and G₁ ~ G₂ then ⟨F₁, G₁⟩ = ⟨F₂, G₂⟩
+    -- Well-definedness: if F₁ ~ F₂ and G₁ ~ G₂ then ⟨F₁, G₁⟩ = ⟨F₂, G₂⟩
+    -- Follows from Cauchy-Schwarz: |⟨F₁-F₂, G⟩| ≤ ‖F₁-F₂‖·‖G‖ = 0
     sorry)
 
 /-- The Hilbert space obtained by completion.
@@ -359,8 +398,8 @@ References:
 /-- Schwinger functions (Euclidean correlators) -/
 def SchwingerFunctions (d : ℕ) := (n : ℕ) → SchwartzNPoint d n → ℂ
 
-/-- The positive Euclidean half-space: points with τ > 0 (Euclidean time positive) -/
-def EuclideanHalfSpace (d n : ℕ) : Set (NPointDomain d n) :=
+/-- The positive Euclidean time region: n-point configurations with all τᵢ > 0. -/
+def PositiveTimeRegion (d n : ℕ) : Set (NPointDomain d n) :=
   { x | ∀ i : Fin n, x i 0 > 0 }
 
 /-- Time reflection operator on Euclidean points: θ(τ, x⃗) = (-τ, x⃗) -/
@@ -392,8 +431,9 @@ structure OsterwalderSchraderAxioms (d : ℕ) [NeZero d] where
       For translations: S_n(x₁+a,...,xₙ+a) = S_n(x₁,...,xₙ)
       For rotations R ∈ O(d): S_n(Rx₁,...,Rxₙ) = S_n(x₁,...,xₙ)
       Expressed: S_n is invariant under simultaneous Euclidean transformations. -/
-  E1_euclidean_covariant : ∀ (n : ℕ) (a : SpacetimeDim d) (f : SchwartzNPoint d n),
-    S n f = S n ⟨fun x => f.toFun (fun i => x i + a), sorry, sorry⟩
+  E1_euclidean_covariant : ∀ (n : ℕ) (a : SpacetimeDim d) (f g : SchwartzNPoint d n),
+    (∀ x, g.toFun x = f.toFun (fun i => x i + a)) →
+    S n f = S n g
   /-- E2: Reflection positivity - the crucial axiom for Hilbert space construction.
       For test functions f supported in the positive time half-space (τ > 0),
       Σₙ,ₘ S_{n+m}(θf̄ₙ ⊗ fₘ) ≥ 0
@@ -401,13 +441,14 @@ structure OsterwalderSchraderAxioms (d : ℕ) [NeZero d] where
       This ensures the reconstructed inner product is positive definite. -/
   E2_reflection_positive : ∀ (F : BorchersSequence d),
     -- For sequences supported in τ > 0, the quadratic form is non-negative
-    (∀ n (hn : n ≤ F.len), ∀ x : NPointDomain d n, (F.funcs n hn).toFun x ≠ 0 → x ∈ EuclideanHalfSpace d n) →
+    (∀ n (hn : n ≤ F.len), ∀ x : NPointDomain d n, (F.funcs n hn).toFun x ≠ 0 → x ∈ PositiveTimeRegion d n) →
     (WightmanInnerProduct d S F F).re ≥ 0
   /-- E3: Permutation symmetry - Schwinger functions are symmetric under
       permutation of arguments: S_n(x_{σ(1)},...,x_{σ(n)}) = S_n(x₁,...,xₙ)
       for all permutations σ ∈ Sₙ. -/
-  E3_symmetric : ∀ (n : ℕ) (σ : Equiv.Perm (Fin n)) (f : SchwartzNPoint d n),
-    S n f = S n ⟨fun x => f.toFun (fun i => x (σ i)), sorry, sorry⟩
+  E3_symmetric : ∀ (n : ℕ) (σ : Equiv.Perm (Fin n)) (f g : SchwartzNPoint d n),
+    (∀ x, g.toFun x = f.toFun (fun i => x (σ i))) →
+    S n f = S n g
   /-- E4: Cluster property - factorization at large separations.
       lim_{|a|→∞} S_{n+m}(x₁,...,xₙ,y₁+a,...,yₘ+a) = S_n(x₁,...,xₙ) · S_m(y₁,...,yₘ)
       This reflects the uniqueness of the vacuum in the reconstructed theory.
