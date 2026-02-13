@@ -1,6 +1,6 @@
 # SPDE Standard Approach - Status and TODO
 
-## Current Sorry Count (as of 2026-02-12)
+## Current Sorry Count (as of 2026-02-13)
 
 | File | Sorrys | Key Items |
 |------|--------|-----------|
@@ -12,8 +12,10 @@
 | **Probability/Basic.lean** | **2** | condexp_jensen, doob_maximal_L2 |
 | **Probability/IndependenceHelpers.lean** | **0** | Fully proven |
 | **Helpers/InnerIntegralIntegrability.lean** | **3** | Tonelli/Fubini infrastructure |
-| **Helpers/ItoFormulaProof.lean** | **5** | ito_lower_order_L2_convergence, ito_formula_L2_convergence (3 internal), ito_formula_martingale (1 L2 conv) |
-| **Helpers/ItoFormulaDecomposition.lean** | **5** | stoch_integral_increment_L2_bound, ito_process_increment_L2/L4, riemann_sum/taylor_remainder convergence |
+| **Helpers/ItoFormulaProof.lean** | **2** | ito_lower_order_L2_convergence, ito_formula_martingale (1 L2 conv at t') |
+| **Helpers/ItoFormulaDecomposition.lean** | **1** | taylor_remainder_L2_convergence (Fatou structure in place, needs QV infra) |
+| **Helpers/QuadraticVariation.lean** | **4** | QV bound, QV sq integrable, discrete QV L² conv, Taylor remainders a.e. |
+| **Helpers/QuarticBound.lean** | **3** | L4 transfer sorrys |
 | **Helpers/** (all other) | **0** | 13 files, all fully proven |
 | **RegularityStructures/** | **44** | See RegularityStructures/TODO.md |
 
@@ -77,6 +79,9 @@ See `RegularityStructures/TODO.md` for full sorry-dependency audit.
 **Current status:**
 - Parts (i) initial condition and (iii) formula: PROVED
 - Part (ii) martingale property: **SORRY** — the sole non-trivial content
+- **ItoProcess definition updated**: added `process_continuous` field (a.s. continuous paths)
+- **Approach switched from C3 to C2** (standard approach, more general)
+- **Deprecated**: 5th/6th moment infrastructure + TaylorBound.lean moved to /backup_deprecated/
 
 **Statement:**
 For C² function f and Itô process dX_t = μ_t dt + σ_t dW_t:
@@ -124,24 +129,22 @@ ito_formula (StochasticIntegration.lean, line 1651)
 
 **Blocking sorrys for the Itô formula (by priority):**
 
-1. **`ito_lower_order_L2_convergence`** — MAIN BLOCKER. Shows Taylor remainders + Riemann sum errors + cross terms → 0 in L². Requires:
-   - Taylor remainder: O(|ΔX|³) per interval, ΣE[|ΔX|³] → 0 via 4th moment bounds
+1. **`ito_lower_order_L2_convergence`** — MAIN BLOCKER. Shows Taylor remainders + Riemann sum errors + cross terms → 0 in L². With C2 approach:
+   - Taylor remainder: uses Fatou + modulus of continuity of f'', only needs 4th moments
    - Riemann sums: Σ g(tᵢ)Δt → ∫ g ds for bounded adapted g
    - Cross terms: E[(Δt·ΔW)], E[(ΔSI - σΔW)²] → 0
 
-2. **3 sorrys in `ito_formula_L2_convergence`** — Mechanical: integrability of error²/qv²/lower² and integral splitting (2a²+2b²). Added `hrem_sq_int` hypothesis to make these provable.
-
-3. **1 sorry in `ito_formula_martingale`** — Application of L² convergence at time t'. Becomes trivial once L2_convergence is proved.
+2. **1 sorry in `ito_formula_martingale`** — Application of L2 convergence at time t'. Becomes trivial once lower_order is proved.
 
 **Supporting infrastructure still needed (in ItoFormulaDecomposition.lean):**
 
 | Component | Status | Purpose |
 |-----------|--------|---------|
-| `stoch_integral_increment_L2_bound` | SORRY | E[|SI(t)-SI(s)|²] ≤ Mσ²(t-s), for Taylor remainder bounds |
-| `ito_process_increment_L2_bound` | SORRY | E[|X(t)-X(s)|²] ≤ C(t-s), for Taylor remainder bounds |
-| `ito_process_increment_L4_bound` | SORRY | E[|X(t)-X(s)|⁴] ≤ C(t-s)², for Σ|ΔX|³ convergence |
-| `riemann_sum_L2_convergence` | SORRY | Σ g(tᵢ)Δt → ∫ g ds in L², for drift approximation |
-| `taylor_remainder_L2_convergence` | SORRY | Taylor remainder sum → 0 in L² |
+| `stoch_integral_increment_L2_bound` | SORRY | E[|SI(t)-SI(s)|²] ≤ Mσ²(t-s) |
+| `ito_process_increment_L2_bound` | SORRY | E[|X(t)-X(s)|²] ≤ C(t-s) |
+| `ito_process_increment_L4_bound` | PROVEN | E[|X(t)-X(s)|⁴] ≤ C(t-s)², key for C2 approach |
+| `riemann_sum_L2_convergence` | SORRY | Σ g(tᵢ)Δt → ∫ g ds in L² |
+| `taylor_remainder_L2_convergence` | REWRITE NEEDED | C2 Fatou approach (replacing C3 6th moment) |
 
 **Key infrastructure already available:**
 - `ito_integral_martingale_setIntegral` — martingale from L² limits ✅

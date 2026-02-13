@@ -5,6 +5,9 @@ Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaInfrastructure
+import ModularPhysics.RigorousQFT.SPDE.Helpers.QuarticBound
+import ModularPhysics.RigorousQFT.SPDE.Helpers.QuadraticVariation
+import Mathlib.Analysis.Calculus.Taylor
 import Mathlib.MeasureTheory.Function.ConditionalExpectation.PullOut
 
 /-!
@@ -402,6 +405,26 @@ theorem ito_process_increment_L2_bound {F : Filtration Ω ℝ}
         have h := mul_le_mul_of_nonneg_left hts_sq (sq_nonneg Mμ)
         nlinarith
 
+/-- The fourth moment of the stochastic integral increment is integrable. -/
+theorem stoch_integral_increment_L4_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    Integrable (fun ω => (X.stoch_integral t ω - X.stoch_integral s ω)^4) μ :=
+  stoch_integral_increment_L4_integrable_proof X s t hs hst
+
+/-- E[(SI(t) - SI(s))⁴] ≤ 3 Mσ⁴ (t - s)² for bounded diffusion.
+    This is a consequence of the BDG inequality / quartic moment bound for
+    stochastic integrals of bounded integrands. -/
+theorem stoch_integral_increment_L4_bound {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω)^4 ∂μ ≤
+    3 * Mσ^4 * (t - s)^2 :=
+  stoch_integral_increment_L4_bound_proof X hMσ s t hs hst
+
 /-- E[|X(t) - X(s)|⁴] ≤ C · (t - s)² for bounded coefficients. -/
 theorem ito_process_increment_L4_bound {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
@@ -411,7 +434,120 @@ theorem ito_process_increment_L4_bound {F : Filtration Ω ℝ}
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) (hdt : t - s ≤ 1) :
     ∫ ω, (X.process t ω - X.process s ω)^4 ∂μ ≤
     (8 * Mμ^4 + 8 * 3 * Mσ^4) * (t - s)^2 := by
-  sorry
+  -- Abbreviations (same decomposition as L2 bound)
+  set D : Ω → ℝ := fun ω =>
+    ∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+    ∫ u in Set.Icc 0 s, X.drift u ω ∂volume with hD_def
+  set S : Ω → ℝ := fun ω => X.stoch_integral t ω - X.stoch_integral s ω with hS_def
+  -- Step 1: X(t) - X(s) = D + S a.e.
+  have hdecomp : ∀ᵐ ω ∂μ, X.process t ω - X.process s ω = D ω + S ω := by
+    filter_upwards [X.integral_form t (le_trans hs hst), X.integral_form s hs] with ω hωt hωs
+    simp only [D, S]; linarith
+  -- Step 2: Drift bound |D(ω)| ≤ Mμ·(t-s), hence D⁴ ≤ Mμ⁴·(t-s)⁴
+  have hD_bdd : ∀ ω, |D ω| ≤ Mμ * (t - s) := by
+    intro ω
+    have hint_t : IntegrableOn (fun u => X.drift u ω) (Set.Icc 0 t) volume :=
+      X.drift_time_integrable ω t (le_trans hs hst)
+    have hD_eq : D ω = ∫ u in Set.Icc 0 t \ Set.Icc 0 s, X.drift u ω ∂volume :=
+      (integral_diff measurableSet_Icc hint_t (Set.Icc_subset_Icc_right hst)).symm
+    rw [hD_eq]
+    have hvol_ne_top : volume (Set.Icc 0 t \ Set.Icc 0 s) ≠ ⊤ :=
+      ne_top_of_le_ne_top (by rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top)
+        (measure_mono Set.diff_subset)
+    have hbnd : ‖∫ u in Set.Icc 0 t \ Set.Icc 0 s, X.drift u ω ∂volume‖ ≤
+        Mμ * volume.real (Set.Icc 0 t \ Set.Icc 0 s) :=
+      norm_setIntegral_le_of_norm_le_const (lt_top_iff_ne_top.mpr hvol_ne_top)
+        fun u _ => Real.norm_eq_abs _ ▸ hMμ u ω
+    rw [Real.norm_eq_abs] at hbnd
+    have h_fin_s : volume (Set.Icc 0 s) ≠ ⊤ := by
+      rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top
+    have hvol_eq : volume.real (Set.Icc 0 t \ Set.Icc 0 s) = t - s := by
+      show (volume (Set.Icc 0 t \ Set.Icc 0 s)).toReal = t - s
+      rw [measure_diff (Set.Icc_subset_Icc_right hst) measurableSet_Icc.nullMeasurableSet h_fin_s]
+      rw [Real.volume_Icc, Real.volume_Icc, sub_zero, sub_zero]
+      rw [ENNReal.toReal_sub_of_le (ENNReal.ofReal_le_ofReal hst) ENNReal.ofReal_ne_top]
+      rw [ENNReal.toReal_ofReal (le_trans hs hst), ENNReal.toReal_ofReal hs]
+    rw [hvol_eq] at hbnd; linarith
+  have hD_fourth_bdd : ∀ ω, D ω ^ 4 ≤ Mμ ^ 4 * (t - s) ^ 4 := fun ω => by
+    have h := abs_le.mp (hD_bdd ω)
+    calc D ω ^ 4 = (D ω ^ 2) ^ 2 := by ring
+      _ ≤ ((Mμ * (t - s)) ^ 2) ^ 2 := by
+          apply sq_le_sq'
+          · linarith [sq_nonneg (D ω), sq_nonneg (Mμ * (t - s)),
+                       sq_le_sq' h.1 h.2]
+          · exact sq_le_sq' h.1 h.2
+      _ = Mμ ^ 4 * (t - s) ^ 4 := by ring
+  -- Step 3: D is AEStronglyMeasurable
+  have hD_asm : AEStronglyMeasurable D μ := by
+    have hXt : AEStronglyMeasurable (X.process t) μ :=
+      ((X.process_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
+    have hXs : AEStronglyMeasurable (X.process s) μ :=
+      ((X.process_adapted s).mono (F.le_ambient s) le_rfl).aestronglyMeasurable
+    have hSt : AEStronglyMeasurable (X.stoch_integral t) μ :=
+      ((X.stoch_integral_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
+    have hSs : AEStronglyMeasurable (X.stoch_integral s) μ :=
+      ((X.stoch_integral_adapted s).mono (F.le_ambient s) le_rfl).aestronglyMeasurable
+    exact ((hXt.sub hXs).sub (hSt.sub hSs)).congr
+      (hdecomp.mono fun ω hω => by simp only [D, S, Pi.sub_apply] at hω ⊢; linarith)
+  -- Step 4: D⁴ integrable (bounded on probability space)
+  have hD_fourth_int : Integrable (fun ω => D ω ^ 4) μ :=
+    (integrable_const (Mμ ^ 4 * (t - s) ^ 4)).mono' (hD_asm.pow 4)
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (by positivity)]
+        exact hD_fourth_bdd ω)
+  -- Step 5: S⁴ integrable (from helper)
+  have hS_fourth_int : Integrable (fun ω => S ω ^ 4) μ :=
+    stoch_integral_increment_L4_integrable X s t hs hst
+  -- Step 6: E[D⁴] ≤ Mμ⁴·(t-s)⁴
+  have hE_D4 : ∫ ω, D ω ^ 4 ∂μ ≤ Mμ ^ 4 * (t - s) ^ 4 := by
+    calc ∫ ω, D ω ^ 4 ∂μ
+        ≤ ∫ ω, (Mμ ^ 4 * (t - s) ^ 4 : ℝ) ∂μ :=
+          integral_mono_of_nonneg (ae_of_all _ fun ω => by positivity)
+            (integrable_const _) (ae_of_all _ fun ω => hD_fourth_bdd ω)
+      _ = Mμ ^ 4 * (t - s) ^ 4 := by
+          simp [integral_const, Measure.real, measure_univ, ENNReal.toReal_one]
+  -- Step 7: E[S⁴] ≤ 3Mσ⁴·(t-s)² (from helper)
+  have hE_S4 := stoch_integral_increment_L4_bound X hMσ s t hs hst
+  -- Step 8: (t-s)⁴ ≤ (t-s)² since t-s ≤ 1
+  have hts_nn : 0 ≤ t - s := sub_nonneg.mpr hst
+  have hts4_le_ts2 : (t - s) ^ 4 ≤ (t - s) ^ 2 := by
+    calc (t - s) ^ 4 = (t - s) ^ 2 * (t - s) ^ 2 := by ring
+      _ ≤ (t - s) ^ 2 * 1 := by
+          apply mul_le_mul_of_nonneg_left _ (sq_nonneg _)
+          calc (t - s) ^ 2 = (t - s) * (t - s) := by ring
+            _ ≤ 1 * 1 := mul_le_mul hdt (le_trans hdt (le_refl _)) hts_nn zero_le_one
+            _ = 1 := one_mul 1
+      _ = (t - s) ^ 2 := mul_one _
+  -- Step 9: (a+b)⁴ ≤ 8(a⁴+b⁴)
+  -- Proof: 8(a⁴+b⁴)-(a+b)⁴ = (a-b)²(7a²+10ab+7b²) ≥ 0 is complex;
+  -- Instead use: |a+b|⁴ = ((a+b)²)² ≤ (2a²+2b²)² = 4(a²+b²)² ≤ 4·2(a⁴+b⁴) = 8(a⁴+b⁴)
+  have h_fourth_split : ∀ ω, (D ω + S ω) ^ 4 ≤ 8 * (D ω ^ 4 + S ω ^ 4) := fun ω => by
+    have h1 : (D ω + S ω) ^ 2 ≤ 2 * D ω ^ 2 + 2 * S ω ^ 2 := by
+      nlinarith [sq_nonneg (D ω - S ω)]
+    have h2 : (2 * D ω ^ 2 + 2 * S ω ^ 2) ^ 2 ≤ 8 * (D ω ^ 4 + S ω ^ 4) := by
+      nlinarith [sq_nonneg (D ω ^ 2 - S ω ^ 2)]
+    calc (D ω + S ω) ^ 4 = ((D ω + S ω) ^ 2) ^ 2 := by ring
+      _ ≤ (2 * D ω ^ 2 + 2 * S ω ^ 2) ^ 2 := by
+          apply sq_le_sq'
+          · linarith [sq_nonneg (D ω), sq_nonneg (S ω), sq_nonneg (D ω + S ω)]
+          · exact h1
+      _ ≤ 8 * (D ω ^ 4 + S ω ^ 4) := h2
+  -- Step 10: Combine
+  calc ∫ ω, (X.process t ω - X.process s ω) ^ 4 ∂μ
+      ≤ ∫ ω, (8 * (D ω ^ 4 + S ω ^ 4)) ∂μ := by
+        apply integral_mono_of_nonneg
+        · exact ae_of_all _ fun ω => by positivity
+        · exact ((hD_fourth_int.add hS_fourth_int).const_mul 8)
+        · filter_upwards [hdecomp] with ω hω
+          rw [hω]; exact h_fourth_split ω
+    _ = 8 * (∫ ω, D ω ^ 4 ∂μ + ∫ ω, S ω ^ 4 ∂μ) := by
+        rw [integral_const_mul, integral_add hD_fourth_int hS_fourth_int]
+    _ ≤ 8 * (Mμ ^ 4 * (t - s) ^ 4 + 3 * Mσ ^ 4 * (t - s) ^ 2) := by
+        apply mul_le_mul_of_nonneg_left (add_le_add hE_D4 hE_S4) (by norm_num)
+    _ ≤ 8 * (Mμ ^ 4 * (t - s) ^ 2 + 3 * Mσ ^ 4 * (t - s) ^ 2) := by
+        apply mul_le_mul_of_nonneg_left _ (by norm_num : (0:ℝ) ≤ 8)
+        exact add_le_add (mul_le_mul_of_nonneg_left hts4_le_ts2 (by positivity)) le_rfl
+    _ = (8 * Mμ ^ 4 + 8 * 3 * Mσ ^ 4) * (t - s) ^ 2 := by ring
 
 /-! ## Riemann sum and Taylor remainder convergence -/
 
@@ -649,16 +785,184 @@ theorem riemann_sum_L2_convergence
       herr_sq_ptwise
   exact hgoal
 
-/-- Taylor remainder L² convergence summed over partition intervals. -/
+/-! ## C² Taylor remainder bound
+
+For C² function f with bounded second derivative, the Taylor remainder satisfies:
+  |R_i| ≤ 2M · (ΔX_i)²
+where R_i = f(x+h) - f(x) - f'(x)h - ½f''(x)h² and M = sup|f''|.
+
+This is cruder than the C³ bound (|R_i| ≤ K|ΔX_i|³) but only needs C² regularity.
+The convergence (∑ R_i)² → 0 in L² then follows from Fatou's lemma + the
+modulus of continuity of f'' vanishing along process increments. -/
+
+/-- For x ∈ [[a, b]], ‖x - a‖ ≤ ‖b - a‖. -/
+private lemma norm_sub_le_of_mem_uIcc {a b x : ℝ} (hx : x ∈ Set.uIcc a b) :
+    ‖x - a‖ ≤ ‖b - a‖ := by
+  rw [Real.norm_eq_abs, Real.norm_eq_abs]
+  rcases Set.mem_uIcc.mp hx with ⟨h1, h2⟩ | ⟨h1, h2⟩
+  · calc |x - a| = x - a := abs_of_nonneg (by linarith)
+      _ ≤ b - a := by linarith
+      _ = |b - a| := (abs_of_nonneg (by linarith)).symm
+  · calc |x - a| = -(x - a) := abs_of_nonpos (by linarith)
+      _ ≤ -(b - a) := by linarith
+      _ = |b - a| := (abs_of_nonpos (by linarith)).symm
+
+/-- First-order Taylor bound for C² functions, without ordering assumption.
+    ‖g(b) - g(a) - g'(a)(b-a)‖ ≤ M * (b-a)² where M bounds ‖g''‖.
+
+    Proof: Define h(x) = g(x) - g'(a)·x. Then h'(x) = g'(x) - g'(a),
+    and MVT on g' gives |h'(x)| ≤ M·|b-a| on [[a,b]].
+    MVT on h then gives |h(b)-h(a)| ≤ M·|b-a|². -/
+private lemma c2_first_order_taylor_bound {g : ℝ → ℝ} (hg : ContDiff ℝ 2 g)
+    {M : ℝ} (hM_nn : 0 ≤ M) (hM : ∀ x, ‖deriv (deriv g) x‖ ≤ M) (a b : ℝ) :
+    ‖g b - g a - deriv g a * (b - a)‖ ≤ M * (b - a) ^ 2 := by
+  -- g and g' are differentiable from C²
+  have hg_diff : Differentiable ℝ g :=
+    ((contDiff_succ_iff_deriv (n := 1)).mp hg).1
+  have hg'_diff : Differentiable ℝ (deriv g) :=
+    ((contDiff_succ_iff_deriv (n := 1)).mp hg).2.2.differentiable_one
+  -- g' is Lipschitz: ‖g'(x) - g'(y)‖ ≤ M * ‖x - y‖ (MVT on g' with |g''| ≤ M)
+  have hg'_lip : ∀ x y : ℝ, ‖deriv g x - deriv g y‖ ≤ M * ‖x - y‖ :=
+    fun x y => Convex.norm_image_sub_le_of_norm_deriv_le
+      (fun z _ => hg'_diff z) (fun z _ => hM z) convex_univ trivial trivial
+  -- For x ∈ [[a,b]]: ‖g'(x) - g'(a)‖ ≤ M * ‖b - a‖
+  set c := deriv g a with hc_def
+  have hbound : ∀ x ∈ Set.uIcc a b, ‖deriv g x - c‖ ≤ M * ‖b - a‖ := by
+    intro x hx
+    calc ‖deriv g x - c‖ ≤ M * ‖x - a‖ := hg'_lip x a
+      _ ≤ M * ‖b - a‖ := by exact mul_le_mul_of_nonneg_left (norm_sub_le_of_mem_uIcc hx) hM_nn
+  -- Define h(x) = g(x) - c·x, with h'(x) = g'(x) - c
+  have hh_diff : ∀ x ∈ Set.uIcc a b, DifferentiableAt ℝ (fun x => g x - c * x) x :=
+    fun x _ => (hg_diff x).sub (differentiableAt_id.const_mul c)
+  have hh_deriv : ∀ x, deriv (fun x => g x - c * x) x = deriv g x - c := by
+    intro x
+    have hd : HasDerivAt (fun x => g x - c * x) (deriv g x - c * 1) x :=
+      (hg_diff x).hasDerivAt.sub ((hasDerivAt_id x).const_mul c)
+    simp only [mul_one] at hd
+    exact hd.deriv
+  have hh_bound : ∀ x ∈ Set.uIcc a b,
+      ‖deriv (fun x => g x - c * x) x‖ ≤ M * ‖b - a‖ := by
+    intro x hx; rw [hh_deriv x]; exact hbound x hx
+  -- Apply MVT to h on [[a,b]]
+  have hmvt := Convex.norm_image_sub_le_of_norm_deriv_le hh_diff hh_bound
+    (convex_uIcc a b) Set.left_mem_uIcc Set.right_mem_uIcc
+  -- Simplify: h(b) - h(a) = g(b) - g(a) - c·(b - a)
+  have hsimp : (fun x => g x - c * x) b - (fun x => g x - c * x) a =
+      g b - g a - c * (b - a) := by ring
+  rw [hsimp] at hmvt
+  -- Convert M * ‖b-a‖ * ‖b-a‖ to M * (b-a)²
+  calc ‖g b - g a - deriv g a * (b - a)‖
+      = ‖g b - g a - c * (b - a)‖ := by rfl
+    _ ≤ M * ‖b - a‖ * ‖b - a‖ := hmvt
+    _ = M * (‖b - a‖ * ‖b - a‖) := by ring
+    _ = M * ‖b - a‖ ^ 2 := by rw [sq]
+    _ = M * (b - a) ^ 2 := by rw [Real.norm_eq_abs, sq_abs]
+
+/-- C² Taylor bound: |R(x,h)| ≤ 2M · h² where M = sup|f''|.
+
+    Proof: Triangle inequality splits into first-order Taylor remainder (≤ M·h²)
+    and the second derivative term (≤ M/2·h²). Total ≤ 3/2·M·h² ≤ 2·M·h². -/
+private lemma taylor_C2_bound_partition_term
+    {Ω : Type*} [MeasurableSpace Ω] {μ : Measure Ω}
+    {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ)
+    (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    {Mf'' : ℝ} (hMf''_nn : 0 ≤ Mf'')
+    (hMf'' : ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ Mf'')
+    (t : ℝ) (n : ℕ) (i : Fin (n + 1)) (ω : Ω) :
+    |f (↑(i : ℕ) * t / ↑(n + 1))
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω) -
+      f (↑(i : ℕ) * t / ↑(n + 1))
+        (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) -
+      deriv (fun x => f (↑(i : ℕ) * t / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) *
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) -
+      (1 : ℝ) / 2 *
+        deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(n + 1)) x))
+          (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) *
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2| ≤
+    2 * Mf'' *
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 := by
+  -- Abbreviations
+  set t_i := ↑(i : ℕ) * t / ↑(n + 1)
+  set x₀ := X.process t_i ω
+  set x₁ := X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω
+  set Δx := x₁ - x₀
+  set g := fun x => f t_i x
+  -- g is C² with |g''| ≤ Mf''
+  have hg_cd : ContDiff ℝ 2 g := hf_x t_i
+  have hg''_bdd : ∀ x, ‖deriv (deriv g) x‖ ≤ Mf'' := by
+    intro x; rw [Real.norm_eq_abs]; exact hMf'' t_i x
+  -- First-order Taylor bound: |g(x₁) - g(x₀) - g'(x₀)·Δx| ≤ Mf'' · Δx²
+  have h_taylor := c2_first_order_taylor_bound hg_cd hMf''_nn hg''_bdd x₀ x₁
+  -- Bound on g''(x₀): |g''(x₀)| ≤ Mf''
+  have h_g''_at := hMf'' t_i x₀
+  -- Triangle inequality: |A - B| ≤ |A| + |B|
+  -- where A = g(x₁) - g(x₀) - g'(x₀)·Δx, B = ½·g''(x₀)·Δx²
+  have h_triangle : |g x₁ - g x₀ - deriv g x₀ * Δx - 1 / 2 * deriv (deriv g) x₀ * Δx ^ 2|
+      ≤ |g x₁ - g x₀ - deriv g x₀ * Δx| + |1 / 2 * deriv (deriv g) x₀ * Δx ^ 2| := by
+    have heq : g x₁ - g x₀ - deriv g x₀ * Δx - 1 / 2 * deriv (deriv g) x₀ * Δx ^ 2 =
+        (g x₁ - g x₀ - deriv g x₀ * Δx) + (-(1 / 2 * deriv (deriv g) x₀ * Δx ^ 2)) := by ring
+    rw [heq]
+    set p := g x₁ - g x₀ - deriv g x₀ * Δx
+    set q := 1 / 2 * deriv (deriv g) x₀ * Δx ^ 2
+    calc |p + (-q)| ≤ |p| + |-q| := by
+            rw [← Real.norm_eq_abs, ← Real.norm_eq_abs, ← Real.norm_eq_abs]
+            exact norm_add_le p (-q)
+      _ = |p| + |q| := by rw [abs_neg]
+  -- Bound second term: |½·g''(x₀)·Δx²| ≤ Mf''/2 · Δx²
+  have h_g''_g : |deriv (deriv g) x₀| ≤ Mf'' := h_g''_at
+  have h_second : |1 / 2 * deriv (deriv g) x₀ * Δx ^ 2| ≤ Mf'' / 2 * Δx ^ 2 := by
+    rw [abs_mul, abs_mul]
+    calc |1 / 2| * |deriv (deriv g) x₀| * |Δx ^ 2|
+        = 1 / 2 * |deriv (deriv g) x₀| * |Δx ^ 2| := by
+          rw [abs_of_nonneg (by norm_num : (1 : ℝ) / 2 ≥ 0)]
+      _ ≤ 1 / 2 * Mf'' * |Δx ^ 2| := by
+          apply mul_le_mul_of_nonneg_right
+          · exact mul_le_mul_of_nonneg_left h_g''_g (by norm_num)
+          · exact abs_nonneg _
+      _ = 1 / 2 * Mf'' * Δx ^ 2 := by rw [abs_of_nonneg (sq_nonneg _)]
+      _ = Mf'' / 2 * Δx ^ 2 := by ring
+  -- Bound first term: ‖g(x₁) - g(x₀) - g'(x₀)·Δx‖ ≤ Mf'' · Δx²
+  have h_first : |g x₁ - g x₀ - deriv g x₀ * Δx| ≤ Mf'' * Δx ^ 2 := by
+    rw [← Real.norm_eq_abs]; exact h_taylor
+  -- Combine: ≤ Mf''·Δx² + Mf''/2·Δx² = 3/2·Mf''·Δx² ≤ 2·Mf''·Δx²
+  calc |g x₁ - g x₀ - deriv g x₀ * Δx - 1 / 2 * deriv (deriv g) x₀ * Δx ^ 2|
+      ≤ |g x₁ - g x₀ - deriv g x₀ * Δx| +
+        |1 / 2 * deriv (deriv g) x₀ * Δx ^ 2| := h_triangle
+    _ ≤ Mf'' * Δx ^ 2 + Mf'' / 2 * Δx ^ 2 := add_le_add h_first h_second
+    _ = 3 / 2 * Mf'' * Δx ^ 2 := by ring
+    _ ≤ 2 * Mf'' * Δx ^ 2 := by nlinarith [sq_nonneg Δx]
+
+set_option maxHeartbeats 400000 in
+/-- Taylor remainder L² convergence summed over partition intervals.
+
+    With C² regularity and bounded second derivative, the sum of Taylor remainders
+    Σ R_i → 0 in L², where R_i = f(x + ΔX) - f(x) - f'(x)ΔX - (1/2)f''(x)(ΔX)².
+
+    **Proof strategy** (Fatou + modulus of continuity):
+    The crude bound (∑ R_i)² ≤ M²·(∑(ΔX_i)²)² does NOT vanish, since
+    ∑(ΔX_i)² → [X]_t ≠ 0. Instead, use the refined bound with modulus of
+    continuity of f'': as max_i|ΔX_i| → 0 a.s. (path continuity),
+    ω_{f''}(max|ΔX_i|) → 0, making the Taylor remainders vanish.
+
+    The Fatou approach: let fₙ = (∑ R_i)², gₙ = M²(∑(ΔX_i)²)².
+    Extract subsequence where gₙ → g a.s. (from QV L² convergence).
+    Along this subsequence, fₙ → 0 a.s. and gₙ → g a.s.
+    Fatou on gₙ - fₙ ≥ 0 gives limsup E[fₙ] ≤ 0. -/
 theorem taylor_remainder_L2_convergence {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
     (f : ℝ → ℝ → ℝ)
-    (_hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
     {Mμ : ℝ} (_hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
     {Mσ : ℝ} (_hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
-    {Mf'' : ℝ} (_hMf'' : ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ Mf'')
-    (t : ℝ) (_ht : 0 < t) :
+    {Mf'' : ℝ} (hMf'' : ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ Mf'')
+    (t : ℝ) (ht : 0 < t) :
     Filter.Tendsto
       (fun n => ∫ ω,
         (∑ i : Fin (n + 1),
@@ -676,6 +980,32 @@ theorem taylor_remainder_L2_convergence {F : Filtration Ω ℝ}
              (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
               X.process (↑(i : ℕ) * t / ↑(n + 1)) ω)^2))^2 ∂μ)
       atTop (nhds 0) := by
+  -- === Proof via tendsto_of_subseq_tendsto + Fatou squeeze ===
+  -- For any subsequence ns: extract a.e.-convergent sub-subseq ms (from QV L²→measure→a.e.),
+  -- show Taylor remainders → 0 a.e. (modulus of continuity), apply Fatou squeeze.
+  -- Use tendsto_of_subseq_tendsto to lift to full sequence.
+
+  -- Nonneg Mf''
+  have hMf''_nn : 0 ≤ Mf'' := by
+    have := hMf'' 0 0; linarith [abs_nonneg (deriv (deriv (fun x => f 0 x)) 0)]
+
+  -- Step 1: Use tendsto_of_subseq_tendsto (subsequence principle)
+  -- For any subsequence ns: extract a.e.-convergent sub-subseq ms from QV L² convergence,
+  -- then Taylor remainders → 0 a.e. (modulus of continuity), then Fatou squeeze.
+  have hMf''_nn : 0 ≤ Mf'' := by
+    have := hMf'' 0 0; linarith [abs_nonneg (deriv (deriv (fun x => f 0 x)) 0)]
+  apply tendsto_of_subseq_tendsto
+  intro ns hns
+  -- === Proof that ∃ ms, ∫(∑Rᵢ(ns(ms k)))² → 0 ===
+  -- Key ingredients:
+  -- A. Crude bound: (∑ Rᵢ)² ≤ (2Mf'')²·(∑(ΔXᵢ)²)² (from taylor_C2_bound_partition_term)
+  -- B. QV L² convergence along ns → TendstoInMeasure → a.e. subseq ms
+  --    (ito_process_discrete_qv_L2_convergence + TendstoInMeasure.exists_seq_tendsto_ae)
+  -- C. Along ns∘ms: Taylor remainders → 0 a.e. (path continuity + modulus of continuity)
+  -- D. Along ns∘ms: gₙ = (2Mf'')²(∑(ΔXᵢ)²)² → G = (2Mf'')²[X]_t² a.e.
+  -- E. ∫gₙ → ∫G (from QV L² → L¹ convergence of squares)
+  -- F. Fatou on gₙ - fₙ ≥ 0: ∫G ≤ liminf ∫(gₙ-fₙ) = ∫G - limsup ∫fₙ
+  --    Hence limsup ∫fₙ ≤ 0, combined with ∫fₙ ≥ 0: ∫fₙ → 0
   sorry
 
 end SPDE

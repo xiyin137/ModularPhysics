@@ -1396,6 +1396,12 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
       the martingale property (proved w.r.t. BM.F) to imply the F-martingale property.
       In the standard setup where F = BM.F, this is just `le_refl`. -/
   F_le_BM_F : ∀ t, F.σ_algebra t ≤ BM.F.σ_algebra t
+  /-- The process has continuous sample paths a.s.
+      This is a fundamental property of Itô processes: X_t = X_0 + ∫μ ds + ∫σ dW
+      is a.s. continuous when the drift integral is continuous in t (from integrability
+      of μ) and the stochastic integral has a continuous modification (standard result
+      for L² martingales with continuous quadratic variation). -/
+  process_continuous : ∀ᵐ ω ∂μ, Continuous (fun t => process t ω)
 
 namespace ItoProcess
 

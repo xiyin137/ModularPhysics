@@ -451,11 +451,16 @@ theorem momentum_eq_generator (π : PoincareRepresentation d H) (μ : Fin (d + 1
     (hcont : ∀ x : H, Continuous fun t => π.U (translationInDirection d μ t) x)
     (ψ : H) (hψ : ψ ∈ (π.translationGroup μ hcont).generatorDomain) :
     π.momentumApplied μ ψ = (π.translationGroup μ hcont).generatorApply ψ hψ := by
-  -- Both are defined by the same limit formula
-  -- momentumApplied: limUnder (nhds 0) (fun t => I⁻¹ • t⁻¹ • (U(t·e_μ)ψ - ψ))
-  -- generatorApply: Classical.choose of limit existence
-  -- These agree by uniqueness of limits (Hilbert space is T2)
-  sorry
+  -- Both are limits of the same function; by uniqueness of limits (T2), they agree.
+  -- generatorApply_spec gives: Tendsto f (nhds 0) (nhds (generatorApply ψ hψ))
+  -- where f(t) = if t = 0 then 0 else I⁻¹ • t⁻¹ • (U(t)ψ - ψ)
+  -- momentumApplied = limUnder (nhds 0) f
+  -- By Filter.Tendsto.limUnder_eq, limUnder = the limit value.
+  have hspec := (π.translationGroup μ hcont).generatorApply_spec ψ hψ
+  -- Rewrite goal to use translationGroup.U instead of π.U (translationInDirection ...)
+  change limUnder (nhds 0) (fun t => if t = 0 then 0
+    else (Complex.I : ℂ)⁻¹ • (t⁻¹ • ((π.translationGroup μ hcont).U t ψ - ψ))) = _
+  exact hspec.limUnder_eq
 
 end PoincareRepresentation
 

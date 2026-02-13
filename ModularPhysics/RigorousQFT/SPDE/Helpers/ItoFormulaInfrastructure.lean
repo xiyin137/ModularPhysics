@@ -125,6 +125,39 @@ private lemma fourth_deriv_gauss_at_zero :
   rw [deriv_f3 v 0]
   simp [exp_zero]
 
+/-! ## Gaussian Third Moment -/
+
+/-- The third derivative of exp(v·t²/2) at 0 is 0.
+    Since exp(v·t²/2) is an even function of t, all odd derivatives at 0 vanish. -/
+private lemma third_deriv_gauss_at_zero :
+    deriv (fun t => deriv (fun t => deriv
+      (fun t => rexp (v * t ^ 2 / 2)) t) t) 0 = 0 := by
+  conv_lhs =>
+    arg 1; ext t; arg 1; ext t
+    rw [(hasDerivAt_gauss_exp v t).deriv]
+  conv_lhs =>
+    arg 1; ext t
+    rw [deriv_f1 v t]
+  rw [deriv_f2 v 0]
+  simp [exp_zero]
+
+/-- The third central moment of a Gaussian is zero: E[(X-μ)³] = 0.
+    Follows from the MGF approach: the third derivative of exp(v·t²/2) at 0 is 0. -/
+theorem third_moment_gaussianReal (μ_val : ℝ) (v : ℝ≥0) :
+    ∫ x, (x - μ_val) ^ 3 ∂gaussianReal μ_val v = 0 := by
+  calc ∫ x, (x - μ_val) ^ 3 ∂gaussianReal μ_val v
+  _ = ∫ x, x ^ 3 ∂(gaussianReal μ_val v).map (fun x => x - μ_val) := by
+    rw [integral_map (by fun_prop) (by fun_prop)]
+  _ = ∫ x, x ^ 3 ∂gaussianReal 0 v := by
+    simp [gaussianReal_map_sub_const]
+  _ = iteratedDeriv 3 (mgf (fun x => x) (gaussianReal 0 v)) 0 := by
+    rw [iteratedDeriv_mgf_zero] <;> simp
+  _ = 0 := by
+    rw [mgf_fun_id_gaussianReal]
+    simp only [zero_mul, zero_add]
+    rw [iteratedDeriv_succ, iteratedDeriv_succ, iteratedDeriv_one]
+    exact third_deriv_gauss_at_zero ↑v
+
 /-! ## Gaussian Fourth Moment -/
 
 /-- The fourth central moment of a Gaussian distribution: E[(X-μ)⁴] = 3v².
@@ -150,9 +183,22 @@ theorem fourth_moment_gaussianReal (μ_val : ℝ) (v : ℝ≥0) :
     rw [iteratedDeriv_succ, iteratedDeriv_succ, iteratedDeriv_succ, iteratedDeriv_one]
     exact fourth_deriv_gauss_at_zero ↑v
 
-/-! ## IsGaussian Fourth Moment -/
+/-! ## IsGaussian Third and Fourth Moments -/
 
 variable {Ω : Type*} [MeasurableSpace Ω]
+
+/-- The third moment of a zero-mean Gaussian random variable is zero: E[X³] = 0.
+    Uses the pushforward to `gaussianReal` and the third moment computation. -/
+theorem Probability.IsGaussian.third_moment {X : Ω → ℝ} {μ : Measure Ω} {variance : ℝ}
+    (h : IsGaussian X μ 0 variance) :
+    ∫ ω, (X ω) ^ 3 ∂μ = 0 := by
+  have hX_am : AEMeasurable X μ := h.integrable.aemeasurable
+  have hmap := h.map_eq_gaussianReal
+  have htransfer : ∫ ω, (X ω) ^ 3 ∂μ = ∫ x, x ^ 3 ∂(μ.map X) :=
+    (integral_map hX_am (by fun_prop : AEStronglyMeasurable (fun x => x ^ 3) (μ.map X))).symm
+  rw [htransfer, hmap]
+  have h0 := third_moment_gaussianReal 0 ⟨variance, h.variance_nonneg⟩
+  simpa [sub_zero] using h0
 
 /-- The fourth moment of a zero-mean Gaussian random variable: E[X⁴] = 3σ⁴.
     Uses the pushforward to `gaussianReal` and the fourth moment computation. -/
@@ -169,9 +215,16 @@ theorem Probability.IsGaussian.fourth_moment {X : Ω → ℝ} {μ : Measure Ω} 
   have h0 := fourth_moment_gaussianReal 0 ⟨variance, h.variance_nonneg⟩
   simpa [sub_zero] using h0
 
-/-! ## BM Increment Fourth Moment -/
+/-! ## BM Increment Third and Fourth Moments -/
 
 variable {μ : Measure Ω}
+
+/-- Third moment of BM increments: E[(W_t - W_s)³] = 0.
+    Follows directly from the Gaussian third moment since W_t - W_s ~ N(0, t-s). -/
+theorem BrownianMotion.increment_third_moment (W : BrownianMotion Ω μ) (s t : ℝ)
+    (hs : 0 ≤ s) (hst : s ≤ t) :
+    ∫ ω, (W.toAdapted.process t ω - W.toAdapted.process s ω) ^ 3 ∂μ = 0 :=
+  (W.gaussian_increments s t hs hst).third_moment
 
 /-- Fourth moment of BM increments: E[(W_t - W_s)⁴] = 3(t-s)².
     Follows directly from the Gaussian fourth moment since W_t - W_s ~ N(0, t-s). -/

@@ -24,7 +24,7 @@ all derivatives decay faster than any polynomial:
   sup_x |x^α ∂^β f(x)| < ∞  for all multi-indices α, β.
 
 The topology on S(ℝⁿ) is defined by the family of seminorms:
-  p_{k,l}(f) = sup_{|α|≤k, |β|≤l} sup_x (1 + |x|²)^l |∂^α f(x)|
+  p_{k,l}(f) = sup_x ‖x‖^k · ‖iteratedFDeriv ℝ l f x‖
 
 **Nuclearity proof sketch** (following Gel'fand-Vilenkin):
 1. The seminorms {p_{k,l}} define a Fréchet topology on S(ℝⁿ)
@@ -50,7 +50,7 @@ open MeasureTheory
 /-! ### Schwartz Space Seminorms -/
 
 /-- The standard Schwartz seminorm indexed by (k, l) ∈ ℕ × ℕ:
-    p_{k,l}(f) = sup_{|α| ≤ k} sup_x (1 + ‖x‖²)^l · ‖iteratedFDeriv ℝ |α| f x‖
+    p_{k,l}(f) = sup_x ‖x‖^k · ‖iteratedFDeriv ℝ l f x‖
 
     This is a continuous seminorm on S(ℝⁿ, F). -/
 def SchwartzMap.schwartzSeminorm (E F : Type*) [NormedAddCommGroup E] [NormedSpace ℝ E]
@@ -58,43 +58,127 @@ def SchwartzMap.schwartzSeminorm (E F : Type*) [NormedAddCommGroup E] [NormedSpa
     Seminorm ℝ (𝓢(E, F)) :=
   SchwartzMap.seminorm ℝ k l
 
-/-- The Schwartz seminorms are ordered: p_{k,l} ≤ p_{k',l'} when k ≤ k' and l ≤ l'. -/
-theorem SchwartzMap.schwartzSeminorm_mono {E F : Type*}
-    [NormedAddCommGroup E] [NormedSpace ℝ E]
-    [NormedAddCommGroup F] [NormedSpace ℝ F]
-    {k₁ k₂ l₁ l₂ : ℕ} (hk : k₁ ≤ k₂) (hl : l₁ ≤ l₂) (f : 𝓢(E, F)) :
-    SchwartzMap.schwartzSeminorm E F k₁ l₁ f ≤
-    SchwartzMap.schwartzSeminorm E F k₂ l₂ f := by
-  sorry
+/-! ### Combined Schwartz Seminorm for Fréchet Presentation -/
+
+private abbrev schwartzPairs (N : ℕ) : Finset (ℕ × ℕ) :=
+  Finset.range (N + 1) ×ˢ Finset.range (N + 1)
+
+/-- The combined Schwartz seminorm: sum of all individual seminorms p_{k,l} for k,l ≤ N.
+    This family is monotone in N (adding more non-negative terms) and generates the
+    same topology as the full family {p_{k,l}}_{k,l ∈ ℕ}.
+
+    Note: Mathlib's individual Schwartz seminorms p_{k,l}(f) = sup_x ‖x‖^k · ‖D^l f(x)‖
+    are NOT monotone in k (since ‖x‖^k is not monotone for ‖x‖ < 1), so diagonal
+    seminorms p_{n,n} don't form an increasing family. Using sums over all pairs
+    up to (N,N) gives a genuinely increasing family that generates the same topology. -/
+private def schwartzCombinedSeminorm (n : ℕ) (N : ℕ) :
+    Seminorm ℝ (𝓢(EuclideanSpace ℝ (Fin n), ℝ)) :=
+  (schwartzPairs N).sum (fun kl => SchwartzMap.seminorm ℝ kl.1 kl.2)
+
+/-- Evaluating a combined seminorm at a point equals the real number sum. -/
+private theorem schwartzCombinedSeminorm_apply (n N : ℕ)
+    (f : 𝓢(EuclideanSpace ℝ (Fin n), ℝ)) :
+    schwartzCombinedSeminorm n N f =
+    (schwartzPairs N).sum (fun kl => SchwartzMap.seminorm ℝ kl.1 kl.2 f) := by
+  unfold schwartzCombinedSeminorm
+  -- Prove by induction on the finset using the AddMonoidHom property
+  have key : ∀ (S : Finset (ℕ × ℕ)),
+      (S.sum (fun kl => SchwartzMap.seminorm ℝ kl.1 kl.2)) f =
+      S.sum (fun kl => SchwartzMap.seminorm ℝ kl.1 kl.2 f) := by
+    intro S
+    induction S using Finset.cons_induction with
+    | empty => simp [Seminorm.zero_apply]
+    | cons a s has ih =>
+      rw [Finset.sum_cons, Finset.sum_cons, Seminorm.add_apply, ih]
+  exact key _
+
+/-- An individual seminorm p_{k,l} is bounded by the combined seminorm for N ≥ max(k,l). -/
+private theorem le_schwartzCombinedSeminorm (n : ℕ) {k l N : ℕ}
+    (hk : k ≤ N) (hl : l ≤ N) (f : 𝓢(EuclideanSpace ℝ (Fin n), ℝ)) :
+    SchwartzMap.seminorm ℝ k l f ≤ schwartzCombinedSeminorm n N f := by
+  rw [schwartzCombinedSeminorm_apply]
+  have hmem : (k, l) ∈ schwartzPairs N :=
+    Finset.mk_mem_product (Finset.mem_range.mpr (by omega))
+      (Finset.mem_range.mpr (by omega))
+  calc SchwartzMap.seminorm ℝ k l f
+      = (fun kl : ℕ × ℕ => SchwartzMap.seminorm ℝ kl.1 kl.2 f) (k, l) := rfl
+    _ ≤ (schwartzPairs N).sum (fun kl => SchwartzMap.seminorm ℝ kl.1 kl.2 f) :=
+        Finset.single_le_sum
+          (fun (kl : ℕ × ℕ) _ => apply_nonneg (SchwartzMap.seminorm ℝ kl.1 kl.2) f) hmem
 
 /-! ### Nuclear Fréchet Presentation -/
 
 /-- The Schwartz space S(ℝⁿ, ℝ) has a nuclear Fréchet presentation.
-    We use the diagonal seminorms p_n := p_{n,n} for simplicity (these generate
-    the same topology as the full family p_{k,l}). -/
+    We use combined seminorms q_N = ∑_{k,l ≤ N} p_{k,l} which form a monotone
+    family generating the Schwartz topology. -/
 def SchwartzMap.nuclearFrechet (n : ℕ) : NuclearFrechet where
   Space := 𝓢(EuclideanSpace ℝ (Fin n), ℝ)
   instAddCommGroup := inferInstance
   instModule := inferInstance
   instTopologicalSpace := inferInstance
-  seminorms := fun k => SchwartzMap.seminorm ℝ k k
+  instIsTopologicalAddGroup := inferInstance
+  seminorms := schwartzCombinedSeminorm n
   seminorms_mono := by
-    intro k f
-    sorry
+    intro N f
+    rw [schwartzCombinedSeminorm_apply, schwartzCombinedSeminorm_apply]
+    apply Finset.sum_le_sum_of_subset_of_nonneg
+    · exact Finset.product_subset_product
+        (Finset.range_mono (by omega)) (Finset.range_mono (by omega))
+    · intro kl _ _; exact apply_nonneg _ _
   separating := by
     intro f hf
-    sorry
+    have h00 : SchwartzMap.seminorm ℝ 0 0 f = 0 := by
+      have hN0 := hf 0
+      have hle := le_schwartzCombinedSeminorm n (Nat.le_refl 0) (Nat.le_refl 0) f
+      linarith [apply_nonneg (SchwartzMap.seminorm ℝ 0 0) f]
+    ext x
+    have hbound := SchwartzMap.norm_le_seminorm ℝ f x
+    simp only [SchwartzMap.coe_zero, Pi.zero_apply]
+    exact norm_eq_zero.mp (le_antisymm (by linarith) (norm_nonneg _))
   continuous_seminorms := by
-    intro k
-    -- The Schwartz topology is generated by the seminorm family (schwartz_withSeminorms),
-    -- so each seminorm in the family is continuous.
-    exact (schwartz_withSeminorms ℝ (EuclideanSpace ℝ (Fin n)) ℝ).continuous_seminorm (k, k)
+    intro N
+    show Continuous (fun x => (schwartzCombinedSeminorm n N) x)
+    have hfun : (fun x => (schwartzCombinedSeminorm n N) x) =
+        (fun x => (schwartzPairs N).sum (fun kl => SchwartzMap.seminorm ℝ kl.1 kl.2 x)) := by
+      ext x; exact schwartzCombinedSeminorm_apply n N x
+    rw [hfun]
+    exact continuous_finset_sum _ fun kl _ =>
+      (schwartz_withSeminorms ℝ (EuclideanSpace ℝ (Fin n)) ℝ).continuous_seminorm kl
   seminorms_generating := by
     intro p hp
-    -- Any continuous seminorm on Schwartz space is bounded by finitely many of the
-    -- defining seminorms (since the topology is generated by them). Taking the max
-    -- index and using monotonicity of the diagonal seminorms gives the result.
-    sorry
+    obtain ⟨s, C, hC, hle⟩ := Seminorm.bound_of_continuous
+      (schwartz_withSeminorms ℝ (EuclideanSpace ℝ (Fin n)) ℝ) p hp
+    by_cases hs : s.Nonempty
+    · let N := s.sup' hs (fun kl => max kl.1 kl.2)
+      refine ⟨N, (C : ℝ), ?_, ?_⟩
+      · exact NNReal.coe_pos.mpr hC.bot_lt
+      · intro x
+        have hCnn := NNReal.coe_nonneg C
+        set q := schwartzSeminormFamily ℝ (EuclideanSpace ℝ (Fin n)) ℝ with hq_def
+        -- Step 1: s.sup q ≤ ∑ i ∈ s, q i (Seminorm level)
+        have hsup_le_sum : s.sup q ≤ ∑ i ∈ s, q i :=
+          Seminorm.finset_sup_le_sum q s
+        -- Step 2: ∑ i ∈ s, q i ≤ schwartzCombinedSeminorm n N (Seminorm level)
+        have hsum_le_combined : (∑ i ∈ s, q i) ≤ schwartzCombinedSeminorm n N := by
+          apply Finset.sum_le_sum_of_subset_of_nonneg
+          · intro ⟨k, l⟩ hkl
+            simp only [schwartzPairs, Finset.mem_product, Finset.mem_range]
+            have hmax := Finset.le_sup' (f := fun kl : ℕ × ℕ => max kl.1 kl.2) hkl
+            constructor <;> omega
+          · intro kl _ _; exact bot_le
+        -- Step 3: Combine pointwise
+        have h23 : (s.sup q) x ≤ schwartzCombinedSeminorm n N x :=
+          le_trans (Seminorm.le_def.mp hsup_le_sum x) (Seminorm.le_def.mp hsum_le_combined x)
+        calc p x ≤ (C • s.sup q) x := hle x
+          _ = C * (s.sup q) x := by simp [NNReal.smul_def]
+          _ ≤ C * schwartzCombinedSeminorm n N x :=
+              mul_le_mul_of_nonneg_left h23 hCnn
+    · refine ⟨0, 1, one_pos, ?_⟩
+      intro x
+      have : p x ≤ (C • s.sup (schwartzSeminormFamily ℝ (EuclideanSpace ℝ (Fin n)) ℝ)) x :=
+        hle x
+      simp [Finset.not_nonempty_iff_eq_empty.mp hs] at this
+      linarith [apply_nonneg (schwartzCombinedSeminorm n 0) x]
   nuclear_step := by
     intro k
     -- The nuclear step uses the Hermite function expansion.

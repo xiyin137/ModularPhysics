@@ -414,4 +414,35 @@ theorem os_to_wightman_full (OS : OsterwalderSchraderAxioms d)
       IsWickRotationPair OS.S Wfn.W := by
   exact ⟨constructWightmanFunctions OS lgc, by sorry⟩
 
+/-! ### Wired Corollaries
+
+These provide the theorems `wightman_to_os` and `os_to_wightman` as stated in
+`Reconstruction.lean`, extracted from the stronger `wightman_to_os_full` and
+`os_to_wightman_full` results.
+
+Note: The theorems in `Reconstruction.lean` are sorry'd because WickRotation.lean
+imports Reconstruction.lean (circular import prevents wiring from there).
+These corollaries serve as the actual proofs. -/
+
+/-- Extract of `wightman_to_os_full`: Wightman functions yield OS axioms and analytic witnesses. -/
+theorem wightman_to_os_corollary (Wfn : WightmanFunctions d) :
+    ∃ (OS : OsterwalderSchraderAxioms d),
+      ∀ (n : ℕ), ∃ (W_analytic : (Fin n → Fin (d + 1) → ℂ) → ℂ),
+        DifferentiableOn ℂ W_analytic (ForwardTube d n) := by
+  obtain ⟨OS, hpair⟩ := wightman_to_os_full Wfn
+  exact ⟨OS, fun n => by
+    obtain ⟨F, hF_holo, _, _⟩ := hpair n
+    exact ⟨F, hF_holo⟩⟩
+
+/-- Extract of `os_to_wightman_full`: OS axioms + linear growth yield Wightman functions. -/
+theorem os_to_wightman_corollary (OS : OsterwalderSchraderAxioms d)
+    (lgc : OSLinearGrowthCondition d OS) :
+    ∃ (Wfn : WightmanFunctions d),
+      ∀ (n : ℕ), ∃ (W_analytic : (Fin n → Fin (d + 1) → ℂ) → ℂ),
+        DifferentiableOn ℂ W_analytic (ForwardTube d n) := by
+  obtain ⟨Wfn, hpair⟩ := os_to_wightman_full OS lgc
+  exact ⟨Wfn, fun n => by
+    obtain ⟨F, hF_holo, _, _⟩ := hpair n
+    exact ⟨F, hF_holo⟩⟩
+
 end

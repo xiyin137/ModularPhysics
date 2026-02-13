@@ -12,6 +12,7 @@ import Mathlib.Analysis.InnerProductSpace.Basic
 import Mathlib.Topology.Algebra.InfiniteSum.Basic
 import Mathlib.Algebra.BigOperators.Group.Finset.Basic
 import ModularPhysics.RigorousQFT.Wightman.NuclearSpaces.NuclearSpace
+import ModularPhysics.RigorousQFT.Wightman.NuclearSpaces.Helpers.PositiveDefiniteKernels
 
 /-!
 # Bochner's Theorem and Minlos' Theorem
@@ -290,6 +291,17 @@ theorem gaussianCharacteristicFunctional_posdef {H : Type*}
     [NormedAddCommGroup H] [InnerProductSpace ℝ H] [CompleteSpace H]
     (A : H →L[ℝ] H) (hA_pos : ∀ x, 0 ≤ @inner ℝ H _ x (A x)) :
     IsPositiveDefiniteFn (gaussianCharacteristicFunctional A hA_pos) := by
-  sorry
+  intro n x c
+  -- Convert complex exponential to real exponential cast to ℂ
+  have hconv : ∀ f : H,
+      gaussianCharacteristicFunctional A hA_pos f =
+      ↑(Real.exp (-(1/2 : ℝ) * @inner ℝ H _ f (A f))) := by
+    intro f
+    simp only [gaussianCharacteristicFunctional]
+    rw [show -(1/2 : ℂ) * ↑(@inner ℝ H _ f (A f)) =
+        ↑(-(1/2 : ℝ) * @inner ℝ H _ f (A f)) from by push_cast; ring]
+    exact Complex.ofReal_exp (-(1/2 : ℝ) * @inner ℝ H _ f (A f)) |>.symm
+  simp_rw [hconv]
+  exact gaussian_kernel_posdef A hA_pos x c
 
 end
