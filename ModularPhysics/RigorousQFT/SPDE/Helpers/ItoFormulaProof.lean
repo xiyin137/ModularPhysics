@@ -421,9 +421,10 @@ theorem ito_formula_L2_convergence {F : Filtration Ω ℝ}
     -- Boundedness of derivatives
     (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
     (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
+    (t : ℝ) (ht : 0 < t)
     -- Integrability of the Itô remainder (provided by caller, follows from regularity)
-    (hrem_sq_int : Integrable (fun ω => (itoRemainder X f t ω)^2) μ)
-    (t : ℝ) (ht : 0 < t) :
+    (hrem_int : Integrable (itoRemainder X f t) μ)
+    (hrem_sq_int : Integrable (fun ω => (itoRemainder X f t ω)^2) μ) :
     Filter.Tendsto
       (fun n => ∫ ω,
         (SimpleProcess.stochasticIntegral_at
@@ -456,7 +457,76 @@ theorem ito_formula_L2_convergence {F : Filtration Ω ℝ}
   have hlower_conv : Filter.Tendsto (fun n => ∫ ω, (lower n ω)^2 ∂μ) atTop (nhds 0) :=
     ito_lower_order_L2_convergence X f hf_t hf_x hdiff_meas hdiff_adapted
       hdiff_bdd hdrift_bdd hf_x_bdd hf_xx_bdd t ht
-  -- Step 3: Combine via (a+b)² ≤ 2a² + 2b²
+  -- Step 3: Integrability infrastructure
+  -- Extract bounds
+  obtain ⟨Mf', hMf'⟩ := hf_x_bdd
+  obtain ⟨Mf'', hMf''⟩ := hf_xx_bdd
+  obtain ⟨Mσ, hMσ⟩ := hdiff_bdd
+  -- error² integrable: (S_n - itoRemainder)² integrable by stochasticIntegral_at_sub_sq_integrable
+  have herror_sq_int : ∀ n, Integrable (fun ω => (error n ω) ^ 2) μ := by
+    intro n
+    exact SimpleProcess.stochasticIntegral_at_sub_sq_integrable
+      (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM
+      (itoPartitionProcess_adapted X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n) hdiff_adapted)
+      (itoPartitionProcess_bounded X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)
+        ⟨Mf', hMf'⟩ ⟨Mσ, hMσ⟩)
+      (itoPartitionProcess_times_nonneg X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n))
+      (itoRemainder X f t) hrem_int hrem_sq_int t ht.le
+  -- qv² integrable: from weighted_qv_sq_integrable
+  have hqv_sq_int : ∀ n, Integrable (fun ω => (qv n ω) ^ 2) μ := by
+    intro n
+    exact weighted_qv_sq_integrable X.BM t ht.le (n + 1) (Nat.succ_pos n)
+      (fun i => fun ω => (1 : ℝ) / 2 *
+        deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(n + 1)) x))
+          (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) *
+        (X.diffusion (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2)
+      (1 / 2 * |Mf''| * Mσ ^ 2) (by positivity)
+      (ito_qv_weights_adapted X f hf_x hdiff_adapted t n)
+      (fun i ω => ito_qv_weights_bounded X f hMf'' hMσ t n i ω)
+  -- error integrable (S_n - M, both L¹)
+  have herror_int : ∀ n, Integrable (error n) μ := by
+    intro n
+    exact (SimpleProcess.stochasticIntegral_at_integrable
+      (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM
+      (itoPartitionProcess_adapted X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n) hdiff_adapted)
+      (itoPartitionProcess_bounded X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)
+        ⟨Mf', hMf'⟩ ⟨Mσ, hMσ⟩)
+      (itoPartitionProcess_times_nonneg X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n))
+      t ht.le).sub hrem_int
+  -- qv measurable (sum of measurable terms)
+  have hqv_meas : ∀ n, Measurable (qv n) := by
+    intro n
+    apply Finset.measurable_sum; intro i _
+    have hg := (ito_qv_weights_adapted X f hf_x hdiff_adapted t n i).mono
+      (X.BM.F.le_ambient _) le_rfl
+    have hW1 := (X.BM.toAdapted.adapted ((↑(i : ℕ) + 1) * t / ↑(n + 1))).mono
+      (X.BM.F.le_ambient _) le_rfl
+    have hW2 := (X.BM.toAdapted.adapted (↑(i : ℕ) * t / ↑(n + 1))).mono
+      (X.BM.F.le_ambient _) le_rfl
+    exact hg.mul (hW1.sub hW2 |>.pow_const 2 |>.sub measurable_const)
+  -- qv integrable: |qv| ≤ 1 + qv², and 1 + qv² is integrable on probability space
+  have hqv_int : ∀ n, Integrable (qv n) μ := by
+    intro n
+    exact ((integrable_const (1 : ℝ)).add (hqv_sq_int n)).mono'
+      (hqv_meas n).aestronglyMeasurable
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, Pi.add_apply]
+        nlinarith [sq_abs (qv n ω), sq_nonneg (|qv n ω| - 1)])
+  -- lower² integrable: lower = error + qv, so lower² ≤ 2·error² + 2·qv²
+  have hlower_sq_int : ∀ n, Integrable (fun ω => (lower n ω) ^ 2) μ := by
+    intro n
+    have hlower_asm : AEStronglyMeasurable (fun ω => (lower n ω) ^ 2) μ := by
+      have h := ((herror_int n).add (hqv_int n)).aestronglyMeasurable
+      exact (h.mul h).congr (ae_of_all _ fun ω => by
+        show (error n ω + qv n ω) * (error n ω + qv n ω) = (error n ω + qv n ω) ^ 2
+        ring)
+    exact ((herror_sq_int n).const_mul 2 |>.add ((hqv_sq_int n).const_mul 2)).mono'
+      hlower_asm
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        show (error n ω + qv n ω) ^ 2 ≤ 2 * (error n ω) ^ 2 + 2 * (qv n ω) ^ 2
+        nlinarith [sq_nonneg (error n ω - qv n ω)])
+  -- Step 4: Combine via (a+b)² ≤ 2a² + 2b²
   apply squeeze_zero
   · intro n; exact integral_nonneg (fun ω => sq_nonneg _)
   · intro n
@@ -468,12 +538,15 @@ theorem ito_formula_L2_convergence {F : Filtration Ω ℝ}
     calc ∫ ω, (error n ω) ^ 2 ∂μ
         = ∫ ω, (-qv n ω + lower n ω) ^ 2 ∂μ := by rw [hrewrite]
       _ ≤ ∫ ω, (2 * (qv n ω) ^ 2 + 2 * (lower n ω) ^ 2) ∂μ := by
-          apply integral_mono_ae
-          · sorry -- integrability of error² (from boundedness of terms)
-          · sorry -- integrability of 2·qv² + 2·lower² (from boundedness)
+          apply integral_mono_of_nonneg
+          · exact ae_of_all _ fun ω => sq_nonneg _
+          · exact ((hqv_sq_int n).const_mul 2).add ((hlower_sq_int n).const_mul 2)
           · exact ae_of_all _ fun ω => by nlinarith [sq_nonneg (qv n ω + lower n ω)]
-      _ ≤ 2 * ∫ ω, (qv n ω) ^ 2 ∂μ + 2 * ∫ ω, (lower n ω) ^ 2 ∂μ := by
-          sorry -- integral_add + integral_const_mul (needs integrability)
+      _ = 2 * ∫ ω, (qv n ω) ^ 2 ∂μ + 2 * ∫ ω, (lower n ω) ^ 2 ∂μ := by
+          have h := integral_add ((hqv_sq_int n).const_mul 2) ((hlower_sq_int n).const_mul 2)
+          rw [show (fun ω => 2 * (qv n ω) ^ 2 + 2 * (lower n ω) ^ 2) =
+            fun ω => (2 * (qv n ω) ^ 2) + (2 * (lower n ω) ^ 2) from by ext ω; ring]
+          rw [h, integral_const_mul, integral_const_mul]
   · -- 2·E[qv²] + 2·E[lower²] → 0
     rw [show (0 : ℝ) = 2 * 0 + 2 * 0 from by ring]
     exact (hqv_conv.const_mul 2).add (hlower_conv.const_mul 2)

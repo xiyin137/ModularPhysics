@@ -657,25 +657,56 @@ def SchwingerFromWightman (d : ℕ) [NeZero d]
     (n : ℕ) → (Fin n → Fin (d + 1) → ℝ) → ℂ :=
   fun n xs => W_analytic n (fun k => wickRotatePoint (xs k))
 
+/-- The ℂ-linear Wick rotation: maps complex coordinates to Wick-rotated coordinates.
+    This is the holomorphic version of `wickRotatePoint`: instead of requiring real inputs,
+    it acts on complex inputs by (z₀, z₁, ..., z_d) ↦ (I·z₀, z₁, ..., z_d).
+
+    This is a ℂ-linear map, hence holomorphic (entire). On real inputs it agrees
+    with `wickRotatePoint`. -/
+def complexWickRotate (z : Fin n → Fin (d + 1) → ℂ) : Fin n → Fin (d + 1) → ℂ :=
+  fun k μ => if μ = 0 then I * z k 0 else z k μ
+
+/-- The ℂ-linear Wick rotation agrees with `wickRotatePoint` on real inputs. -/
+theorem complexWickRotate_eq_wickRotatePoint (xs : Fin n → Fin (d + 1) → ℝ) :
+    complexWickRotate (fun k μ => (xs k μ : ℂ)) =
+    fun k => wickRotatePoint (xs k) := by
+  ext k μ
+  simp [complexWickRotate, wickRotatePoint]
+
+/-- The ℂ-linear Wick rotation is differentiable everywhere. -/
+theorem differentiable_complexWickRotate :
+    Differentiable ℂ (complexWickRotate (d := d) (n := n)) := by
+  intro xs
+  unfold complexWickRotate
+  rw [differentiableAt_pi]
+  intro k
+  rw [differentiableAt_pi]
+  intro μ
+  by_cases hμ : μ = 0
+  · simp only [hμ, ite_true]
+    exact DifferentiableAt.const_mul (by fun_prop) I
+  · simp only [hμ, ite_false]
+    fun_prop
+
 /-- The Schwinger functions defined from Wightman's analytic continuation are
     differentiable on the set of Euclidean configurations whose Wick-rotated
     images lie in the permuted extended tube.
 
     This follows from the chain rule: SchwingerFromWightman is the composition
-    of the holomorphic W_analytic with the ℝ-linear Wick rotation map
-    x ↦ (ix₀, x₁, ..., x_d), which is ℂ-differentiable. -/
+    of the holomorphic W_analytic with the ℂ-linear Wick rotation map
+    z ↦ (I·z₀, z₁, ..., z_d), which is holomorphic (entire). -/
 theorem schwingerFromWightman_analytic
     (W_analytic : (n : ℕ) → (Fin n → Fin (d + 1) → ℂ) → ℂ)
     (hW : ∀ n, DifferentiableOn ℂ (W_analytic n) (PermutedExtendedTube d n))
     (n : ℕ) :
-    -- The Schwinger function is ℂ-differentiable on the preimage of the
-    -- permuted extended tube under Wick rotation
+    -- The composition W_analytic ∘ complexWickRotate is ℂ-differentiable
+    -- on the preimage of the permuted extended tube
     DifferentiableOn ℂ
       (fun xs : Fin n → Fin (d + 1) → ℂ =>
-        W_analytic n (fun k => wickRotatePoint (fun μ => (xs k μ).re)))
-      { xs | (fun k => wickRotatePoint (fun μ => (xs k μ).re)) ∈
-          PermutedExtendedTube d n } := by
-  sorry
+        W_analytic n (complexWickRotate xs))
+      { xs | complexWickRotate xs ∈ PermutedExtendedTube d n } := by
+  show DifferentiableOn ℂ (W_analytic n ∘ complexWickRotate) _
+  exact (hW n).comp differentiable_complexWickRotate.differentiableOn (fun _ hxs => hxs)
 
 /-! ### Temperedness of Schwinger Functions
 

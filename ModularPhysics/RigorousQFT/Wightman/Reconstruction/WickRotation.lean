@@ -394,7 +394,14 @@ theorem wightman_to_os_full (Wfn : WightmanFunctions d) :
     constructedSchwinger_symmetric Wfn,
     constructedSchwinger_cluster Wfn⟩, ?_⟩
   -- Prove the Wick rotation pair property
-  sorry
+  intro n
+  -- Use the same analytic continuation witness as constructSchwingerFunctions
+  refine ⟨(Wfn.spectrum_condition n).choose,
+    (Wfn.spectrum_condition n).choose_spec.1,
+    (Wfn.spectrum_condition n).choose_spec.2,
+    fun f => ?_⟩
+  -- The Euclidean restriction is definitionally equal to constructSchwingerFunctions
+  rfl
 
 /-- **Theorem E'→R'**: OS axioms with linear growth condition produce Wightman functions.
 

@@ -8,6 +8,7 @@ import ModularPhysics.RigorousQFT.SPDE.Probability.Pythagoras
 import ModularPhysics.RigorousQFT.SPDE.Probability.IndependenceHelpers
 import Mathlib.Probability.Distributions.Gaussian.Real
 import Mathlib.Probability.Moments.MGFAnalytic
+import Mathlib.Algebra.Order.Chebyshev
 
 /-!
 # Itô Formula Infrastructure
@@ -582,6 +583,74 @@ theorem weighted_qv_sum_L2_bound (W : BrownianMotion Ω μ) [IsProbabilityMeasur
     _ = ↑n * (C ^ 2 * (2 * (T / ↑n) ^ 2)) := by
         rw [Finset.sum_const, Finset.card_fin, nsmul_eq_mul]
     _ = C ^ 2 * (2 * T ^ 2 / ↑n) := by field_simp
+
+/-- The square of the weighted QV sum is integrable.
+    Used for the integrability step in `ito_formula_L2_convergence`. -/
+theorem weighted_qv_sq_integrable (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ]
+    (T : ℝ) (hT : 0 ≤ T) (n : ℕ) (hn : 0 < n)
+    (g : Fin n → Ω → ℝ) (C : ℝ) (_hC : 0 ≤ C)
+    (hg_adapted : ∀ i : Fin n,
+      @Measurable Ω ℝ (W.F.σ_algebra (↑(i : ℕ) * T / ↑n)) _ (g i))
+    (hg_bdd : ∀ i : Fin n, ∀ ω, |g i ω| ≤ C) :
+    Integrable (fun ω => (∑ i : Fin n, g i ω *
+      ((W.toAdapted.process ((↑(i : ℕ) + 1) * T / ↑n) ω -
+        W.toAdapted.process (↑(i : ℕ) * T / ↑n) ω) ^ 2 - T / ↑n))^2) μ := by
+  have hn_pos : (0 : ℝ) < ↑n := Nat.cast_pos.mpr hn
+  -- Define incr, Y, a (same as in weighted_qv_sum_L2_bound)
+  let incr : Fin n → Ω → ℝ := fun i ω =>
+    W.toAdapted.process ((↑(i : ℕ) + 1) * T / ↑n) ω -
+    W.toAdapted.process (↑(i : ℕ) * T / ↑n) ω
+  let Y : Fin n → Ω → ℝ := fun i ω => (incr i ω) ^ 2 - T / ↑n
+  let a : Fin n → Ω → ℝ := fun i ω => g i ω * Y i ω
+  -- Partition time arithmetic
+  have hpt_nonneg : ∀ i : Fin n, 0 ≤ (↑(i : ℕ) : ℝ) * T / ↑n := fun i => by positivity
+  have hpt_mono : ∀ i : Fin n,
+      (↑(i : ℕ) : ℝ) * T / ↑n ≤ (↑(i : ℕ) + 1) * T / ↑n := by
+    intro i; apply div_le_div_of_nonneg_right _ hn_pos.le; nlinarith
+  -- Ambient measurability of g
+  have hg_meas_ambient : ∀ i : Fin n, Measurable (g i) :=
+    fun i => (hg_adapted i).mono (W.F.le_ambient _) le_rfl
+  -- Y i² integrable (expand as BM moments)
+  have hY_sq_int : ∀ i : Fin n, Integrable (fun ω => (Y i ω) ^ 2) μ := by
+    intro i
+    have hfun : ∀ ω, (Y i ω) ^ 2 =
+        (incr i ω) ^ 4 + ((-2 * (T / ↑n)) * (incr i ω) ^ 2 + (T / ↑n) ^ 2) := by
+      intro ω; ring
+    simp_rw [hfun]
+    exact (W.increment_all_moments _ _ (hpt_nonneg i) (hpt_mono i) 4).add
+      ((W.increment_sq_integrable _ _ (hpt_nonneg i) (hpt_mono i)).const_mul _ |>.add
+        (integrable_const _))
+  -- (a i)² integrable: bounded g² times integrable Y²
+  have ha_sq_int : ∀ i : Fin n, Integrable (fun ω => (a i ω) ^ 2) μ := by
+    intro i
+    have hsq : ∀ ω, (a i ω) ^ 2 = (g i ω) ^ 2 * (Y i ω) ^ 2 := fun ω => by ring
+    simp_rw [hsq]
+    exact (hY_sq_int i).bdd_mul
+      ((hg_meas_ambient i).pow_const 2).aestronglyMeasurable
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        exact sq_le_sq' (abs_le.mp (hg_bdd i ω)).1 (abs_le.mp (hg_bdd i ω)).2)
+  -- ∑ (a i)² integrable
+  have hsum_sq_int : Integrable (fun ω => ∑ i : Fin n, (a i ω) ^ 2) μ :=
+    integrable_finset_sum _ (fun i _ => ha_sq_int i)
+  -- Cauchy-Schwarz bound: (∑ a i)² ≤ n * ∑ (a i)²
+  have hdom : ∀ ω, (∑ i : Fin n, a i ω) ^ 2 ≤ ↑n * ∑ i : Fin n, (a i ω) ^ 2 := by
+    intro ω
+    have h := @sq_sum_le_card_mul_sum_sq (Fin n) ℝ _ _ _ _ Finset.univ (fun i => a i ω)
+    simp only [Finset.card_univ, Fintype.card_fin] at h
+    exact h
+  -- Measurability of (∑ a i)²
+  have hincr_meas : ∀ i : Fin n, Measurable (incr i) := fun i =>
+    ((W.toAdapted.adapted _).mono (W.F.le_ambient _) le_rfl).sub
+      ((W.toAdapted.adapted _).mono (W.F.le_ambient _) le_rfl)
+  have ha_meas : ∀ i : Fin n, Measurable (a i) := fun i =>
+    (hg_meas_ambient i).mul ((hincr_meas i).pow_const 2 |>.sub measurable_const)
+  -- Apply domination
+  exact (hsum_sq_int.const_mul (↑n : ℝ)).mono'
+    ((Finset.measurable_sum _ (fun i _ => ha_meas i)).pow_const 2).aestronglyMeasurable
+    (ae_of_all _ fun ω => by
+      rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+      exact hdom ω)
 
 /-- The weighted QV sum converges to 0 in L² as n → ∞.
     E[|Σ gᵢ · ((ΔWᵢ)² - Δtᵢ)|²] → 0 for adapted bounded weights. -/
