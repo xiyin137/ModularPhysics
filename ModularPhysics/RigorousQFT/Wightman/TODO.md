@@ -8,8 +8,8 @@ The reconstruction takes Schwinger functions as given input — nuclear spaces a
 
 ### Critical Path for OS Reconstruction
 
-1. **Schwartz tensor product sorrys** → smooth'/decay' for conjTensorProduct, prependField
-2. **Field operator well-definedness** → fieldOperator quotient lift
+1. ~~**Schwartz tensor product sorrys**~~ ✅ DONE (SchwartzTensorProduct.lean is sorry-free)
+2. ~~**Field operator well-definedness**~~ ✅ DONE (adjoint relation → preserves null → well-defined)
 3. **wightman_to_os** (R→E, needs BHW + analytic continuation)
 4. **os_to_wightman** (E'→R', the hard theorem — analytic continuation + E0')
 
@@ -32,19 +32,19 @@ but not for the OS reconstruction theorems themselves.
 | Groups/Lorentz.lean | 0 | Complete |
 | Groups/Poincare.lean | 0 | Complete |
 | Spacetime/Metric.lean | 0 | Complete |
-| WightmanAxioms.lean | 1 | WightmanDistribution needs tensor product |
+| SchwartzTensorProduct.lean | 0 | ✅ Complete (sorry-free!) |
+| WightmanAxioms.lean | 2 | WightmanDistribution needs tensor product |
 | OperatorDistribution.lean | 1 | momentum_eq_generator (Stone theorem, not blocking) |
-| SchwartzTensorProduct.lean | 10 | Schwartz smooth'/decay' for tensor ops |
-| **Reconstruction.lean** | **5** | Core theorems + field operator |
-| **Reconstruction/AnalyticContinuation.lean** | **14** | NEW: Tube domains, BHW, edge-of-wedge |
-| **Reconstruction/GNSConstruction.lean** | **5** | NEW: Vacuum, field ops, GNS property |
-| **Reconstruction/WickRotation.lean** | **24** | NEW: OS↔Wightman bridge |
+| **Reconstruction.lean** | **4** | Core theorems (fieldOperator ✅ proven) |
+| **Reconstruction/AnalyticContinuation.lean** | **7** | Tube domains, BHW, edge-of-wedge |
+| Reconstruction/GNSConstruction.lean | 0 | ✅ Complete (sorry-free!) |
+| **Reconstruction/WickRotation.lean** | **16** | OS↔Wightman bridge |
 | NuclearSpaces/NuclearOperator.lean | 4 | Deferred (not blocking reconstruction) |
 | NuclearSpaces/NuclearSpace.lean | 4 | Deferred |
 | NuclearSpaces/BochnerMinlos.lean | 6 | Deferred |
 | NuclearSpaces/SchwartzNuclear.lean | 8 | Deferred |
 | NuclearSpaces/EuclideanMeasure.lean | 6 | Deferred |
-| **Total** | **~88** | |
+| **Total** | **~60** | |
 
 ## Recent Progress
 
@@ -58,20 +58,23 @@ but not for the OS reconstruction theorems themselves.
 - `schwartzToOnePoint` — Via compCLMOfContinuousLinearEquiv (no more sorry!)
 - `fieldOperatorAction` — Borchers sequence level (uses prependField)
 - Full sesquilinearity infrastructure (add, smul, neg, sub in both arguments)
+- **`adjoint_term_eq`** — Per-term adjoint identity via Fin.cast + mul_comm
+- **`field_adjoint`** — ⟨φ(f)F, G⟩ = ⟨F, φ(f̄)G⟩ (full adjoint relation)
+- **`fieldOperator_preserves_null`** — φ(f) maps null vectors to null vectors
+- **`fieldOperator_well_defined`** — φ(f) descends to quotient
+- **`fieldOperator`** — ✅ Sorry-free! (uses Quotient.lift + well-definedness)
+- **`gns_reproduces_wightman`** — ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩ = Wₙ(f₁⊗···⊗fₙ) (fundamental GNS property)
+- **`translation_preserves_inner`** — WIP(F', G') = WIP(F, G) for translated sequences
 
 ### Infrastructure Created (with sorrys for proofs)
 - `Reconstruction/AnalyticContinuation.lean` — ComplexLorentzGroup, tube domains,
   Bargmann-Hall-Wightman, edge-of-the-wedge, Jost lemma, SchwingerFromWightman
-- `Reconstruction/GNSConstruction.lean` — Vacuum sequence, field operator properties,
-  GNS reproduces Wightman functions
+- ~~`Reconstruction/GNSConstruction.lean`~~ ✅ Sorry-free! (vacuum, field ops, GNS reproduces Wightman)
 - `Reconstruction/WickRotation.lean` — constructSchwingerFunctions, OS↔Wightman bridge,
   EuclideanSemigroup, AnalyticContinuationRegion, constructWightmanFunctions,
   IsWickRotationPair, wightman_to_os_full, os_to_wightman_full
 
-## Reconstruction.lean Sorry Breakdown (5 sorrys)
-
-### Field Operator
-- `fieldOperator`: Well-definedness on quotient (needs null vector preservation)
+## Reconstruction.lean Sorry Breakdown (4 sorrys)
 
 ### Main Theorems
 - `wightman_reconstruction`: Full GNS → WightmanQFT + reproduces Wightman functions

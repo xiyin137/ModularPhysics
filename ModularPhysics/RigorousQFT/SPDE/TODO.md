@@ -1,21 +1,44 @@
 # SPDE Standard Approach - Status and TODO
 
-## Current Sorry Count (as of 2026-02-11)
+## Current Sorry Count (as of 2026-02-12)
 
 | File | Sorrys | Key Items |
 |------|--------|-----------|
 | **StochasticIntegration.lean** | **9** | ito_formula(martingale), quadratic_variation, bdg_inequality, sde_existence, sde_uniqueness_law, stratonovich, semimartingale_integral, girsanov, martingale_representation |
 | **BrownianMotion.lean** | **6** | time_inversion, eval_unit_is_brownian, Q-Wiener continuous_paths, Q-Wiener regularity_from_trace, levy_characterization, (t<0 design) |
-| **SPDE.lean** | **7** | Generator/semigroup infrastructure |
+| **SPDE.lean** | **6** | Generator/semigroup infrastructure (renormalized_spde nontriviality FIXED) |
 | **Basic.lean** | **1** | is_martingale_of_bounded (needs uniform integrability) |
 | **RegularityStructures.lean** | **1** | Abstract approach (complementary to folder) |
 | **Probability/Basic.lean** | **2** | condexp_jensen, doob_maximal_L2 |
 | **Probability/IndependenceHelpers.lean** | **0** | Fully proven |
 | **Helpers/InnerIntegralIntegrability.lean** | **3** | Tonelli/Fubini infrastructure |
-| **Helpers/** (all other) | **0** | 12 files, all fully proven |
+| **Helpers/ItoFormulaProof.lean** | **5** | ito_lower_order_L2_convergence, ito_formula_L2_convergence (3 internal), ito_formula_martingale (1 L2 conv) |
+| **Helpers/ItoFormulaDecomposition.lean** | **5** | stoch_integral_increment_L2_bound, ito_process_increment_L2/L4, riemann_sum/taylor_remainder convergence |
+| **Helpers/** (all other) | **0** | 13 files, all fully proven |
 | **RegularityStructures/** | **44** | See RegularityStructures/TODO.md |
 
-**Total: 73 sorrys** (29 SPDE core + 44 RegularityStructures)
+**Total: 82 sorrys** (38 SPDE core + 44 RegularityStructures)
+
+---
+
+## Soundness Audit (2026-02-12)
+
+**All files audited for definition soundness and axiom smuggling.**
+
+### Results:
+- **StochasticIntegration.lean**: ✓ SOUND — all structures properly defined
+- **BrownianMotion.lean**: ✓ SOUND — all structures properly defined
+- **Basic.lean**: ✓ SOUND — Filtration, Martingale, LocalMartingale all correct
+- **SPDE.lean**: ✓ SOUND (after fix) — `PolynomialNonlinearity.leading_nonzero` replaces weak `nontrivial`
+- **Probability/Basic.lean**: ✓ SOUND — `IsGaussian` correctly includes char_function as defining property
+- **Helpers/**: ✓ SOUND — 15 files, no issues
+- **No axioms, no .choose in definitions, no True := trivial**
+
+### Fix applied:
+- `PolynomialNonlinearity`: replaced `nontrivial : ∃ k, coeff k ≠ 0` with
+  `leading_nonzero : coeff ⟨degree, ...⟩ ≠ 0` (proper polynomial of stated degree)
+- This eliminated the `sorry` in `renormalized_spde` (leading coeff unchanged by renormalization)
+- Old `nontrivial` is now a derived lemma
 
 ---
 
@@ -62,33 +85,76 @@ f(t, X_t) = f(0, X_0) + ∫₀ᵗ [∂_t f + ∂_x f · μ + ½∂²_x f · σ²
 ```
 where M_t is a martingale (the stochastic integral ∫₀ᵗ ∂_x f · σ dW).
 
-**Proposed proof strategy (direct partition approach):**
+**Dependency chain (→ = depends on):**
+```
+ito_formula (StochasticIntegration.lean, line 1651)
+  → ito_formula_martingale (ItoFormulaProof.lean)
+    → ito_integral_martingale_setIntegral ✅ PROVEN
+    → ito_formula_L2_convergence (ItoFormulaProof.lean)
+      → ito_weighted_qv_convergence ✅ PROVEN
+      → ito_lower_order_L2_convergence ❌ SORRY (MAIN BLOCKER)
+      → 3 internal sorrys: integrability (×2) + integral splitting
+    → 1 sorry: L² conv application at time t'
+```
 
-1. **Partition**: Take partitions 0 = t₀ < t₁ < ... < tₙ = t with mesh → 0
-2. **Telescope**: f(t, X_t) - f(0, X₀) = Σᵢ [f(tᵢ₊₁, Xᵢ₊₁) - f(tᵢ, Xᵢ)]
-3. **Taylor expand each increment** (using `taylor_mean_remainder_bound` from Mathlib):
-   - f(tᵢ₊₁, Xᵢ₊₁) - f(tᵢ, Xᵢ) ≈ ∂_t f · Δtᵢ + ∂_x f · ΔXᵢ + ½∂²_x f · (ΔXᵢ)²
-4. **Sum the terms**:
-   - Σ ∂_t f · Δtᵢ → ∫₀ᵗ ∂_t f ds (Riemann sum convergence)
-   - Σ ∂_x f · ΔXᵢ = Σ ∂_x f · (μ Δt + σ ΔW) → drift integral + stochastic integral
-   - Σ ½∂²_x f · (ΔXᵢ)² → ½∫₀ᵗ ∂²_x f · σ² ds (key: cross terms vanish, (ΔWᵢ)² → Δtᵢ)
-5. **Error control**: Taylor remainder is O(|ΔXᵢ|³) → 0 in L² as mesh → 0
+**Proof infrastructure status:**
 
-**Key infrastructure needed:**
-1. **Riemann sum convergence**: Σᵢ g(tᵢ)·Δtᵢ → ∫₀ᵗ g(s)ds
-2. **BM quadratic variation L² convergence**: E[|Σᵢ(ΔWᵢ)² - t|²] → 0
-   - Uses: (ΔWᵢ)² - Δtᵢ is mean-zero, Σ → 0 in L²
-3. **Cross-term cancellation**: Σᵢ g(tᵢ)·(ΔWᵢ)² → ∫₀ᵗ g(s) ds
-4. **Stochastic integral as limit**: Σ ∂_x f(tᵢ, Xᵢ) · σᵢ · ΔWᵢ → stochastic integral
+| Component | Status | Location |
+|-----------|--------|----------|
+| `itoRemainder` definition | ✅ DONE | ItoFormulaProof.lean |
+| `taylor_second_order_bound` | ✅ DONE | ItoFormulaProof.lean |
+| `contDiff_two_deriv_continuous` | ✅ DONE | ItoFormulaProof.lean |
+| `partitionTime` + arithmetic | ✅ DONE | ItoFormulaProof.lean |
+| `itoPartitionProcess` construction | ✅ DONE | ItoFormulaProof.lean |
+| `itoPartitionProcess_adapted` | ✅ DONE | ItoFormulaProof.lean |
+| `itoPartitionProcess_bounded` | ✅ DONE | ItoFormulaProof.lean |
+| `itoPartitionProcess_times_nonneg` | ✅ DONE | ItoFormulaProof.lean |
+| `ito_formula_martingale` (structure) | ✅ DONE (1 sorry) | ItoFormulaProof.lean |
+| `bm_qv_sum_L2_bound` | ✅ DONE | ItoFormulaInfrastructure.lean |
+| `bm_qv_L2_convergence` | ✅ DONE | ItoFormulaInfrastructure.lean |
+| `weighted_qv_sum_L2_bound` | ✅ DONE | ItoFormulaInfrastructure.lean |
+| `weighted_qv_L2_convergence` | ✅ DONE | ItoFormulaInfrastructure.lean |
+| `stochasticIntegral_at_sq_integrable` | ✅ DONE | ItoFormulaDecomposition.lean |
+| `stochasticIntegral_at_filtration_measurable` | ✅ DONE | ItoFormulaDecomposition.lean |
+| `integral_mul_eq_zero_of_setIntegral_eq_zero` | ✅ DONE | ItoFormulaDecomposition.lean |
+| `simple_bilinear_isometry_different_times` | ✅ DONE | ItoFormulaDecomposition.lean |
+| `simple_increment_L2` | ✅ DONE | ItoFormulaDecomposition.lean |
+| **`ito_formula_L2_convergence`** | **3 sorrys** | ItoFormulaProof.lean |
+| **`ito_lower_order_L2_convergence`** | **SORRY** | ItoFormulaProof.lean |
 
-**Existing infrastructure:**
-- `ito_integral_martingale_setIntegral` — proves martingale property for L² limits of simple process integrals
-- `taylor_mean_remainder_lagrange` — Taylor expansion from Mathlib
-- BM increment properties: `increment_variance`, `increment_mean_zero`, `increment_sq_integrable`
-- `cross_term_zero` — cross-term vanishing for simple process isometry
+**Blocking sorrys for the Itô formula (by priority):**
+
+1. **`ito_lower_order_L2_convergence`** — MAIN BLOCKER. Shows Taylor remainders + Riemann sum errors + cross terms → 0 in L². Requires:
+   - Taylor remainder: O(|ΔX|³) per interval, ΣE[|ΔX|³] → 0 via 4th moment bounds
+   - Riemann sums: Σ g(tᵢ)Δt → ∫ g ds for bounded adapted g
+   - Cross terms: E[(Δt·ΔW)], E[(ΔSI - σΔW)²] → 0
+
+2. **3 sorrys in `ito_formula_L2_convergence`** — Mechanical: integrability of error²/qv²/lower² and integral splitting (2a²+2b²). Added `hrem_sq_int` hypothesis to make these provable.
+
+3. **1 sorry in `ito_formula_martingale`** — Application of L² convergence at time t'. Becomes trivial once L2_convergence is proved.
+
+**Supporting infrastructure still needed (in ItoFormulaDecomposition.lean):**
+
+| Component | Status | Purpose |
+|-----------|--------|---------|
+| `stoch_integral_increment_L2_bound` | SORRY | E[|SI(t)-SI(s)|²] ≤ Mσ²(t-s), for Taylor remainder bounds |
+| `ito_process_increment_L2_bound` | SORRY | E[|X(t)-X(s)|²] ≤ C(t-s), for Taylor remainder bounds |
+| `ito_process_increment_L4_bound` | SORRY | E[|X(t)-X(s)|⁴] ≤ C(t-s)², for Σ|ΔX|³ convergence |
+| `riemann_sum_L2_convergence` | SORRY | Σ g(tᵢ)Δt → ∫ g ds in L², for drift approximation |
+| `taylor_remainder_L2_convergence` | SORRY | Taylor remainder sum → 0 in L² |
+
+**Key infrastructure already available:**
+- `ito_integral_martingale_setIntegral` — martingale from L² limits ✅
+- `taylor_mean_remainder_bound` — Taylor with ‖remainder‖ bound ✅
+- BM increments: `increment_variance`, `increment_mean_zero`, `increment_fourth_moment` ✅
+- `increment_sq_minus_dt_variance` — Var((ΔW)²-Δt) = 2(Δt)² ✅
+- `cross_term_zero` — simple process cross-term vanishing ✅
+- `integral_mul_zero_of_indep_zero_mean` — E[X·Y]=0 for adapted×independent ✅
+- `integral_mul_eq_zero_of_setIntegral_eq_zero` — martingale orthogonality ✅
+- `simple_bilinear_isometry_different_times` — E[S(t)S(s)] = E[S(s)²] ✅
 
 **Priority ordering:**
-1. Itô formula via direct partition approach
+1. Itô formula via direct partition approach (solve blocking sorrys above)
 2. `quadratic_variation` as corollary (apply Itô to f(x) = x²)
 3. `sde_uniqueness_law` via Grönwall (infrastructure in Helpers/GronwallForSDE.lean)
 
@@ -124,7 +190,7 @@ where M_t is a martingale (the stochastic integral ∫₀ᵗ ∂_x f · σ dW).
 
 ## Fully Proven Components
 
-### Helpers/ (12 files, 0 sorrys)
+### Helpers/ (13 files, 0 sorrys + 2 files with sorrys)
 - **CommonRefinement.lean** — Merged partitions, valueAtTime, joint measurability
 - **SimpleProcessLinear.lean** — Linear combination of simple process integrals
 - **MergedValueAtTime.lean** — valueAtTime linearity for merged processes
@@ -137,9 +203,11 @@ where M_t is a martingale (the stochastic integral ∫₀ᵗ ∂_x f · σ dW).
 - **IteratedProductConvergence.lean** — Iterated integral product convergence
 - **SimpleProcessDef.lean** — SimpleProcess structure, stochasticIntegral definitions
 - **GronwallForSDE.lean** — Grönwall lemma infrastructure
+- **ItoFormulaInfrastructure.lean** — BM QV L² convergence, weighted QV convergence
 
-### Probability/ (1 file 0 sorrys)
+### Probability/ (2 files, 0 sorrys)
 - **IndependenceHelpers.lean** — Bridge lemmas for independence
+- **Pythagoras.lean** — L² Pythagoras for orthogonal RVs
 
 ### RegularityStructures/Trees/ (3 files, 0 sorrys)
 - **Basic.lean** — MultiIndex, TreeSymbol, complexity
@@ -152,6 +220,11 @@ where M_t is a martingale (the stochastic integral ∫₀ᵗ ∂_x f · σ dW).
 - **Itô integral is martingale**: set-integral property on [0,T]
 - **Itô integral linearity**: `I(aH₁ + bH₂) = aI(H₁) + bI(H₂)` in L²
 - **BM quadratic variation compensator**: W²_t - t is martingale
+- **BM quadratic variation L² convergence**: E[|Σ(ΔW)²-t|²] → 0
+- **Weighted QV convergence**: Σ gᵢ[(ΔWᵢ)²-Δtᵢ] → 0 in L² for adapted bounded g
+- **Martingale orthogonality**: ∫_A Y=0 ∀A∈F_s, X is F_s-meas → E[X·Y]=0 (via condExp)
+- **Bilinear isometry at different times**: E[S(t)·S(s)] = E[S(s)²] for s≤t
+- **Simple process increment L²**: E[|S(t)-S(s)|²] = E[S(t)²]-E[S(s)²]
 - **BM scaling**: c^{-1/2}W_{ct} is BM
 - **BM reflection**: -W is BM
 - **Reconstruction exists**: explicit construction R(f) = Π_x f(x)

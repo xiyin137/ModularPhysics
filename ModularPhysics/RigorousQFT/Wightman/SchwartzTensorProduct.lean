@@ -1255,6 +1255,22 @@ theorem SchwartzMap.prependField_add_right {n : ℕ}
     f.prependField (g₁ + g₂) = f.prependField g₁ + f.prependField g₂ := by
   ext x; simp [mul_add]
 
+@[simp]
+theorem SchwartzMap.prependField_neg_right {n : ℕ}
+    (f : 𝓢(E, ℂ)) (g : 𝓢(Fin n → E, ℂ)) :
+    f.prependField (-g) = -(f.prependField g) := by
+  ext x; simp [mul_neg]
+
+theorem SchwartzMap.prependField_sub_right {n : ℕ}
+    (f : 𝓢(E, ℂ)) (g₁ g₂ : 𝓢(Fin n → E, ℂ)) :
+    f.prependField (g₁ - g₂) = f.prependField g₁ - f.prependField g₂ := by
+  ext x; simp [mul_sub]
+
+theorem SchwartzMap.prependField_smul_right {n : ℕ}
+    (f : 𝓢(E, ℂ)) (c : ℂ) (g : 𝓢(Fin n → E, ℂ)) :
+    f.prependField (c • g) = c • (f.prependField g) := by
+  ext x; simp [mul_left_comm]
+
 /-! ### Splitting and Appending -/
 
 /-- splitFirst ∘ Fin.append extracts the first component. -/

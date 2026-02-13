@@ -62,35 +62,114 @@ open scoped NNReal Topology
 
 /-! ### Positive-Definite Functions -/
 
-/-- A function φ : E → ℂ on a topological vector space is **positive-definite** if
+/-- A function φ : E → ℂ on an abelian group is **positive-definite** if
     for every finite family of points x₁, ..., xₙ ∈ E and scalars c₁, ..., cₙ ∈ ℂ,
-    we have Σᵢ Σⱼ c̄ᵢ · cⱼ · φ(xⱼ - xᵢ) ≥ 0 (i.e., the real part is ≥ 0).
+    the Hermitian form Σᵢ Σⱼ c̄ᵢ · cⱼ · φ(xⱼ - xᵢ) is a non-negative real number.
 
-    This is the standard notion from harmonic analysis, NOT the matrix/operator notion. -/
+    This is equivalent to requiring the kernel matrix [φ(xⱼ - xᵢ)] to be
+    positive semi-definite (Hermitian with non-negative eigenvalues).
+
+    The standard notion from harmonic analysis (Rudin, Folland). -/
 def IsPositiveDefiniteFn {E : Type*} [AddCommGroup E] (φ : E → ℂ) : Prop :=
   ∀ (n : ℕ) (x : Fin n → E) (c : Fin n → ℂ),
-    0 ≤ (∑ i : Fin n, ∑ j : Fin n, starRingEnd ℂ (c i) * c j * φ (x j - x i)).re
+    let S := ∑ i : Fin n, ∑ j : Fin n, starRingEnd ℂ (c i) * c j * φ (x j - x i)
+    S.im = 0 ∧ 0 ≤ S.re
 
 section PositiveDefiniteProps
 
 variable {E : Type*} [AddCommGroup E] {φ : E → ℂ}
 
-/-- A positive-definite function satisfies φ(0) ≥ 0 (taking n=1, c₁=1, x₁=0). -/
+/-- A positive-definite function satisfies φ(0) ≥ 0 (taking n=1, c₁=1, x₁=0).
+    Moreover, φ(0) is real (imaginary part is 0). -/
 theorem IsPositiveDefiniteFn.eval_zero_nonneg (hφ : IsPositiveDefiniteFn φ) :
     0 ≤ (φ 0).re := by
-  have := hφ 1 (fun _ => 0) (fun _ => 1)
-  simp only [Fin.sum_univ_one, sub_self, map_one, one_mul] at this
-  exact this
+  have h := hφ 1 (fun _ => 0) (fun _ => 1)
+  simp only [Fin.sum_univ_one, sub_self, map_one, one_mul] at h
+  exact h.2
 
-/-- A positive-definite function satisfies φ(-x) = conj(φ(x)). -/
+/-- φ(0) is real for a positive-definite function. -/
+theorem IsPositiveDefiniteFn.eval_zero_im (hφ : IsPositiveDefiniteFn φ) :
+    (φ 0).im = 0 := by
+  have h := hφ 1 (fun _ => 0) (fun _ => 1)
+  simp only [Fin.sum_univ_one, sub_self, map_one, one_mul] at h
+  exact h.1
+
+/-- A positive-definite function satisfies φ(-x) = conj(φ(x)).
+
+    Proof: The 2×2 kernel matrix M = [[φ(0), φ(x)], [φ(-x), φ(0)]] must be
+    Hermitian (since c*Mc is real for all c). The off-diagonal Hermiticity
+    M₂₁ = conj(M₁₂) gives φ(-x) = conj(φ(x)). -/
 theorem IsPositiveDefiniteFn.conj_neg (hφ : IsPositiveDefiniteFn φ) (x : E) :
     starRingEnd ℂ (φ x) = φ (-x) := by
-  sorry
+  have h1 := hφ 2 ![0, x] ![1, 1]
+  have h2 := hφ 2 ![0, x] ![1, Complex.I]
+  simp only [Fin.sum_univ_two, Matrix.cons_val_zero, Matrix.cons_val_one,
+    sub_self, sub_zero, zero_sub, neg_zero, map_one, one_mul, mul_one] at h1 h2
+  obtain ⟨h1_im, _⟩ := h1
+  obtain ⟨h2_im, _⟩ := h2
+  have hφ0_im := hφ.eval_zero_im
+  apply Complex.ext
+  · -- Re(conj(φ x)) = Re(φ(-x)), i.e., Re(φ x) = Re(φ(-x))
+    simp only [Complex.conj_re]
+    -- Extract imaginary parts using mul_im AND mul_re (needed for (conj(I)*I).re evaluation)
+    simp only [Complex.add_im, Complex.mul_im, Complex.mul_re,
+      Complex.I_re, Complex.I_im, Complex.conj_re, Complex.conj_im] at h2_im
+    -- Clean up numerical arithmetic (0*a, 1*a, a-(-b), etc.)
+    ring_nf at h2_im
+    linarith
+  · -- Im(conj(φ x)) = Im(φ(-x)), i.e., -Im(φ x) = Im(φ(-x))
+    simp only [Complex.conj_im]
+    simp only [Complex.add_im] at h1_im
+    linarith
 
-/-- A positive-definite function satisfies |φ(x)| ≤ φ(0) for all x. -/
+/-- A positive-definite function satisfies |φ(x)| ≤ φ(0) for all x.
+
+    Proof: The 2×2 PSD matrix [[φ(0), φ(x)], [conj(φ(x)), φ(0)]] has
+    non-negative determinant: φ(0)² - |φ(x)|² ≥ 0. -/
 theorem IsPositiveDefiniteFn.norm_le_eval_zero (hφ : IsPositiveDefiniteFn φ) (x : E) :
     ‖φ x‖ ≤ (φ 0).re := by
-  sorry
+  by_cases hφx : φ x = 0
+  · simp [hφx, hφ.eval_zero_nonneg]
+  · -- Use c₁=‖φ x‖, c₂=-conj(φ x). Then S.re = 2‖φ x‖²((φ 0).re - ‖φ x‖) ≥ 0.
+    have hznorm_pos : (0 : ℝ) < ‖φ x‖ := norm_pos_iff.mpr hφx
+    have hφ_neg := hφ.conj_neg x
+    have hφ0_im := hφ.eval_zero_im
+    have h := hφ 2 ![0, x] ![(↑‖φ x‖ : ℂ), -(starRingEnd ℂ (φ x))]
+    simp only [Fin.sum_univ_two, Matrix.cons_val_zero, Matrix.cons_val_one,
+      sub_self, sub_zero, zero_sub, neg_zero] at h
+    -- Replace φ(-x) → starRingEnd ℂ (φ x), so hss can simplify conj(conj(φ x)) = φ x
+    -- hφ_neg : starRingEnd ℂ (φ x) = φ (-x), so ← replaces φ(-x) with starRingEnd ℂ (φ x)
+    rw [← hφ_neg] at h
+    -- Simplify: conj(conj(z))=z, conj(↑r)=↑r, conj(-z)=-conj(z)
+    have hss : starRingEnd ℂ (starRingEnd ℂ (φ x)) = φ x := star_star (φ x)
+    simp only [map_neg, hss, Complex.conj_ofReal] at h
+    obtain ⟨_, h_re⟩ := h
+    -- Fully expand .re to real arithmetic (need mul_im for intermediate .im terms)
+    simp only [Complex.add_re, Complex.mul_re, Complex.mul_im,
+      Complex.neg_re, Complex.ofReal_re, Complex.ofReal_im,
+      Complex.conj_re, Complex.conj_im,
+      mul_zero, zero_mul, sub_zero, add_zero,
+      neg_mul, mul_neg, neg_neg, neg_zero] at h_re
+    -- Normalize the real polynomial expression (collects terms, cancels double negations)
+    ring_nf at h_re
+    -- Key identity: ‖z‖² = z.re² + z.im²
+    have hnormsq : (φ x).re ^ 2 + (φ x).im ^ 2 = ‖φ x‖ ^ 2 := by
+      rw [sq, sq]; exact (RCLike.norm_sq_eq_def (K := ℂ)).symm
+    -- Factor out using hnormsq: the sum = 2‖φ x‖²·((φ 0).re - ‖φ x‖)
+    -- Derive (φ 0).re ≥ ‖φ x‖ by dividing by 2‖φ x‖² > 0
+    suffices hsuff : 0 ≤ (φ 0).re - ‖φ x‖ by linarith
+    by_contra h_neg
+    push_neg at h_neg
+    -- Substitute hnormsq into h_re via helper equalities
+    have hp : (φ 0).re * (φ x).re ^ 2 + (φ 0).re * (φ x).im ^ 2 =
+        (φ 0).re * ‖φ x‖ ^ 2 := by rw [← mul_add, hnormsq]
+    have hr : ‖φ x‖ * (φ x).re ^ 2 + ‖φ x‖ * (φ x).im ^ 2 = ‖φ x‖ ^ 3 := by
+      rw [← mul_add, hnormsq]; ring
+    -- 0 < ‖φ x‖² * (‖φ x‖ - (φ 0).re) since both factors positive
+    have h_prod : 0 < ‖φ x‖ ^ 2 * (‖φ x‖ - (φ 0).re) :=
+      mul_pos (by positivity) (by linarith)
+    -- Linear combination: h_re + hp substitution + hr substitution + h_prod → 0 > 0
+    linarith [hp, hr, h_prod]
 
 end PositiveDefiniteProps
 

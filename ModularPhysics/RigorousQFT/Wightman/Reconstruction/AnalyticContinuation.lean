@@ -4,6 +4,8 @@ Released under Apache 2.0 license.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.Wightman.WightmanAxioms
+import ModularPhysics.RigorousQFT.Wightman.Spacetime.MinkowskiGeometry
+import Mathlib.Data.Fin.Tuple.Sort
 
 /-!
 # Analytic Continuation Infrastructure for OS Reconstruction
@@ -378,18 +380,53 @@ theorem euclidean_ordered_in_forwardTube
         ((if (k : ℕ) = 0 then (0 : Fin (d + 1) → ℂ)
           else wickRotatePoint (xs ⟨k.val - 1, by omega⟩)) 0).im)]
 
-/-- For any configuration of distinct Euclidean points, there exists a permutation
-    that orders the times, placing the permuted configuration in the forward tube.
+/-- For any configuration of distinct Euclidean points with positive times,
+    there exists a permutation that orders the times, placing the permuted
+    configuration in the forward tube.
 
-    This is the key geometric fact: **all** distinct Euclidean points lie in the
-    permuted extended tube, not just the time-ordered ones. -/
-theorem euclidean_distinct_in_permutedTube
+    This is the key geometric fact: **all** distinct positive-time Euclidean
+    points lie in the permuted extended tube, not just the time-ordered ones.
+
+    The positive time condition is natural for Osterwalder-Schrader reconstruction,
+    where Schwinger functions are defined for positive Euclidean times. -/
+theorem euclidean_distinct_in_permutedTube {n : ℕ}
     (xs : Fin n → Fin (d + 1) → ℝ)
-    (hdistinct : ∀ i j : Fin n, i ≠ j → xs i 0 ≠ xs j 0) :
+    (hdistinct : ∀ i j : Fin n, i ≠ j → xs i 0 ≠ xs j 0)
+    (hpos : ∀ i : Fin n, xs i 0 > 0) :
     (fun k => wickRotatePoint (xs k)) ∈ PermutedExtendedTube d n := by
-  -- Find the permutation π that sorts by decreasing Euclidean time
-  -- Then π(z) is in the forward tube, and z is in PermutedExtendedTube
-  sorry
+  -- Step 1: Find a sorting permutation π such that times are strictly increasing
+  let π := Tuple.sort (fun k => xs k 0)
+  have hmono := Tuple.monotone_sort (fun k => xs k 0)
+  -- Times are distinct, hence injective
+  have hinj : Function.Injective (fun k => xs k 0) := by
+    intro i j h; by_contra hij; exact hdistinct i j hij h
+  -- Monotone + injective = strictly monotone
+  have hstrict : StrictMono ((fun k => xs k 0) ∘ π) :=
+    hmono.strictMono_of_injective (hinj.comp π.injective)
+  -- Step 2: The permuted configuration is time-ordered with positive times
+  have hord : ∀ k j : Fin n, k < j → xs (π k) 0 < xs (π j) 0 :=
+    fun k j hkj => hstrict hkj
+  have hpos' : ∀ k : Fin n, xs (π k) 0 > 0 := fun k => hpos (π k)
+  -- Step 3: Apply euclidean_ordered_in_forwardTube to get forward tube membership
+  have hfwd : (fun k => wickRotatePoint (xs (π k))) ∈ ForwardTube d n :=
+    euclidean_ordered_in_forwardTube (fun k => xs (π k)) hord hpos'
+  -- Step 4: This gives PermutedForwardTube membership (by definition)
+  -- PermutedForwardTube d n π = { z | (fun k => z (π k)) ∈ ForwardTube d n }
+  -- So z = (fun k => wickRotatePoint (xs k)) is in PermutedForwardTube d n π
+  -- Step 5: Use the identity complex Lorentz to get PermutedExtendedTube membership
+  simp only [PermutedExtendedTube, Set.mem_iUnion, Set.mem_setOf_eq]
+  refine ⟨π, ?_⟩
+  -- Construct the identity complex Lorentz transformation
+  refine ⟨⟨1, ?_, by simp [Matrix.det_one]⟩, fun k => wickRotatePoint (xs k), hfwd, ?_⟩
+  · -- Identity preserves metric
+    intro μ ν
+    simp only [Matrix.one_apply]
+    by_cases h : μ = ν
+    · subst h; simp [Finset.sum_ite_eq', Finset.mem_univ]
+    · simp only [h, ite_false]
+      apply Finset.sum_eq_zero; intro α _; split_ifs <;> simp_all
+  · -- z = 1 · w = w
+    ext k μ; simp [Matrix.one_apply, Finset.sum_ite_eq', Finset.mem_univ]
 
 /-! ### Edge-of-the-Wedge Theorem -/
 
@@ -510,7 +547,97 @@ theorem jost_lemma (z : Fin n → Fin (d + 1) → ℂ) (hz : IsJostPoint z) :
     let prev := z ⟨k.val - 1, by omega⟩
     let diff : Fin (d + 1) → ℝ := fun μ => (z k μ).re - (prev μ).re
     MinkowskiSpace.minkowskiNormSq d diff > 0 := by
-  sorry
+  intro k hk
+  -- Extract Λ, w from the extended forward tube membership
+  obtain ⟨Λ, w, hw, hz_eq⟩ := hz.1
+  -- z is real (all imaginary parts vanish)
+  have hz_real := hz.2
+  -- Define the complex difference in w-coordinates
+  set prev_w : Fin (d + 1) → ℂ := w ⟨k.val - 1, by omega⟩
+  set diff_w : Fin (d + 1) → ℂ := fun μ => w k μ - prev_w μ
+  -- The imaginary part of diff_w is in the forward cone (from ForwardTube)
+  set η : Fin (d + 1) → ℝ := fun μ => (diff_w μ).im
+  set ξ : Fin (d + 1) → ℝ := fun μ => (diff_w μ).re
+  have hη_cone : InOpenForwardCone d η := by
+    have h := hw k; simp only [dif_neg hk] at h; exact h
+  -- η is timelike (normSq < 0) and future-directed (η₀ > 0)
+  have hη_timelike : MinkowskiSpace.IsTimelike d η := hη_cone.2
+  have hη_future : MinkowskiSpace.IsFutureDirected d η := hη_cone.1
+  -- z_k - z_{k-1} = Λ · diff_w (linearity of matrix multiplication)
+  have hz_diff : ∀ μ, z k μ - z ⟨k.val - 1, by omega⟩ μ =
+      ∑ ν, Λ.val μ ν * diff_w ν := by
+    intro μ
+    simp only [hz_eq, diff_w, prev_w]
+    rw [← Finset.sum_sub_distrib
+      (f := fun ν => Λ.val μ ν * w k ν)
+      (g := fun ν => Λ.val μ ν * w ⟨k.val - 1, by omega⟩ ν)]
+    congr 1; ext ν; ring
+  -- The image Λ · diff_w is real (since z is real)
+  set z_diff : Fin (d + 1) → ℂ := fun μ => ∑ ν, Λ.val μ ν * diff_w ν
+  have hz_diff_real : ∀ μ, (z_diff μ).im = 0 := by
+    intro μ
+    have h := congr_arg Complex.im (hz_diff μ)
+    simp only [Complex.sub_im] at h
+    rw [hz_real k μ, hz_real ⟨k.val - 1, by omega⟩ μ] at h
+    linarith
+  -- KEY STEP 1: Q(Λ · diff_w) = Q(diff_w) by metric preservation
+  have hQ_inv : MinkowskiSpace.complexMinkowskiQuadratic d z_diff =
+      MinkowskiSpace.complexMinkowskiQuadratic d diff_w :=
+    MinkowskiSpace.complexQuadratic_lorentz_invariant d Λ.val Λ.metric_preserving diff_w
+  -- KEY STEP 2: Q(z_diff) is real since z_diff is a real vector
+  have hQ_real : MinkowskiSpace.complexMinkowskiQuadratic d z_diff =
+      (MinkowskiSpace.minkowskiNormSq d (fun μ => (z_diff μ).re) : ℂ) :=
+    MinkowskiSpace.complexMinkowskiQuadratic_real_vector d z_diff hz_diff_real
+  -- KEY STEP 3: diff_w = ξ + iη, so Q(diff_w) has known Re and Im
+  have hdiff_decomp : diff_w = fun μ => (ξ μ : ℂ) + (η μ : ℂ) * I := by
+    ext μ; exact (Complex.re_add_im (diff_w μ)).symm
+  -- The imaginary part of Q(diff_w)
+  have hQ_im : (MinkowskiSpace.complexMinkowskiQuadratic d diff_w).im =
+      2 * MinkowskiSpace.minkowskiInner d ξ η := by
+    conv_lhs => rw [hdiff_decomp]
+    exact MinkowskiSpace.complexQuadratic_im d ξ η
+  -- The real part of Q(diff_w)
+  have hQ_re : (MinkowskiSpace.complexMinkowskiQuadratic d diff_w).re =
+      MinkowskiSpace.minkowskiNormSq d ξ - MinkowskiSpace.minkowskiNormSq d η := by
+    conv_lhs => rw [hdiff_decomp]
+    exact MinkowskiSpace.complexQuadratic_re d ξ η
+  -- KEY STEP 4: Since Q(z_diff) is real, Q(diff_w) must also be real,
+  -- which gives ⟨ξ, η⟩_M = 0 (Minkowski orthogonality)
+  have hQ_is_real : (MinkowskiSpace.complexMinkowskiQuadratic d diff_w).im = 0 := by
+    rw [← hQ_inv] at hQ_re hQ_im ⊢
+    rw [hQ_real]; simp [Complex.ofReal_im]
+  have horth : MinkowskiSpace.minkowskiInner d ξ η = 0 := by
+    linarith [hQ_im, hQ_is_real]
+  -- KEY STEP 5: η timelike future-directed + ξ ⊥ η → normSq(ξ) ≥ 0
+  have hξ_nonneg : MinkowskiSpace.minkowskiNormSq d ξ ≥ 0 :=
+    MinkowskiSpace.minkowskiInner_orthogonal_to_timelike_nonneg d ξ η
+      hη_timelike hη_future horth
+  -- KEY STEP 6: normSq(η) < 0 (timelike), so normSq(ξ) - normSq(η) > 0
+  have hη_neg : MinkowskiSpace.minkowskiNormSq d η < 0 := hη_timelike
+  have hQ_diff_pos : MinkowskiSpace.minkowskiNormSq d ξ -
+      MinkowskiSpace.minkowskiNormSq d η > 0 := by linarith
+  -- KEY STEP 7: Connect to the goal
+  show MinkowskiSpace.minkowskiNormSq d (fun μ => (z k μ).re -
+    (z ⟨k.val - 1, by omega⟩ μ).re) > 0
+  -- The real diff = Re(z_diff) since z_k - z_{k-1} = z_diff
+  have hdiff_eq : (fun μ => (z k μ).re - (z ⟨k.val - 1, by omega⟩ μ).re) =
+      fun μ => (z_diff μ).re := by
+    ext μ; exact congr_arg Complex.re (hz_diff μ)
+  rw [hdiff_eq]
+  -- Chain: normSq(Re(z_diff)) = Re(Q(z_diff)) = Re(Q(diff_w)) = normSq(ξ) - normSq(η)
+  have key : MinkowskiSpace.minkowskiNormSq d (fun μ => (z_diff μ).re) =
+      MinkowskiSpace.minkowskiNormSq d ξ - MinkowskiSpace.minkowskiNormSq d η := by
+    -- From hQ_real: Q(z_diff) = ↑(normSq(Re(z_diff)))
+    -- From hQ_inv: Q(z_diff) = Q(diff_w)
+    -- So normSq(Re(z_diff)) = Re(Q(z_diff)) = Re(Q(diff_w)) = normSq(ξ) - normSq(η)
+    have h1 : (MinkowskiSpace.complexMinkowskiQuadratic d z_diff).re =
+        MinkowskiSpace.minkowskiNormSq d (fun μ => (z_diff μ).re) := by
+      rw [hQ_real]; simp [Complex.ofReal_re]
+    have h2 : (MinkowskiSpace.complexMinkowskiQuadratic d z_diff).re =
+        MinkowskiSpace.minkowskiNormSq d ξ - MinkowskiSpace.minkowskiNormSq d η := by
+      rw [hQ_inv]; exact hQ_re
+    linarith [h1, h2]
+  linarith [key]
 
 /-! ### Schwinger Functions from Wightman Functions -/
 
@@ -566,18 +693,56 @@ def OmegaRegion (d n : ℕ) [NeZero d] : Set (Fin n → Fin (d + 1) → ℝ) :=
 
 /-! ### Key Properties for OS Axiom Verification -/
 
+/-- The Wick rotation intertwines Euclidean rotations with complex Lorentz transformations:
+    wickRotatePoint(R · x) = (ofEuclidean R) · wickRotatePoint(x)
+
+    For R ∈ SO(d+1), the diagram commutes:
+      ℝ^{d+1} --R--> ℝ^{d+1}
+        |                |
+    wick             wick
+        |                |
+      ℂ^{d+1} --Λ_R-> ℂ^{d+1}  -/
+theorem wickRotatePoint_ofEuclidean
+    (R : Matrix (Fin (d + 1)) (Fin (d + 1)) ℝ)
+    (hR_det : R.det = 1) (hR_orth : R.transpose * R = 1)
+    (x : Fin (d + 1) → ℝ) :
+    ∀ μ : Fin (d + 1),
+      wickRotatePoint (R.mulVec x) μ =
+      ∑ ν, (ComplexLorentzGroup.ofEuclidean R hR_det hR_orth).val μ ν *
+        wickRotatePoint x ν := by
+  intro μ
+  simp only [wickRotatePoint, ComplexLorentzGroup.ofEuclidean, Matrix.mulVec, dotProduct]
+  -- Each summand on RHS: (wμ * R(μ,ν) * wν⁻¹) * wickRotatePoint(x)(ν)
+  -- For ν=0: wμ * R(μ,0) * (-I) * (I * x(0)) = wμ * R(μ,0) * x(0)  [since -I*I = 1]
+  -- For ν≠0: wμ * R(μ,ν) * 1 * x(ν) = wμ * R(μ,ν) * x(ν)
+  -- So RHS = wμ * Σ_ν R(μ,ν) * x(ν) = LHS
+  -- First, simplify each summand via -I*I = 1
+  have simplify_summand : ∀ ν : Fin (d + 1),
+      (if μ = 0 then I else (1 : ℂ)) * ↑(R μ ν) * (if ν = 0 then -I else 1) *
+      (if ν = 0 then I * ↑(x 0) else ↑(x ν)) =
+      (if μ = 0 then I else (1 : ℂ)) * ↑(R μ ν) * ↑(x ν) := by
+    intro ν
+    by_cases hν : ν = (0 : Fin (d + 1))
+    · subst hν; simp only [ite_true]
+      rw [show (if μ = 0 then I else (1 : ℂ)) * ↑(R μ 0) * -I * (I * ↑(x 0)) =
+        (if μ = 0 then I else (1 : ℂ)) * ↑(R μ 0) * ↑(x 0) * (-I * I) from by ring]
+      rw [show (-I : ℂ) * I = -(I * I) from by ring, ← sq, Complex.I_sq]; ring
+    · simp only [hν, ite_false]; ring
+  simp_rw [simplify_summand]
+  -- Now RHS = Σ_ν wμ * ↑(R(μ,ν)) * ↑(x(ν)) = wμ * Σ_ν ↑(R(μ,ν) * x(ν))
+  by_cases hμ : μ = (0 : Fin (d + 1))
+  · subst hμ; simp only [ite_true]
+    rw [Complex.ofReal_sum, Finset.mul_sum]
+    congr 1; ext ν; push_cast; ring
+  · simp only [hμ, ite_false]
+    rw [Complex.ofReal_sum]
+    congr 1; ext ν; push_cast; ring
+
 /-- Euclidean invariance of Schwinger functions follows from complex Lorentz
     invariance of the analytically continued Wightman functions.
 
     The key: SO(d+1) embeds into L₊(ℂ) as the subgroup of complex Lorentz
-    transformations that preserve Euclidean points. Under the Wick rotation
-    map (τ, x⃗) ↦ (iτ, x⃗), Euclidean rotations R ∈ SO(d+1) act as
-    complex Lorentz transformations:
-
-      R · (iτ, x⃗) = (i(Rτ), Rx⃗)    (viewing (τ, x⃗) as Euclidean coords)
-
-    The complex Lorentz invariance of W_analytic on the permuted extended tube
-    (from BHW) immediately gives SO(d+1) invariance of S_n. -/
+    transformations that preserve Euclidean points. -/
 theorem schwinger_euclidean_invariant
     (W_analytic : (n : ℕ) → (Fin n → Fin (d + 1) → ℂ) → ℂ)
     (hW_inv : ∀ n (Λ : ComplexLorentzGroup d) z,
@@ -585,13 +750,20 @@ theorem schwinger_euclidean_invariant
       W_analytic n (fun k μ => ∑ ν, Λ.val μ ν * z k ν) = W_analytic n z)
     (n : ℕ) (R : Matrix (Fin (d + 1)) (Fin (d + 1)) ℝ)
     (hR_det : R.det = 1) (hR_orth : R.transpose * R = 1)
-    (xs : Fin n → Fin (d + 1) → ℝ) :
+    (xs : Fin n → Fin (d + 1) → ℝ)
+    (htube : (fun k => wickRotatePoint (xs k)) ∈ PermutedExtendedTube d n) :
     SchwingerFromWightman d W_analytic n (fun k => R.mulVec (xs k)) =
     SchwingerFromWightman d W_analytic n xs := by
   simp only [SchwingerFromWightman]
-  -- Need: wickRotatePoint (R.mulVec x) = Λ_R · wickRotatePoint x
-  -- where Λ_R = ComplexLorentzGroup.ofEuclidean R
-  sorry
+  -- wickRotatePoint (R.mulVec x) = Λ_R · wickRotatePoint x by wickRotatePoint_ofEuclidean
+  have h : (fun k => wickRotatePoint (R.mulVec (xs k))) =
+      (fun k μ => ∑ ν, (ComplexLorentzGroup.ofEuclidean R hR_det hR_orth).val μ ν *
+        wickRotatePoint (xs k) ν) := by
+    ext k μ
+    exact wickRotatePoint_ofEuclidean R hR_det hR_orth (xs k) μ
+  rw [h]
+  exact hW_inv n (ComplexLorentzGroup.ofEuclidean R hR_det hR_orth)
+    (fun k => wickRotatePoint (xs k)) htube
 
 /-- Permutation symmetry of Schwinger functions follows from permutation symmetry
     of the BHW extension.
@@ -604,11 +776,12 @@ theorem schwinger_permutation_symmetric
     (hW_perm : ∀ n (π : Equiv.Perm (Fin n)) z,
       z ∈ PermutedExtendedTube d n →
       W_analytic n (fun k => z (π k)) = W_analytic n z)
-    (n : ℕ) (π : Equiv.Perm (Fin n)) (xs : Fin n → Fin (d + 1) → ℝ) :
+    (n : ℕ) (π : Equiv.Perm (Fin n)) (xs : Fin n → Fin (d + 1) → ℝ)
+    (htube : (fun k => wickRotatePoint (xs k)) ∈ PermutedExtendedTube d n) :
     SchwingerFromWightman d W_analytic n (fun k => xs (π k)) =
     SchwingerFromWightman d W_analytic n xs := by
   simp only [SchwingerFromWightman]
-  -- This requires: the Wick-rotated permuted points are in PermutedExtendedTube
-  sorry
+  -- (fun k => wickRotatePoint (xs (π k))) = (fun k => z (π k)) where z = fun k => wickRotatePoint (xs k)
+  exact hW_perm n π (fun k => wickRotatePoint (xs k)) htube
 
 end

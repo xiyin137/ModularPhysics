@@ -4,6 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.BrownianMotion
+import ModularPhysics.RigorousQFT.SPDE.Probability.Pythagoras
+import ModularPhysics.RigorousQFT.SPDE.Probability.IndependenceHelpers
 import Mathlib.Probability.Distributions.Gaussian.Real
 import Mathlib.Probability.Moments.MGFAnalytic
 
@@ -235,7 +237,103 @@ def bmQVSum (W : BrownianMotion Ω μ) (T : ℝ) (n : ℕ) (ω : Ω) : ℝ :=
 theorem bm_qv_sum_L2_bound (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ]
     (T : ℝ) (hT : 0 ≤ T) (n : ℕ) (hn : 0 < n) :
     ∫ ω, (bmQVSum W T n ω - T) ^ 2 ∂μ ≤ 2 * T ^ 2 / ↑n := by
-  sorry
+  have hn_pos : (0 : ℝ) < ↑n := Nat.cast_pos.mpr hn
+  have hn_ne : (↑n : ℝ) ≠ 0 := ne_of_gt hn_pos
+  -- Partition increment ΔWᵢ
+  let incr : Fin n → Ω → ℝ := fun i ω =>
+    W.toAdapted.process ((↑(i : ℕ) + 1) * T / ↑n) ω -
+    W.toAdapted.process (↑(i : ℕ) * T / ↑n) ω
+  -- Centered squared increment Yᵢ = (ΔWᵢ)² - T/n
+  let Y : Fin n → Ω → ℝ := fun i ω => (incr i ω) ^ 2 - T / ↑n
+  -- Partition point arithmetic
+  have hpt_nonneg : ∀ i : Fin n, 0 ≤ (↑(i : ℕ) : ℝ) * T / ↑n := fun i => by positivity
+  have hpt_mono : ∀ i : Fin n,
+      (↑(i : ℕ) : ℝ) * T / ↑n ≤ (↑(i : ℕ) + 1) * T / ↑n := by
+    intro i; apply div_le_div_of_nonneg_right _ hn_pos.le; nlinarith
+  -- Step 1: bmQVSum - T = ∑ Yᵢ
+  have hrewrite : ∀ ω, bmQVSum W T n ω - T = ∑ i : Fin n, Y i ω := by
+    intro ω
+    have h1 : bmQVSum W T n ω = ∑ i : Fin n, (incr i ω) ^ 2 := by
+      unfold bmQVSum; exact (Fin.sum_univ_eq_sum_range _ n).symm
+    have h2 : T = ∑ _i : Fin n, (T / (↑n : ℝ)) := by
+      rw [Finset.sum_const, Finset.card_fin, nsmul_eq_mul]; field_simp
+    rw [h1, h2, ← Finset.sum_sub_distrib]
+  simp_rw [hrewrite]
+  -- Yᵢ integrability
+  have hY_int : ∀ i : Fin n, Integrable (Y i) μ := fun i =>
+    (W.increment_sq_integrable _ _ (hpt_nonneg i) (hpt_mono i)).sub (integrable_const _)
+  -- Independence of increments on disjoint partition intervals
+  have hindep_incr : ∀ i j : Fin n, i.val < j.val →
+      IndepFun (incr i) (incr j) μ := by
+    intro i j hij
+    have hdisjoint : (↑(i : ℕ) + 1) * T / ↑n ≤ ↑(j : ℕ) * T / ↑n := by
+      apply div_le_div_of_nonneg_right _ hn_pos.le
+      have : (↑(i : ℕ) + 1 : ℝ) ≤ ↑(j : ℕ) := by exact_mod_cast hij
+      nlinarith [hT]
+    exact W.disjoint_independent _ _ _ _
+      (hpt_nonneg i) (hpt_mono i) hdisjoint (hpt_mono j)
+  -- Measurability of φ(x) = x² - c (needed for IndepFun.comp)
+  have hφ : Measurable (fun x : ℝ => x ^ 2 - T / ↑n) :=
+    (measurable_id.pow_const 2).sub measurable_const
+  -- Independence of Yᵢ and Yⱼ (compose independent increments with measurable φ)
+  have hindep_Y : ∀ i j : Fin n, i ≠ j → IndepFun (Y i) (Y j) μ := by
+    intro i j hij
+    have hne : i.val ≠ j.val := fun h => hij (Fin.ext h)
+    rcases lt_or_gt_of_ne hne with h | h
+    · exact (hindep_incr i j h).comp hφ hφ
+    · exact ((hindep_incr j i h).comp hφ hφ).symm
+  -- Yᵢ² integrability (expand as polynomial of Gaussian moments)
+  have hY_sq_int : ∀ i : Fin n, Integrable (fun ω => (Y i ω) ^ 2) μ := by
+    intro i
+    have hfun : ∀ ω, (Y i ω) ^ 2 =
+        (incr i ω) ^ 4 + ((-2 * (T / ↑n)) * (incr i ω) ^ 2 + (T / ↑n) ^ 2) := by
+      intro ω; ring
+    simp_rw [hfun]
+    have h4 : Integrable (fun ω => (incr i ω) ^ 4) μ :=
+      W.increment_all_moments _ _ (hpt_nonneg i) (hpt_mono i) 4
+    have h2c : Integrable (fun ω => (-2 * (T / ↑n)) * (incr i ω) ^ 2) μ :=
+      (W.increment_sq_integrable _ _ (hpt_nonneg i) (hpt_mono i)).const_mul _
+    exact (h4.add (h2c.add (integrable_const _)))
+  -- Cross-integrability (needed for Pythagoras)
+  have hcross_int : ∀ i j : Fin n, Integrable (fun ω => Y i ω * Y j ω) μ := by
+    intro i j
+    by_cases hij : i = j
+    · subst hij; exact (hY_sq_int i).congr (ae_of_all _ fun ω => by ring)
+    · exact (hindep_Y i j hij).integrable_mul (hY_int i) (hY_int j)
+  -- E[Yⱼ] = E[(ΔWⱼ)²] - T/n = (t-s) - T/n = 0
+  have hY_mean : ∀ j : Fin n, ∫ ω, Y j ω ∂μ = 0 := by
+    intro j
+    show ∫ ω, ((incr j ω) ^ 2 - T / ↑n) ∂μ = 0
+    rw [integral_sub (W.increment_sq_integrable _ _ (hpt_nonneg j) (hpt_mono j))
+        (integrable_const _)]
+    rw [W.increment_variance _ _ (hpt_nonneg j) (hpt_mono j)]
+    rw [integral_const]; simp only [probReal_univ, one_smul]
+    show (↑(j : ℕ) + 1) * T / ↑n - ↑(j : ℕ) * T / ↑n - T / ↑n = 0
+    field_simp; ring
+  -- Orthogonality: E[Yᵢ·Yⱼ] = E[Yᵢ]·E[Yⱼ] = 0 (by independence and zero mean)
+  have horthog : ∀ i j : Fin n, i ≠ j → ∫ ω, Y i ω * Y j ω ∂μ = 0 := by
+    intro i j hij
+    have hind := (hindep_Y i j hij).integral_mul_eq_mul_integral
+      (hY_int i).aestronglyMeasurable (hY_int j).aestronglyMeasurable
+    change ∫ ω, (Y i * Y j) ω ∂μ = 0
+    rw [hind, hY_mean j, mul_zero]
+  -- Apply L² Pythagoras: E[(∑Yᵢ)²] = ∑E[Yᵢ²]
+  have hpythag := SPDE.Probability.sum_sq_integral_eq_sum_integral_sq Y hcross_int horthog
+  -- E[Yᵢ²] = 2(T/n)² by increment_sq_minus_dt_variance
+  have hvar_each : ∀ i : Fin n, ∫ ω, (Y i ω) ^ 2 ∂μ = 2 * (T / ↑n) ^ 2 := by
+    intro i
+    have h := W.increment_sq_minus_dt_variance _ _ (hpt_nonneg i) (hpt_mono i)
+    have hts : (↑(i : ℕ) + 1) * T / ↑n - ↑(i : ℕ) * T / ↑n = T / ↑n := by
+      field_simp; ring
+    simp_rw [hts] at h; exact h
+  -- Combine: ∑ 2(T/n)² = n·2(T/n)² = 2T²/n
+  suffices heq : ∫ ω, (∑ i : Fin n, Y i ω) ^ 2 ∂μ = 2 * T ^ 2 / ↑n by linarith
+  calc ∫ ω, (∑ i : Fin n, Y i ω) ^ 2 ∂μ
+    _ = ∑ i : Fin n, ∫ ω, (Y i ω) ^ 2 ∂μ := hpythag
+    _ = ∑ _i : Fin n, (2 * (T / ↑n) ^ 2) := by simp_rw [hvar_each]
+    _ = ↑n * (2 * (T / ↑n) ^ 2) := by
+        rw [Finset.sum_const, Finset.card_fin, nsmul_eq_mul]
+    _ = 2 * T ^ 2 / ↑n := by field_simp
 
 /-- The QV sum converges to T in L² as n → ∞.
     E[|QV_n - T|²] → 0. -/
@@ -252,6 +350,261 @@ theorem bm_qv_L2_convergence (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ
         (fun n : ℕ => (2 * T ^ 2) * (1 / ((↑n : ℝ) + 1))) := by
       ext n; rw [Nat.cast_succ]; ring
     rw [h, show (0 : ℝ) = (2 * T ^ 2) * 0 from by ring]
+    exact tendsto_const_nhds.mul tendsto_one_div_add_atTop_nhds_zero_nat
+
+/-! ## Weighted BM Quadratic Variation
+
+For the Itô formula, we need the weighted version of the QV L² bound:
+  E[(Σᵢ gᵢ · ((ΔWᵢ)² - Δtᵢ))²] ≤ C² · 2T²/n
+where gᵢ are F_{tᵢ}-measurable and |gᵢ| ≤ C.
+
+The proof uses:
+1. Orthogonality: E[gᵢYᵢ · gⱼYⱼ] = 0 for i ≠ j
+   (from: gᵢYᵢgⱼ is F_{tⱼ}-measurable, Yⱼ independent of F_{tⱼ} with E[Yⱼ]=0)
+2. L² Pythagoras: E[(Σ aᵢ)²] = Σ E[aᵢ²]
+3. Pointwise bound: E[gᵢ²Yᵢ²] ≤ C²·E[Yᵢ²] = C²·2(T/n)²
+-/
+
+/-- σ-algebra of a composed random variable is coarser than the original.
+    If φ is measurable, then comap(φ ∘ f) ≤ comap(f). -/
+lemma comap_comp_le {Ω' : Type*} {f : Ω' → ℝ} {φ : ℝ → ℝ} (hφ : Measurable φ) :
+    MeasurableSpace.comap (fun ω => φ (f ω)) inferInstance ≤
+    MeasurableSpace.comap f inferInstance := by
+  intro S hS
+  obtain ⟨T, hT, rfl⟩ := hS
+  exact ⟨φ ⁻¹' T, hφ hT, rfl⟩
+
+/-- If ΔW is independent of a σ-algebra m, then any measurable function of ΔW is too. -/
+private lemma indep_of_comp {m : MeasurableSpace Ω} {f : Ω → ℝ} {φ : ℝ → ℝ}
+    (hφ : Measurable φ)
+    (hindep : Indep m (MeasurableSpace.comap f inferInstance) μ) :
+    Indep m (MeasurableSpace.comap (fun ω => φ (f ω)) inferInstance) μ :=
+  ProbabilityTheory.indep_of_indep_of_le_right hindep (comap_comp_le hφ)
+
+/-- Measurability of BM process at a time: W(t) is F_t-measurable. -/
+private lemma bm_adapted (W : BrownianMotion Ω μ) (t : ℝ) :
+    @Measurable Ω ℝ (W.F.σ_algebra t) _ (W.toAdapted.process t) :=
+  W.toAdapted.adapted t
+
+/-- Weighted L² bound for BM quadratic variation sums.
+
+    If gᵢ are F_{tᵢ}-measurable and |gᵢ| ≤ C, then
+    E[(Σ gᵢ · ((ΔWᵢ)² - T/n))²] ≤ C² · 2T²/n.
+
+    This extends `bm_qv_sum_L2_bound` to adapted weights. Key for the Itô formula:
+    controls the error from replacing (ΔWᵢ)² by Δtᵢ in expressions like
+    Σ f''(tᵢ, Xᵢ) · σᵢ² · ((ΔWᵢ)² - Δtᵢ). -/
+theorem weighted_qv_sum_L2_bound (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ]
+    (T : ℝ) (hT : 0 ≤ T) (n : ℕ) (hn : 0 < n)
+    (g : Fin n → Ω → ℝ) (C : ℝ) (hC : 0 ≤ C)
+    (hg_adapted : ∀ i : Fin n,
+      @Measurable Ω ℝ (W.F.σ_algebra (↑(i : ℕ) * T / ↑n)) _ (g i))
+    (hg_bdd : ∀ i : Fin n, ∀ ω, |g i ω| ≤ C) :
+    ∫ ω, (∑ i : Fin n, g i ω *
+      ((W.toAdapted.process ((↑(i : ℕ) + 1) * T / ↑n) ω -
+        W.toAdapted.process (↑(i : ℕ) * T / ↑n) ω) ^ 2 - T / ↑n))^2 ∂μ ≤
+    C^2 * (2 * T^2 / ↑n) := by
+  have hn_pos : (0 : ℝ) < ↑n := Nat.cast_pos.mpr hn
+  have hn_ne : (↑n : ℝ) ≠ 0 := ne_of_gt hn_pos
+  -- Define incr, Y, a = g * Y
+  let incr : Fin n → Ω → ℝ := fun i ω =>
+    W.toAdapted.process ((↑(i : ℕ) + 1) * T / ↑n) ω -
+    W.toAdapted.process (↑(i : ℕ) * T / ↑n) ω
+  let Y : Fin n → Ω → ℝ := fun i ω => (incr i ω) ^ 2 - T / ↑n
+  let a : Fin n → Ω → ℝ := fun i ω => g i ω * Y i ω
+  -- Partition point arithmetic
+  have hpt_nonneg : ∀ i : Fin n, 0 ≤ (↑(i : ℕ) : ℝ) * T / ↑n := fun i => by positivity
+  have hpt_mono : ∀ i : Fin n,
+      (↑(i : ℕ) : ℝ) * T / ↑n ≤ (↑(i : ℕ) + 1) * T / ↑n := by
+    intro i; apply div_le_div_of_nonneg_right _ hn_pos.le; nlinarith
+  -- Key measurability: φ(x) = x² - c is measurable
+  have hφ : Measurable (fun x : ℝ => x ^ 2 - T / ↑n) :=
+    (measurable_id.pow_const 2).sub measurable_const
+  -- g is ambient-measurable (for AEStronglyMeasurable)
+  have hg_meas_ambient : ∀ i : Fin n, Measurable (g i) :=
+    fun i => (hg_adapted i).mono (W.F.le_ambient _) le_rfl
+  -- Y integrability
+  have hY_int : ∀ i : Fin n, Integrable (Y i) μ := fun i =>
+    (W.increment_sq_integrable _ _ (hpt_nonneg i) (hpt_mono i)).sub (integrable_const _)
+  -- a integrability (bounded · integrable)
+  have ha_int : ∀ i : Fin n, Integrable (a i) μ := by
+    intro i
+    exact (hY_int i).bdd_mul (hg_meas_ambient i).aestronglyMeasurable
+      (ae_of_all _ fun ω => by rw [Real.norm_eq_abs]; exact hg_bdd i ω)
+  -- E[Yⱼ] = 0
+  have hY_mean : ∀ j : Fin n, ∫ ω, Y j ω ∂μ = 0 := by
+    intro j
+    show ∫ ω, ((incr j ω) ^ 2 - T / ↑n) ∂μ = 0
+    rw [integral_sub (W.increment_sq_integrable _ _ (hpt_nonneg j) (hpt_mono j))
+        (integrable_const _)]
+    rw [W.increment_variance _ _ (hpt_nonneg j) (hpt_mono j)]
+    rw [integral_const]; simp only [probReal_univ, one_smul]
+    show (↑(j : ℕ) + 1) * T / ↑n - ↑(j : ℕ) * T / ↑n - T / ↑n = 0
+    field_simp; ring
+  -- Independence: ΔWᵢ independent of F_{tᵢ} → Yᵢ = φ(ΔWᵢ) independent of F_{tᵢ}
+  have hY_indep : ∀ i : Fin n,
+      Indep (W.F.σ_algebra (↑(i : ℕ) * T / ↑n))
+        (MeasurableSpace.comap (Y i) inferInstance) μ := by
+    intro i
+    exact indep_of_comp hφ (W.independent_increments _ _ (hpt_nonneg i) (hpt_mono i))
+  -- Yᵢ is F_{tᵢ₊₁}-measurable (W_{tᵢ₊₁} and W_{tᵢ} are adapted)
+  have hY_adapted : ∀ i : Fin n,
+      @Measurable Ω ℝ (W.F.σ_algebra ((↑(i : ℕ) + 1) * T / ↑n)) _ (Y i) := by
+    intro i
+    show @Measurable Ω ℝ (W.F.σ_algebra ((↑(i : ℕ) + 1) * T / ↑n)) _
+      (fun ω => (incr i ω) ^ 2 - T / ↑n)
+    apply Measurable.sub _ measurable_const
+    apply Measurable.pow_const
+    exact (bm_adapted W _).sub
+      ((bm_adapted W _).mono (W.F.mono _ _ (hpt_mono i)) le_rfl)
+  -- Orthogonality: E[aᵢ · aⱼ] = 0 for i ≠ j
+  have horthog : ∀ i j : Fin n, i ≠ j → ∫ ω, a i ω * a j ω ∂μ = 0 := by
+    intro i j hij
+    have hne : i.val ≠ j.val := fun h => hij (Fin.ext h)
+    -- Suffices to prove for i < j (symmetric by mul_comm)
+    suffices key : ∀ i' j' : Fin n, i'.val < j'.val →
+        ∫ ω, a i' ω * a j' ω ∂μ = 0 by
+      rcases lt_or_gt_of_ne hne with h | h
+      · exact key i j h
+      · rw [show (fun ω => a i ω * a j ω) = (fun ω => a j ω * a i ω) from by ext ω; ring]
+        exact key j i h
+    intro i j h
+    -- Case i < j: rewrite aᵢaⱼ = (gᵢYᵢgⱼ) · Yⱼ
+    have hregroup : ∀ ω, a i ω * a j ω =
+        (g i ω * Y i ω * g j ω) * Y j ω := by intro ω; ring
+    simp_rw [hregroup]
+    -- gᵢYᵢgⱼ is F_{tⱼ}-measurable
+    have hgi_at_j : @Measurable Ω ℝ (W.F.σ_algebra (↑(j : ℕ) * T / ↑n)) _ (g i) := by
+      exact (hg_adapted i).mono (W.F.mono _ _ (by
+        apply div_le_div_of_nonneg_right _ hn_pos.le
+        have : (↑(i : ℕ) : ℝ) ≤ (↑(j : ℕ) : ℝ) := by exact_mod_cast Nat.le_of_lt h
+        nlinarith [hT])) le_rfl
+    have hYi_at_j : @Measurable Ω ℝ (W.F.σ_algebra (↑(j : ℕ) * T / ↑n)) _ (Y i) := by
+      exact (hY_adapted i).mono (W.F.mono _ _ (by
+        apply div_le_div_of_nonneg_right _ hn_pos.le
+        have : (↑(i : ℕ) : ℝ) + 1 ≤ (↑(j : ℕ) : ℝ) := by exact_mod_cast h
+        nlinarith [hT])) le_rfl
+    have hX_meas : @Measurable Ω ℝ (W.F.σ_algebra (↑(j : ℕ) * T / ↑n)) _
+        (fun ω => g i ω * Y i ω * g j ω) := (hgi_at_j.mul hYi_at_j).mul (hg_adapted j)
+    -- Integrability of gᵢYᵢgⱼ (product of bounded functions and integrable Y)
+    have hX_int : Integrable (fun ω => g i ω * Y i ω * g j ω) μ := by
+      have : Integrable (fun ω => g j ω * (g i ω * Y i ω)) μ :=
+        (ha_int i).bdd_mul (hg_meas_ambient j).aestronglyMeasurable
+          (ae_of_all _ fun ω => by rw [Real.norm_eq_abs]; exact hg_bdd j ω)
+      exact this.congr (ae_of_all _ fun ω => by ring)
+    -- Apply integral_mul_zero_of_indep_zero_mean
+    exact SPDE.Probability.integral_mul_zero_of_indep_zero_mean
+      (W.F.le_ambient _) hX_meas hX_int (hY_int j) (hY_indep j) (hY_mean j)
+  -- Y² integrability
+  have hY_sq_int : ∀ i : Fin n, Integrable (fun ω => (Y i ω) ^ 2) μ := by
+    intro i
+    have hfun : ∀ ω, (Y i ω) ^ 2 =
+        (incr i ω) ^ 4 + ((-2 * (T / ↑n)) * (incr i ω) ^ 2 + (T / ↑n) ^ 2) := by
+      intro ω; ring
+    simp_rw [hfun]
+    have h4 : Integrable (fun ω => (incr i ω) ^ 4) μ :=
+      W.increment_all_moments _ _ (hpt_nonneg i) (hpt_mono i) 4
+    have h2c : Integrable (fun ω => (-2 * (T / ↑n)) * (incr i ω) ^ 2) μ :=
+      (W.increment_sq_integrable _ _ (hpt_nonneg i) (hpt_mono i)).const_mul _
+    have hbc : Integrable (fun ω =>
+        (-2 * (T / ↑n)) * (incr i ω) ^ 2 + (T / ↑n) ^ 2) μ :=
+      h2c.add (integrable_const _)
+    exact h4.add hbc
+  -- Independence of increments (IndepFun version, for cross-integrability)
+  have hindep_incr : ∀ i j : Fin n, i.val < j.val →
+      IndepFun (incr i) (incr j) μ := by
+    intro i j hij
+    have hdisjoint : (↑(i : ℕ) + 1) * T / ↑n ≤ ↑(j : ℕ) * T / ↑n := by
+      apply div_le_div_of_nonneg_right _ hn_pos.le
+      have : (↑(i : ℕ) + 1 : ℝ) ≤ ↑(j : ℕ) := by exact_mod_cast hij
+      nlinarith [hT]
+    exact W.disjoint_independent _ _ _ _
+      (hpt_nonneg i) (hpt_mono i) hdisjoint (hpt_mono j)
+  have hindep_Y_fun : ∀ i j : Fin n, i ≠ j → IndepFun (Y i) (Y j) μ := by
+    intro i j hij
+    have hne : i.val ≠ j.val := fun h => hij (Fin.ext h)
+    rcases lt_or_gt_of_ne hne with h | h
+    · exact (hindep_incr i j h).comp hφ hφ
+    · exact ((hindep_incr j i h).comp hφ hφ).symm
+  -- a² integrability
+  have ha_sq_int : ∀ i : Fin n, Integrable (fun ω => (a i ω) ^ 2) μ := by
+    intro i
+    have hsq : ∀ ω, (a i ω) ^ 2 = (g i ω) ^ 2 * (Y i ω) ^ 2 := fun ω => by ring
+    simp_rw [hsq]
+    exact (hY_sq_int i).bdd_mul
+      ((hg_meas_ambient i).pow_const 2).aestronglyMeasurable
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        exact sq_le_sq' (abs_le.mp (hg_bdd i ω)).1 (abs_le.mp (hg_bdd i ω)).2)
+  -- Cross-integrability for Pythagoras
+  have hcross_int : ∀ i j : Fin n, Integrable (fun ω => a i ω * a j ω) μ := by
+    intro i j
+    by_cases hij : i = j
+    · subst hij; exact (ha_sq_int i).congr (ae_of_all _ fun ω => by ring)
+    · -- Rewrite a i * a j = (g i * g j) * (Y i * Y j)
+      have hrewrite : (fun ω => a i ω * a j ω) =
+          fun ω => (g i ω * g j ω) * (Y i ω * Y j ω) := by ext ω; ring
+      rw [hrewrite]
+      exact ((hindep_Y_fun i j hij).integrable_mul (hY_int i) (hY_int j)).bdd_mul
+        ((hg_meas_ambient i).mul (hg_meas_ambient j)).aestronglyMeasurable
+        (ae_of_all _ fun ω => by
+          simp only [Real.norm_eq_abs, abs_mul]
+          exact mul_le_mul (hg_bdd i ω) (hg_bdd j ω) (abs_nonneg _) hC)
+  -- Apply Pythagoras
+  have hpythag := SPDE.Probability.sum_sq_integral_eq_sum_integral_sq a hcross_int horthog
+  -- Bound each E[aᵢ²] ≤ C² · 2(T/n)²
+  have hvar_bound : ∀ i : Fin n, ∫ ω, (a i ω) ^ 2 ∂μ ≤ C ^ 2 * (2 * (T / ↑n) ^ 2) := by
+    intro i
+    have hsq : ∀ ω, (a i ω) ^ 2 = (g i ω) ^ 2 * (Y i ω) ^ 2 := fun ω => by ring
+    calc ∫ ω, (a i ω) ^ 2 ∂μ
+        = ∫ ω, (g i ω) ^ 2 * (Y i ω) ^ 2 ∂μ :=
+          integral_congr_ae (ae_of_all _ fun ω => hsq ω)
+      _ ≤ ∫ ω, C ^ 2 * (Y i ω) ^ 2 ∂μ := by
+          apply integral_mono_of_nonneg
+          · exact ae_of_all _ fun ω => mul_nonneg (sq_nonneg _) (sq_nonneg _)
+          · exact (hY_sq_int i).const_mul _
+          · exact ae_of_all _ fun ω => by
+              exact mul_le_mul_of_nonneg_right
+                (sq_le_sq' (abs_le.mp (hg_bdd i ω)).1 (abs_le.mp (hg_bdd i ω)).2) (sq_nonneg _)
+      _ = C ^ 2 * ∫ ω, (Y i ω) ^ 2 ∂μ := integral_const_mul _ _
+      _ = C ^ 2 * (2 * (T / ↑n) ^ 2) := by
+          congr 1
+          have h := W.increment_sq_minus_dt_variance _ _ (hpt_nonneg i) (hpt_mono i)
+          have hts : (↑(i : ℕ) + 1) * T / ↑n - ↑(i : ℕ) * T / ↑n = T / ↑n := by
+            field_simp; ring
+          simp_rw [hts] at h; exact h
+  -- Combine: Σ E[aᵢ²] ≤ n · C²·2(T/n)² = 2C²T²/n
+  suffices heq : ∫ ω, (∑ i : Fin n, a i ω) ^ 2 ∂μ ≤ C ^ 2 * (2 * T ^ 2 / ↑n) by
+    exact heq
+  calc ∫ ω, (∑ i : Fin n, a i ω) ^ 2 ∂μ
+      = ∑ i : Fin n, ∫ ω, (a i ω) ^ 2 ∂μ := hpythag
+    _ ≤ ∑ _i : Fin n, C ^ 2 * (2 * (T / ↑n) ^ 2) := Finset.sum_le_sum fun i _ => hvar_bound i
+    _ = ↑n * (C ^ 2 * (2 * (T / ↑n) ^ 2)) := by
+        rw [Finset.sum_const, Finset.card_fin, nsmul_eq_mul]
+    _ = C ^ 2 * (2 * T ^ 2 / ↑n) := by field_simp
+
+/-- The weighted QV sum converges to 0 in L² as n → ∞.
+    E[|Σ gᵢ · ((ΔWᵢ)² - Δtᵢ)|²] → 0 for adapted bounded weights. -/
+theorem weighted_qv_L2_convergence (W : BrownianMotion Ω μ) [IsProbabilityMeasure μ]
+    (T : ℝ) (hT : 0 ≤ T) (C : ℝ) (hC : 0 ≤ C)
+    (g : ∀ n : ℕ, Fin (n + 1) → Ω → ℝ)
+    (hg_adapted : ∀ n : ℕ, ∀ i : Fin (n + 1),
+      @Measurable Ω ℝ (W.F.σ_algebra (↑(i : ℕ) * T / ↑(n + 1))) _ (g n i))
+    (hg_bdd : ∀ n : ℕ, ∀ i : Fin (n + 1), ∀ ω, |g n i ω| ≤ C) :
+    Tendsto (fun n => ∫ ω, (∑ i : Fin (n + 1), g n i ω *
+      ((W.toAdapted.process ((↑(i : ℕ) + 1) * T / ↑(n + 1)) ω -
+        W.toAdapted.process (↑(i : ℕ) * T / ↑(n + 1)) ω) ^ 2 -
+        T / ↑(n + 1)))^2 ∂μ)
+      atTop (nhds 0) := by
+  apply squeeze_zero
+  · intro n; positivity
+  · intro n
+    exact weighted_qv_sum_L2_bound W T hT (n + 1) (Nat.succ_pos n)
+      (g n) C hC (hg_adapted n) (hg_bdd n)
+  · have h : (fun n : ℕ => C ^ 2 * (2 * T ^ 2 / (↑(n + 1) : ℝ))) =
+        (fun n : ℕ => (C ^ 2 * (2 * T ^ 2)) * (1 / ((↑n : ℝ) + 1))) := by
+      ext n; rw [Nat.cast_succ]; ring
+    rw [h, show (0 : ℝ) = (C ^ 2 * (2 * T ^ 2)) * 0 from by ring]
     exact tendsto_const_nhds.mul tendsto_one_div_add_atTop_nhds_zero_nat
 
 end SPDE

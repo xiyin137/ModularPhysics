@@ -135,56 +135,126 @@ theorem vacuum_normalized :
   have hconst : ∀ x, (vacuumSequence (d := d)).funcs 0 x = 1 := fun _ => rfl
   rw [hconst, hconst, map_one, one_mul]
 
-/-! ### Step 5: Field Operators on Pre-Hilbert Space -/
+/-! ### Step 5: Field Operators on Pre-Hilbert Space
 
-/-- The field operator φ(f) maps null vectors to null vectors.
+The adjoint relation ⟨φ(f)F, G⟩ = ⟨F, φ(f̄)G⟩ and its consequences
+(fieldOperator_preserves_null, fieldOperator_well_defined) are proven
+in Reconstruction.lean, making fieldOperator sorry-free. -/
 
-    If ⟨F, F⟩ = 0 then ⟨φ(f)F, φ(f)F⟩ = 0.
+/-! ### Step 6: The Key Property
 
-    Proof sketch: ⟨φ(f)F, φ(f)F⟩ = W₂(f̄ ⊗ f, F* ⊗ F) and the positivity
-    condition implies this vanishes when F is null.
+Infrastructure for proving that ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩ = W_n(f₁ ⊗ ··· ⊗ fₙ):
+1. The iterated field operator action on vacuum has exactly one nonzero component
+   at position n, equal to productTensor fs.
+2. The WightmanInnerProduct of vacuum with such a sequence picks out W_n. -/
 
-    More precisely, for any G: |⟨φ(f)F, G⟩|² ≤ ⟨φ(f)F, φ(f)F⟩ · ⟨G, G⟩.
-    If F is null, then φ(f)F is also null. -/
-theorem fieldOperator_preserves_null (f : SchwartzSpacetime d) (F : BorchersSequence d)
-    (hF : (WightmanInnerProduct d Wfn.W F F).re = 0) :
-    (WightmanInnerProduct d Wfn.W (fieldOperatorAction f F) (fieldOperatorAction f F)).re = 0 := by
-  -- This requires showing that φ(f) maps null vectors to null vectors
-  -- Key: ⟨φ(f)F, φ(f)F⟩ = W(F* · f* · f · F)
-  -- and by Cauchy-Schwarz, this ≤ ⟨F, φ(f)*φ(f)F⟩ ≤ ...
-  sorry
+/-- The iterated fieldOperator on the quotient equals the quotient of the iterated
+    fieldOperatorAction on representatives. -/
+private theorem foldr_fieldOperator_eq_mk {n : ℕ} (fs : Fin n → SchwartzSpacetime d) :
+    List.foldr (fun f acc => fieldOperator Wfn f acc)
+      (vacuumState Wfn) (List.ofFn fs) =
+    ⟦List.foldr fieldOperatorAction (vacuumSequence (d := d)) (List.ofFn fs)⟧ := by
+  induction n with
+  | zero => simp [List.ofFn_zero]; rfl
+  | succ n ih =>
+    rw [List.ofFn_succ, List.foldr_cons, ih (fun i => fs i.succ)]
+    rfl
 
-/-- The field operator well-definedness follows from preserving null vectors. -/
-theorem fieldOperator_well_defined (f : SchwartzSpacetime d)
-    (a b : BorchersSequence d) (hab : borchersSetoid Wfn a b) :
-    borchersSetoid Wfn (fieldOperatorAction f a) (fieldOperatorAction f b) := by
-  -- hab says ⟨a-b, a-b⟩.re = 0
-  -- Need: ⟨φ(f)(a-b), φ(f)(a-b)⟩.re = 0
-  -- φ(f) is linear on BorchersSequences, so φ(f)(a-b) = φ(f)a - φ(f)b
-  -- Then apply fieldOperator_preserves_null
-  sorry
+/-- The n-th component of the iterated field action on vacuum equals productTensor. -/
+private theorem iteratedAction_funcs_n {n : ℕ} (fs : Fin n → SchwartzSpacetime d) :
+    (List.foldr fieldOperatorAction (vacuumSequence (d := d)) (List.ofFn fs)).funcs n =
+    SchwartzMap.productTensor fs := by
+  induction n with
+  | zero => simp [List.ofFn_zero]; rfl
+  | succ n ih =>
+    rw [List.ofFn_succ, List.foldr_cons, fieldOperatorAction_funcs_succ, ih (fun i => fs i.succ)]
+    rfl
 
-/-! ### Step 6: The Key Property -/
+/-- Components ≠ n of the iterated field action on vacuum are zero. -/
+private theorem iteratedAction_funcs_ne {n : ℕ} (fs : Fin n → SchwartzSpacetime d)
+    (k : ℕ) (hk : k ≠ n) :
+    (List.foldr fieldOperatorAction (vacuumSequence (d := d)) (List.ofFn fs)).funcs k = 0 := by
+  induction n generalizing k with
+  | zero =>
+    simp only [List.ofFn_zero, List.foldr_nil]
+    cases k with
+    | zero => exact absurd rfl hk
+    | succ k => rfl
+  | succ n ih =>
+    rw [List.ofFn_succ, List.foldr_cons]
+    cases k with
+    | zero => exact fieldOperatorAction_funcs_zero _ _
+    | succ k =>
+      rw [fieldOperatorAction_funcs_succ, ih (fun i => fs i.succ) k (by omega)]
+      exact SchwartzMap.prependField_zero_right _
+
+/-- The bound of the iterated field action on vacuum. -/
+private theorem iteratedAction_bound {n : ℕ} (fs : Fin n → SchwartzSpacetime d) :
+    (List.foldr fieldOperatorAction (vacuumSequence (d := d)) (List.ofFn fs)).bound = n + 1 := by
+  induction n with
+  | zero => simp [List.ofFn_zero]; rfl
+  | succ n ih =>
+    rw [List.ofFn_succ, List.foldr_cons, fieldOperatorAction_bound, ih (fun i => fs i.succ)]
+
+/-- W(0+m)(vacuumConj ⊗ h) = W(m)(h): the vacuum conjTensorProduct with any
+    function reduces to the function itself (up to the 0+m = m identification). -/
+private theorem W_conjTP_vacuum_zero (m : ℕ) (h : SchwartzNPoint d m) :
+    Wfn.W (0 + m) (((vacuumSequence (d := d)).funcs 0).conjTensorProduct h) = Wfn.W m h := by
+  apply W_eq_of_cast Wfn.W _ _ (Nat.zero_add m)
+  intro x
+  simp only [SchwartzMap.conjTensorProduct_apply, splitFirst]
+  have hvac : ∀ y, (vacuumSequence (d := d)).funcs 0 y = 1 := fun _ => rfl
+  rw [hvac, map_one, one_mul]
+  -- Goal: h (splitLast 0 m x) = h (fun i => x (Fin.cast _ i))
+  unfold splitLast
+  -- Goal: h (fun j => x (Fin.natAdd 0 j)) = h (fun i => x (Fin.cast _ i))
+  -- Both Fin values have the same .val (= j.val)
+  congr 1; ext j; congr 1; ext; simp [Fin.val_cast]
 
 /-- The fundamental property of the GNS construction:
     ⟨Ω, φ(f₁)···φ(fₙ)Ω⟩ = W_n(f₁ ⊗ ··· ⊗ fₙ)
 
     This is what makes the reconstruction work — the matrix elements of the
     constructed field operators between vacuum states reproduce the original
-    Wightman functions on product test functions.
-
-    Proof: By induction on n.
-    - Base case (n=0): ⟨Ω, Ω⟩ = W_0(1) = 1 (normalization)
-    - Inductive step: φ(f) prepends f to the Borchers sequence, so
-      φ(f₁)···φ(fₙ)Ω corresponds to the sequence with (n+k)-th component
-      = f₁ ⊗ ··· ⊗ fₙ (in the (n+0)-th slot)
-      and the inner product with Ω picks out W_n. -/
+    Wightman functions on product test functions. -/
 theorem gns_reproduces_wightman (n : ℕ) (fs : Fin n → SchwartzSpacetime d) :
     PreHilbertSpace.innerProduct Wfn (vacuumState Wfn)
       (List.foldr (fun f acc => fieldOperator Wfn f acc)
         (vacuumState Wfn) (List.ofFn fs)) =
     Wfn.W n (SchwartzMap.productTensor fs) := by
-  sorry
+  -- Step 1: Lift to Borchers sequence level
+  rw [foldr_fieldOperator_eq_mk Wfn fs]
+  -- Now: WIP vacuumSequence (foldr fieldOperatorAction vacuumSequence (ofFn fs))
+  show WightmanInnerProduct d Wfn.W vacuumSequence
+    (List.foldr fieldOperatorAction (vacuumSequence (d := d)) (List.ofFn fs)) =
+    Wfn.W n (SchwartzMap.productTensor fs)
+  -- Step 2: Expand the WIP sum
+  simp only [WightmanInnerProduct]
+  -- vacuumSequence.bound = 1, so k ∈ {0, 1}
+  rw [show (vacuumSequence (d := d)).bound + 1 = 2 from rfl]
+  simp only [Finset.sum_range_succ, Finset.sum_range_zero, zero_add]
+  -- k=1: vacuumSequence.funcs 1 = 0, so all terms vanish
+  have hvac1 : (vacuumSequence (d := d)).funcs 1 = 0 := rfl
+  simp only [hvac1, SchwartzMap.conjTensorProduct_zero_left,
+    (Wfn.linear _).map_zero, Finset.sum_const_zero, add_zero]
+  -- Step 3: The inner sum was split by the earlier simp (sum_range_succ) into
+  -- (∑ m ∈ range G.bound, f m) + f G.bound = target.
+  -- Substitute G.bound = n + 1, then handle term-by-term.
+  rw [iteratedAction_bound fs]
+  -- Goal: (∑ m ∈ range (n+1), f m) + f(n+1) = W n (productTensor fs)
+  -- Show f(n+1) = 0 (component n+1 of iterated action is zero since n+1 ≠ n)
+  rw [iteratedAction_funcs_ne fs (n + 1) (by omega),
+    SchwartzMap.conjTensorProduct_zero_right, (Wfn.linear _).map_zero, add_zero]
+  -- Goal: ∑ m ∈ range (n+1), f m = W n (productTensor fs)
+  -- Extract the single nonzero term at m = n
+  rw [Finset.sum_eq_single n
+    (fun m _ hm => by
+      rw [iteratedAction_funcs_ne fs m hm,
+        SchwartzMap.conjTensorProduct_zero_right, (Wfn.linear _).map_zero])
+    (fun h => absurd (Finset.mem_range.mpr (by omega)) h)]
+  -- Step 4: W(0+n)(vac₀.conjTP(productTensor fs)) = W(n)(productTensor fs)
+  rw [iteratedAction_funcs_n fs]
+  exact W_conjTP_vacuum_zero Wfn n (SchwartzMap.productTensor fs)
 
 /-! ### Step 7: Poincaré Covariance -/
 
@@ -209,7 +279,37 @@ theorem translation_preserves_inner (a : SpacetimeDim d)
     (hF' : ∀ n (x : NPointDomain d n), (F'.funcs n) x = (F.funcs n) (fun i => x i - a))
     (hG' : ∀ n (x : NPointDomain d n), (G'.funcs n) x = (G.funcs n) (fun i => x i - a)) :
     WightmanInnerProduct d Wfn.W F' G' = WightmanInnerProduct d Wfn.W F G := by
-  sorry
+  -- Extend both inner products to a common summation range
+  set N₁ := max F.bound F'.bound + 1
+  set N₂ := max G.bound G'.bound + 1
+  rw [WightmanInnerProduct_eq_extended d Wfn.W Wfn.linear F' G' N₁ N₂
+        (by omega) (by omega),
+      WightmanInnerProduct_eq_extended d Wfn.W Wfn.linear F G N₁ N₂
+        (by omega) (by omega)]
+  -- Both are now WightmanInnerProductN with the same range. Show term-by-term equality.
+  unfold WightmanInnerProductN
+  apply Finset.sum_congr rfl
+  intro k _
+  apply Finset.sum_congr rfl
+  intro m _
+  -- Goal: W(k+m)(F'.funcs k .conjTP G'.funcs m) = W(k+m)(F.funcs k .conjTP G.funcs m)
+  -- Use translation invariance: g(x) = f(x + a) → W f = W g
+  -- Here f = F'.conjTP G', g = F.conjTP G, and g(x) = f(x + a).
+  apply Wfn.translation_invariant (k + m) a
+  intro x
+  -- Convert .toFun to coercion form
+  show (F.funcs k).conjTensorProduct (G.funcs m) x =
+       (F'.funcs k).conjTensorProduct (G'.funcs m) (fun i => x i + a)
+  simp only [SchwartzMap.conjTensorProduct_apply]
+  -- F' evaluated at (splitFirst(x+a)) = F evaluated at (splitFirst(x))
+  have hF_eq : (F'.funcs k) (fun i => splitFirst k m (fun j => x j + a) (Fin.rev i)) =
+      (F.funcs k) (fun i => splitFirst k m x (Fin.rev i)) := by
+    rw [hF' k]; congr 1; funext i; simp [splitFirst, add_sub_cancel_right]
+  -- G' evaluated at (splitLast(x+a)) = G evaluated at (splitLast(x))
+  have hG_eq : (G'.funcs m) (splitLast k m (fun j => x j + a)) =
+      (G.funcs m) (splitLast k m x) := by
+    rw [hG' m]; congr 1; funext j; simp [splitLast, add_sub_cancel_right]
+  rw [hF_eq, hG_eq]
 
 /-! ### Connecting Everything: The Full Reconstruction -/
 

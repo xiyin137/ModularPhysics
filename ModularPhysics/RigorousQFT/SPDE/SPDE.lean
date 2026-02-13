@@ -464,10 +464,14 @@ structure PolynomialNonlinearity where
   degree : ℕ
   /-- Coefficients: coeff k is the coefficient of u^k -/
   coeff : Fin (degree + 1) → ℝ
-  /-- At least one nonzero coefficient -/
-  nontrivial : ∃ k, coeff k ≠ 0
+  /-- Leading coefficient is nonzero (proper polynomial of stated degree) -/
+  leading_nonzero : coeff ⟨degree, Nat.lt_succ_iff.mpr le_rfl⟩ ≠ 0
 
 namespace PolynomialNonlinearity
+
+/-- A polynomial with nonzero leading coefficient has at least one nonzero coefficient. -/
+theorem nontrivial (P : PolynomialNonlinearity) : ∃ k, P.coeff k ≠ 0 :=
+  ⟨⟨P.degree, Nat.lt_succ_iff.mpr le_rfl⟩, P.leading_nonzero⟩
 
 /-- Evaluate the polynomial at a point -/
 def eval (P : PolynomialNonlinearity) (u : ℝ) : ℝ :=
@@ -477,13 +481,13 @@ def eval (P : PolynomialNonlinearity) (u : ℝ) : ℝ :=
 def phi4 (C : ℝ) : PolynomialNonlinearity where
   degree := 3
   coeff := ![- C, 0, 0, 1]  -- -Cu + u³
-  nontrivial := ⟨3, by simp⟩
+  leading_nonzero := by simp
 
 /-- The KPZ nonlinearity: F(u) = (∂ₓu)² (represented as u² in the abstract setting) -/
 def kpz : PolynomialNonlinearity where
   degree := 2
   coeff := ![0, 0, 1]  -- u²
-  nontrivial := ⟨2, by simp⟩
+  leading_nonzero := by simp
 
 end PolynomialNonlinearity
 
@@ -699,17 +703,12 @@ def renormalized_spde {d : ℕ} (spde : SingularSPDE d)
       if (k : ℕ) < spde.nonlinearity.degree then
         spde.nonlinearity.coeff k - renorm.constants ε
       else spde.nonlinearity.coeff k
-    nontrivial := by
-      -- The leading coefficient is unchanged, so nontriviality is preserved
-      -- if the original leading coefficient was nonzero
-      obtain ⟨k, hk⟩ := spde.nonlinearity.nontrivial
-      use k
-      by_cases h : (k : ℕ) < spde.nonlinearity.degree
-      · simp only [h, ↓reduceIte]
-        -- After subtracting renorm constant, may still be nonzero
-        -- This requires additional assumptions; for now we use sorry
-        sorry
-      · simp only [h, ↓reduceIte]; exact hk
+    leading_nonzero := by
+      -- The leading coefficient (at index `degree`) satisfies ¬(degree < degree),
+      -- so it falls in the `else` branch and is unchanged from the original.
+      simp only [show ¬(spde.nonlinearity.degree < spde.nonlinearity.degree) from lt_irrefl _,
+        ↓reduceIte]
+      exact spde.nonlinearity.leading_nonzero
   }
   noise_regularity := spde.noise_regularity
   noise_distributional := spde.noise_distributional

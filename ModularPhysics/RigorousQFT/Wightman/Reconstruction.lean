@@ -551,7 +551,7 @@ structure WightmanFunctions (d : ℕ) [NeZero d] where
 /-- Dependent type transport for Wightman functions: if k₁ = k₂ and two test functions
     have the same pointwise values (modulo the Fin.cast reindexing), then W gives the same value.
     This handles the n+m ↔ m+n identification. -/
-private theorem W_eq_of_cast {d : ℕ}
+theorem W_eq_of_cast {d : ℕ}
     (W : (k : ℕ) → SchwartzNPoint d k → ℂ)
     (k₁ k₂ : ℕ) (hk : k₁ = k₂)
     (f : SchwartzNPoint d k₁) (g : SchwartzNPoint d k₂)
@@ -894,12 +894,113 @@ def fieldOperatorAction (f : SchwartzSpacetime d) (F : BorchersSequence d) :
       simp only [fieldOperatorFuncs, F.bound_spec k (by omega),
         SchwartzMap.prependField_zero_right]
 
+@[simp]
+theorem fieldOperatorAction_funcs_zero (f : SchwartzSpacetime d) (F : BorchersSequence d) :
+    (fieldOperatorAction f F).funcs 0 = 0 := rfl
+
+@[simp]
+theorem fieldOperatorAction_funcs_succ (f : SchwartzSpacetime d) (F : BorchersSequence d) (k : ℕ) :
+    (fieldOperatorAction f F).funcs (k + 1) = SchwartzMap.prependField f (F.funcs k) := rfl
+
+@[simp]
+theorem fieldOperatorAction_bound (f : SchwartzSpacetime d) (F : BorchersSequence d) :
+    (fieldOperatorAction f F).bound = F.bound + 1 := rfl
+
+/-- The field operator action is componentwise linear: subtraction. -/
+theorem fieldOperatorAction_funcs_sub (f : SchwartzSpacetime d) (F G : BorchersSequence d) (n : ℕ) :
+    (fieldOperatorAction f (F - G)).funcs n = (fieldOperatorAction f F - fieldOperatorAction f G).funcs n := by
+  cases n with
+  | zero => simp
+  | succ k => simp [SchwartzMap.prependField_sub_right]
+
+/-- Per-term adjoint identity: W_{(n+1)+m}((prependField f fn).conjTP gm) =
+    W_{n+(m+1)}(fn.conjTP (prependField f̄ gm)). Both evaluate the Wightman function
+    on pointwise-equal test functions (up to Fin.cast and mul_comm in ℂ). -/
+private theorem adjoint_term_eq (n m : ℕ) (f : SchwartzSpacetime d)
+    (fn : SchwartzNPoint d n) (gm : SchwartzNPoint d m) :
+    Wfn.W ((n + 1) + m) ((SchwartzMap.prependField f fn).conjTensorProduct gm) =
+    Wfn.W (n + (m + 1)) (fn.conjTensorProduct (SchwartzMap.prependField (SchwartzMap.conj f) gm)) := by
+  apply W_eq_of_cast Wfn.W _ _ (by omega)
+  intro x
+  simp only [SchwartzMap.conjTensorProduct_apply, SchwartzMap.prependField_apply,
+    SchwartzMap.conj_apply, splitFirst, splitLast, map_mul]
+  have hf_arg : x (Fin.castAdd m (Fin.rev (0 : Fin (n + 1)))) =
+      x (Fin.cast (by omega : n + (m + 1) = (n + 1) + m) (Fin.natAdd n (0 : Fin (m + 1)))) := by
+    congr 1
+  have hfn_args : (fun i : Fin n => x (Fin.castAdd m (Fin.rev (Fin.succ i)))) =
+      (fun i : Fin n => x (Fin.cast (by omega : n + (m + 1) = (n + 1) + m)
+        (Fin.castAdd (m + 1) (Fin.rev i)))) := by
+    ext i; congr 1; ext; simp [Fin.val_rev, Fin.val_castAdd, Fin.val_succ, Fin.val_cast]
+  have hgm_args : (fun j : Fin m => x (Fin.natAdd (n + 1) j)) =
+      (fun j : Fin m => x (Fin.cast (by omega : n + (m + 1) = (n + 1) + m)
+        (Fin.natAdd n (Fin.succ j)))) := by
+    ext j; congr 1; ext; simp [Fin.val_natAdd, Fin.val_succ, Fin.val_cast]; omega
+  simp only [hf_arg, hfn_args]
+  unfold splitLast
+  rw [hgm_args]
+  ring
+
+/-- The adjoint relation for field operators: ⟨φ(f)F, G⟩ = ⟨F, φ(f̄)G⟩ -/
+theorem field_adjoint (f : SchwartzSpacetime d) (F G : BorchersSequence d) :
+    WightmanInnerProduct d Wfn.W (fieldOperatorAction f F) G =
+    WightmanInnerProduct d Wfn.W F (fieldOperatorAction (SchwartzMap.conj f) G) := by
+  set S := ∑ n ∈ Finset.range (F.bound + 1),
+    ∑ m ∈ Finset.range (G.bound + 1),
+      Wfn.W ((n + 1) + m) ((SchwartzMap.prependField f (F.funcs n)).conjTensorProduct (G.funcs m))
+  have hLHS : WightmanInnerProduct d Wfn.W (fieldOperatorAction f F) G = S := by
+    simp only [WightmanInnerProduct, fieldOperatorAction_bound]
+    rw [show F.bound + 1 + 1 = (F.bound + 1) + 1 from rfl, Finset.sum_range_succ']
+    simp only [fieldOperatorAction_funcs_zero, SchwartzMap.conjTensorProduct_zero_left,
+      (Wfn.linear _).map_zero, Finset.sum_const_zero, add_zero,
+      fieldOperatorAction_funcs_succ]
+    rfl
+  have hRHS : WightmanInnerProduct d Wfn.W F (fieldOperatorAction (SchwartzMap.conj f) G) = S := by
+    simp only [WightmanInnerProduct, fieldOperatorAction_bound]
+    congr 1; ext n
+    rw [show G.bound + 1 + 1 = (G.bound + 1) + 1 from rfl, Finset.sum_range_succ']
+    simp only [fieldOperatorAction_funcs_zero, SchwartzMap.conjTensorProduct_zero_right,
+      (Wfn.linear _).map_zero, add_zero, fieldOperatorAction_funcs_succ]
+    congr 1; ext m
+    exact (adjoint_term_eq Wfn n m f (F.funcs n) (G.funcs m)).symm
+  rw [hLHS, hRHS]
+
+/-- The field operator φ(f) maps null vectors to null vectors. -/
+theorem fieldOperator_preserves_null (f : SchwartzSpacetime d) (F : BorchersSequence d)
+    (hF : (WightmanInnerProduct d Wfn.W F F).re = 0) :
+    (WightmanInnerProduct d Wfn.W (fieldOperatorAction f F) (fieldOperatorAction f F)).re = 0 := by
+  have h : WightmanInnerProduct d Wfn.W (fieldOperatorAction f F) (fieldOperatorAction f F) = 0 := by
+    rw [field_adjoint Wfn f F (fieldOperatorAction f F)]
+    exact null_inner_product_zero Wfn F _ hF
+  simp [h]
+
+/-- The field operator is well-defined on the quotient: equivalent Borchers
+    sequences map to equivalent sequences under φ(f). -/
+theorem fieldOperator_well_defined (f : SchwartzSpacetime d)
+    (a b : BorchersSequence d) (hab : borchersSetoid Wfn a b) :
+    borchersSetoid Wfn (fieldOperatorAction f a) (fieldOperatorAction f b) := by
+  have hab_null : (WightmanInnerProduct d Wfn.W (a - b) (a - b)).re = 0 := by
+    rw [WightmanInnerProduct_expand_diff d Wfn.W Wfn.linear a b]; exact hab
+  have hpn := fieldOperator_preserves_null Wfn f (a - b) hab_null
+  have hfuncs : ∀ n, (fieldOperatorAction f (a - b)).funcs n =
+      (fieldOperatorAction f a - fieldOperatorAction f b).funcs n :=
+    fieldOperatorAction_funcs_sub f a b
+  have hcongr : WightmanInnerProduct d Wfn.W (fieldOperatorAction f a - fieldOperatorAction f b)
+      (fieldOperatorAction f a - fieldOperatorAction f b) =
+      WightmanInnerProduct d Wfn.W (fieldOperatorAction f (a - b)) (fieldOperatorAction f (a - b)) := by
+    exact (WightmanInnerProduct_congr_left d Wfn.W Wfn.linear _ _ _ (fun n => (hfuncs n).symm)).trans
+      (WightmanInnerProduct_congr_right d Wfn.W Wfn.linear _ _ _ (fun n => (hfuncs n).symm))
+  show (WightmanInnerProduct d Wfn.W (fieldOperatorAction f a) (fieldOperatorAction f a) +
+    WightmanInnerProduct d Wfn.W (fieldOperatorAction f b) (fieldOperatorAction f b) -
+    WightmanInnerProduct d Wfn.W (fieldOperatorAction f a) (fieldOperatorAction f b) -
+    WightmanInnerProduct d Wfn.W (fieldOperatorAction f b) (fieldOperatorAction f a)).re = 0
+  rw [← WightmanInnerProduct_expand_diff d Wfn.W Wfn.linear, hcongr]
+  exact hpn
+
 /-- The field operator on the pre-Hilbert space -/
 def fieldOperator (f : SchwartzSpacetime d) : PreHilbertSpace Wfn → PreHilbertSpace Wfn :=
   Quotient.lift (fun F => Quotient.mk _ (fieldOperatorAction f F)) (by
     intro a b hab
-    -- Show well-definedness
-    sorry)
+    exact Quotient.sound (fieldOperator_well_defined Wfn f a b hab))
 
 end Reconstruction
 
