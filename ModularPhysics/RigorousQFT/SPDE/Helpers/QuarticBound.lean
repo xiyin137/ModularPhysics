@@ -593,6 +593,98 @@ theorem quartic_sum_bound
     obtain ⟨hSX2_int, hSX4_int, hstep2, hstep4⟩ := hstep
     exact ⟨hSX2_int, hSX4_int, hstep2, hstep4⟩
 
+/-! ## Reformulation of stochasticIntegral_at terms -/
+
+/-- The i-th summand of stochasticIntegral_at at time u, when i+1 < n, equals
+    H_i * (W(min(t_{i+1}, u)) - W(t_i)) when t_i ≤ u, else 0. -/
+private lemma si_at_term_eq {F : Filtration Ω ℝ}
+    (H : SimpleProcess F) (W : BrownianMotion Ω μ)
+    (i : Fin H.n) (h : (i : ℕ) + 1 < H.n) (u : ℝ) (ω : Ω) :
+    (if H.times ⟨(i : ℕ) + 1, h⟩ ≤ u then
+       H.values i ω * (W.process (H.times ⟨(i : ℕ) + 1, h⟩) ω - W.process (H.times i) ω)
+     else if H.times i ≤ u then
+       H.values i ω * (W.process u ω - W.process (H.times i) ω)
+     else 0) =
+    if H.times i ≤ u then
+      H.values i ω * (W.process (min (H.times ⟨(i : ℕ) + 1, h⟩) u) ω -
+                       W.process (H.times i) ω)
+    else 0 := by
+  by_cases h1 : H.times ⟨(i : ℕ) + 1, h⟩ ≤ u
+  · have hti_le : H.times i ≤ u :=
+      le_trans (le_of_lt (H.increasing i ⟨(i : ℕ) + 1, h⟩ (Fin.mk_lt_mk.mpr (by omega)))) h1
+    simp only [if_pos h1, if_pos hti_le, min_eq_left h1]
+  · push_neg at h1
+    by_cases h2 : H.times i ≤ u
+    · simp only [if_neg (not_le.mpr h1), if_pos h2, min_eq_right (le_of_lt h1)]
+    · simp only [if_neg (not_le.mpr h1), if_neg h2]
+
+/-- The term-wise difference of stochasticIntegral_at at times t and s equals
+    a clipped BM increment contribution. -/
+private lemma si_at_term_diff {F : Filtration Ω ℝ}
+    (H : SimpleProcess F) (W : BrownianMotion Ω μ)
+    (i : Fin H.n) (h : (i : ℕ) + 1 < H.n) (s t : ℝ) (hst : s ≤ t) (ω : Ω) :
+    (if H.times i ≤ t then
+      H.values i ω * (W.process (min (H.times ⟨(i : ℕ) + 1, h⟩) t) ω -
+                       W.process (H.times i) ω)
+    else 0) -
+    (if H.times i ≤ s then
+      H.values i ω * (W.process (min (H.times ⟨(i : ℕ) + 1, h⟩) s) ω -
+                       W.process (H.times i) ω)
+    else 0) =
+    if max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, h⟩) t then
+      H.values i ω * (W.process (min (H.times ⟨(i : ℕ) + 1, h⟩) t) ω -
+                       W.process (max (H.times i) s) ω)
+    else 0 := by
+  set ti := H.times i
+  set ti1 := H.times ⟨(i : ℕ) + 1, h⟩
+  have hti_lt_ti1 : ti < ti1 := H.increasing i ⟨(i : ℕ) + 1, h⟩ (Fin.mk_lt_mk.mpr (by omega))
+  by_cases h_ti_le_t : ti ≤ t
+  · -- ti ≤ t
+    rw [if_pos h_ti_le_t]
+    by_cases h_ti_le_s : ti ≤ s
+    · -- ti ≤ s ≤ t
+      rw [if_pos h_ti_le_s]
+      have hmax : max ti s = s := max_eq_right h_ti_le_s
+      by_cases h_active : s < min ti1 t
+      · -- Active: s < min(ti1, t)
+        have hmin_s : min ti1 s = s :=
+          min_eq_right (le_of_lt (lt_of_lt_of_le h_active (min_le_left _ _)))
+        rw [if_pos (show max ti s < min ti1 t by rw [hmax]; exact h_active)]
+        rw [hmin_s, hmax]; ring
+      · -- Inactive: min(ti1,t) ≤ s
+        push_neg at h_active
+        rw [if_neg (show ¬(max ti s < min ti1 t) by rw [hmax]; exact not_lt.mpr h_active)]
+        suffices h_eq : min ti1 t = min ti1 s by rw [h_eq]; ring
+        by_cases hle : ti1 ≤ s
+        · rw [min_eq_left (le_trans hle hst), min_eq_left hle]
+        · push_neg at hle
+          by_cases htl : ti1 ≤ t
+          · exact absurd (min_eq_left htl ▸ h_active) (not_le.mpr hle)
+          · push_neg at htl
+            have : s = t := le_antisymm hst (min_eq_right (le_of_lt htl) ▸ h_active)
+            subst this; rfl
+    · -- s < ti ≤ t
+      push_neg at h_ti_le_s
+      rw [if_neg (not_le.mpr h_ti_le_s), sub_zero]
+      have hmax : max ti s = ti := max_eq_left (le_of_lt h_ti_le_s)
+      by_cases h_active : ti < min ti1 t
+      · rw [if_pos (show max ti s < min ti1 t by rw [hmax]; exact h_active), hmax]
+      · push_neg at h_active -- min ti1 t ≤ ti
+        rw [if_neg (show ¬(max ti s < min ti1 t) by rw [hmax]; exact not_lt.mpr h_active)]
+        -- min(ti1,t) ≤ ti and ti < ti1 → t ≤ ti → ti = t
+        have h_min : min ti1 t = t := by
+          by_cases ht : ti1 ≤ t
+          · exact absurd (min_eq_left ht ▸ h_active) (not_le.mpr hti_lt_ti1)
+          · push_neg at ht; exact min_eq_right (le_of_lt ht)
+        rw [h_min, show ti = t from le_antisymm h_ti_le_t (h_min ▸ h_active), sub_self, mul_zero]
+  · -- t < ti → s < ti too, both 0
+    push_neg at h_ti_le_t
+    rw [if_neg (not_le.mpr h_ti_le_t),
+        if_neg (not_le.mpr (lt_of_le_of_lt hst h_ti_le_t)), sub_self]
+    rw [if_neg (show ¬(max ti s < min ti1 t) by
+      rw [not_lt]; exact le_trans (min_le_right _ _)
+        (le_trans (le_of_lt h_ti_le_t) (le_max_left _ _)))]
+
 /-! ## Transfer infrastructure -/
 
 /-- For bounded diffusion, the stochastic integral has approximating simple processes
