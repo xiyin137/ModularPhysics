@@ -415,20 +415,239 @@ theorem ito_process_increment_L4_bound {F : Filtration Ω ℝ}
 
 /-! ## Riemann sum and Taylor remainder convergence -/
 
-/-- Riemann sum L² convergence for bounded adapted processes. -/
+/-- Riemann sum L² convergence for bounded continuous-in-time processes.
+
+  For bounded g with |g(s, ω)| ≤ C and continuous s → g(s, ω) for each ω,
+  the Riemann sum Σ g(tᵢ, ω) Δt converges to ∫₀ᵗ g(s, ω) ds in L²(Ω). -/
 theorem riemann_sum_L2_convergence
     [IsProbabilityMeasure μ]
     (g : ℝ → Ω → ℝ) (C : ℝ) (_hC : 0 ≤ C)
     (hg_bdd : ∀ s ω, |g s ω| ≤ C)
-    (_hg_meas : ∀ s, Measurable (g s))
-    (t : ℝ) (ht : 0 < t) :
+    (hg_meas : ∀ s, Measurable (g s))
+    (t : ℝ) (ht : 0 < t)
+    (hg_cont : ∀ ω, ContinuousOn (fun s => g s ω) (Set.Icc 0 t)) :
     Filter.Tendsto
       (fun n => ∫ ω,
         (∑ i : Fin (n + 1),
           g (↑(i : ℕ) * t / ↑(n + 1)) ω * (t / ↑(n + 1)) -
          ∫ s in Set.Icc 0 t, g s ω ∂volume)^2 ∂μ)
       atTop (nhds 0) := by
-  sorry
+  -- Abbreviate the error for readability
+  set err : ℕ → Ω → ℝ := fun n ω =>
+    ∑ i : Fin (n + 1),
+      g (↑(i : ℕ) * t / ↑(n + 1)) ω * (t / ↑(n + 1)) -
+    ∫ s in Set.Icc 0 t, g s ω ∂volume
+  -- Step 1: error is bounded by 2Ct
+  have herr_bdd : ∀ n ω, |err n ω| ≤ 2 * C * t := by
+    intro n ω
+    -- Sum bound: |Σ g(tᵢ) Δt| ≤ C·t
+    have hΔt_nn : (0 : ℝ) ≤ t / (↑(n + 1) : ℝ) := div_nonneg ht.le (Nat.cast_nonneg _)
+    have hsum : |∑ i : Fin (n + 1), g (↑(i : ℕ) * t / ↑(n + 1)) ω * (t / ↑(n + 1))| ≤ C * t := by
+      calc |∑ i : Fin (n + 1), g (↑(i : ℕ) * t / ↑(n + 1)) ω * (t / ↑(n + 1))|
+          ≤ ∑ i : Fin (n + 1), |g (↑(i : ℕ) * t / ↑(n + 1)) ω * (t / ↑(n + 1))| :=
+            Finset.abs_sum_le_sum_abs _ _
+        _ ≤ ∑ _i : Fin (n + 1), C * (t / ↑(n + 1)) := by
+            apply Finset.sum_le_sum; intro i _
+            rw [abs_mul, abs_of_nonneg hΔt_nn]
+            exact mul_le_mul_of_nonneg_right (hg_bdd _ _) hΔt_nn
+        _ = C * t := by
+            simp only [Finset.sum_const, Finset.card_fin, nsmul_eq_mul]
+            field_simp
+    -- Integral bound: |∫ g| ≤ C·t (using norm_setIntegral_le_of_norm_le_const)
+    have hvol_ne_top : volume (Set.Icc 0 t) ≠ ⊤ := by
+      rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top
+    have hint : |∫ s in Set.Icc 0 t, g s ω ∂volume| ≤ C * t := by
+      have key : ∀ s ∈ Set.Icc (0 : ℝ) t, ‖g s ω‖ ≤ C :=
+        fun s _ => by rw [Real.norm_eq_abs]; exact hg_bdd s ω
+      have h := norm_setIntegral_le_of_norm_le_const (lt_top_iff_ne_top.mpr hvol_ne_top) key
+      rw [Real.norm_eq_abs] at h
+      have hvol : volume.real (Set.Icc (0 : ℝ) t) = t := by
+        simp only [Measure.real, Real.volume_Icc, sub_zero, ENNReal.toReal_ofReal ht.le]
+      rw [hvol] at h; linarith
+    -- Triangle inequality: |a - b| ≤ |a| + |b|
+    have htri : |err n ω| ≤
+        |∑ i : Fin (n + 1), g (↑i * t / ↑(n + 1)) ω * (t / ↑(n + 1))| +
+        |∫ s in Set.Icc 0 t, g s ω ∂volume| := by
+      have := norm_sub_le
+        (∑ i : Fin (n + 1), g (↑i * t / ↑(n + 1)) ω * (t / ↑(n + 1)))
+        (∫ s in Set.Icc 0 t, g s ω ∂volume)
+      simp only [Real.norm_eq_abs] at this
+      exact this
+    linarith
+  -- Step 2: error² bounded by (2Ct)²
+  have herr_sq_bdd : ∀ n ω, (err n ω) ^ 2 ≤ (2 * C * t) ^ 2 := by
+    intro n ω
+    have h := herr_bdd n ω
+    rw [abs_le] at h
+    nlinarith [h.1, h.2]
+  -- Step 3: error(ω) → 0 for each ω (Riemann sum convergence for continuous functions)
+  have herr_ptwise : ∀ ω, Filter.Tendsto (err · ω) atTop (nhds 0) := by
+    intro ω
+    rw [Metric.tendsto_atTop]
+    intro ε hε
+    -- g(·, ω) is uniformly continuous on compact [0, t]
+    have huc : UniformContinuousOn (fun s => g s ω) (Set.Icc 0 t) :=
+      isCompact_Icc.uniformContinuousOn_of_continuous (hg_cont ω)
+    rw [Metric.uniformContinuousOn_iff] at huc
+    obtain ⟨δ, hδ_pos, hδ⟩ := huc (ε / (t + 1)) (div_pos hε (by linarith))
+    obtain ⟨N, hN⟩ := exists_nat_gt (t / δ)
+    refine ⟨N, fun n hn => ?_⟩
+    -- For n ≥ N, the mesh t/(n+1) < δ
+    have hn1_pos : (0 : ℝ) < ↑(n + 1) := Nat.cast_pos.mpr (by omega)
+    have hmesh : t / (↑(n + 1) : ℝ) < δ := by
+      rw [div_lt_iff₀ hn1_pos]
+      calc t < δ * (↑N + 1) := by
+              calc t = (t / δ) * δ := by rw [div_mul_cancel₀ t (ne_of_gt hδ_pos)]
+                _ < (↑N + 1) * δ := by nlinarith
+                _ = δ * (↑N + 1) := by ring
+        _ ≤ δ * ↑(n + 1) := by
+              apply mul_le_mul_of_nonneg_left _ hδ_pos.le
+              push_cast; linarith [show (N : ℝ) ≤ n from Nat.cast_le.mpr (by omega)]
+    -- Bound: dist (err n ω) 0 < ε
+    rw [Real.dist_eq, sub_zero]
+    -- Set up partition function
+    set Δ := t / (↑(n + 1) : ℝ) with hΔ_def
+    have hΔ_pos : (0 : ℝ) < Δ := div_pos ht hn1_pos
+    -- Partition points: ptFn k = k * Δ
+    set ptFn : ℕ → ℝ := fun k => ↑k * Δ with hptFn_def
+    have hpt0 : ptFn 0 = 0 := by simp [hptFn_def]
+    have hptn1 : ptFn (n + 1) = t := by
+      simp only [hptFn_def, hΔ_def, Nat.cast_add, Nat.cast_one]
+      field_simp
+    have hpt_step : ∀ k, ptFn (k + 1) - ptFn k = Δ := by
+      intro k; simp only [hptFn_def, Nat.cast_add, Nat.cast_one]; ring
+    -- Partition points lie in [0, t]
+    have hpt_mem : ∀ k, k ≤ n + 1 → ptFn k ∈ Set.Icc 0 t := by
+      intro k hk
+      refine ⟨by positivity, ?_⟩
+      calc (↑k : ℝ) * Δ ≤ ↑(n + 1) * Δ := by
+              apply mul_le_mul_of_nonneg_right (Nat.cast_le.mpr hk) hΔ_pos.le
+        _ = t := by simp [hΔ_def]; field_simp
+    -- Subinterval endpoints are ordered
+    have hpt_le : ∀ k, ptFn k ≤ ptFn (k + 1) := fun k => by linarith [hpt_step k]
+    -- g(·, ω) is interval integrable on each subinterval
+    have hg_ii : ∀ k < n + 1, IntervalIntegrable (g · ω) volume (ptFn k) (ptFn (k + 1)) := by
+      intro k hk
+      apply ContinuousOn.intervalIntegrable_of_Icc (hpt_le k)
+      exact (hg_cont ω).mono (Set.Icc_subset_Icc (hpt_mem k (by omega)).1 (hpt_mem (k+1) (by omega)).2)
+    -- Convert Set.Icc integral to intervalIntegral
+    have hIcc_eq_ii : ∫ s in Set.Icc 0 t, g s ω ∂volume = ∫ s in (0:ℝ)..t, g s ω := by
+      rw [intervalIntegral.integral_of_le ht.le]
+      exact (setIntegral_congr_set Ioc_ae_eq_Icc).symm
+    -- Split interval integral into sum over subintervals
+    have hsplit : ∫ s in (0:ℝ)..t, g s ω =
+        ∑ k ∈ Finset.range (n + 1), ∫ s in (ptFn k)..(ptFn (k + 1)), g s ω := by
+      rw [← hpt0, ← hptn1]
+      exact (intervalIntegral.sum_integral_adjacent_intervals hg_ii).symm
+    -- Express Riemann sum using Finset.range and constant integrals
+    have hRS_eq : ∑ i : Fin (n + 1), g (↑↑i * t / ↑(n + 1)) ω * (t / ↑(n + 1)) =
+        ∑ k ∈ Finset.range (n + 1), ∫ s in (ptFn k)..(ptFn (k + 1)), g (ptFn k) ω := by
+      rw [← Fin.sum_univ_eq_sum_range]
+      congr 1; ext ⟨i, hi⟩
+      rw [intervalIntegral.integral_const, smul_eq_mul, hpt_step]
+      -- g(↑i * t / ↑(n+1)) ω * Δ = Δ * g(↑i * Δ) ω
+      simp only [hptFn_def, hΔ_def, mul_div_assoc]
+      ring
+    -- Express error as sum of integral differences
+    have herr_eq : err n ω =
+        ∑ k ∈ Finset.range (n + 1),
+          ((∫ s in (ptFn k)..(ptFn (k + 1)), g (ptFn k) ω) -
+           (∫ s in (ptFn k)..(ptFn (k + 1)), g s ω)) := by
+      simp only [err, hIcc_eq_ii, hsplit, hRS_eq, ← Finset.sum_sub_distrib]
+    -- Bound each term using uniform continuity
+    have hterm_bdd : ∀ k ∈ Finset.range (n + 1),
+        |(∫ s in (ptFn k)..(ptFn (k + 1)), g (ptFn k) ω) -
+         (∫ s in (ptFn k)..(ptFn (k + 1)), g s ω)| ≤ ε / (t + 1) * Δ := by
+      intro k hk
+      rw [Finset.mem_range] at hk
+      -- Combine integrals: ∫ c - ∫ f = ∫ (c - f)
+      rw [← intervalIntegral.integral_sub intervalIntegrable_const (hg_ii k hk)]
+      -- Apply norm bound for interval integrals
+      have hle : ‖∫ s in (ptFn k)..(ptFn (k + 1)), (g (ptFn k) ω - g s ω)‖ ≤
+          ε / (t + 1) * |ptFn (k + 1) - ptFn k| := by
+        apply intervalIntegral.norm_integral_le_of_norm_le_const
+        intro s hs
+        rw [Set.uIoc_of_le (hpt_le k)] at hs
+        rw [Real.norm_eq_abs]
+        -- Need |g(ptFn k, ω) - g(s, ω)| ≤ ε / (t + 1)
+        have hsk : ptFn k ∈ Set.Icc 0 t := hpt_mem k (by omega)
+        have hs_mem : s ∈ Set.Icc 0 t := by
+          constructor
+          · linarith [hsk.1, hs.1]
+          · exact le_trans hs.2 (hpt_mem (k + 1) (by omega)).2
+        have hdist : dist (ptFn k) s < δ := by
+          rw [Real.dist_eq]
+          calc |ptFn k - s| = s - ptFn k := by
+                  rw [abs_of_nonpos (by linarith [hs.1])]
+                  ring
+            _ ≤ ptFn (k + 1) - ptFn k := by linarith [hs.2]
+            _ = Δ := hpt_step k
+            _ < δ := hmesh
+        exact le_of_lt (hδ (ptFn k) hsk s hs_mem hdist)
+      rw [Real.norm_eq_abs] at hle
+      calc |(∫ s in (ptFn k)..(ptFn (k + 1)), (g (ptFn k) ω - g s ω))|
+          ≤ ε / (t + 1) * |ptFn (k + 1) - ptFn k| := hle
+        _ = ε / (t + 1) * Δ := by
+            rw [hpt_step, abs_of_pos hΔ_pos]
+    -- Final bound: sum of (ε/(t+1)) * Δ over (n+1) terms = ε * t / (t+1) < ε
+    calc |err n ω|
+        = |∑ k ∈ Finset.range (n + 1),
+            ((∫ s in (ptFn k)..(ptFn (k + 1)), g (ptFn k) ω) -
+             (∫ s in (ptFn k)..(ptFn (k + 1)), g s ω))| := by rw [herr_eq]
+      _ ≤ ∑ k ∈ Finset.range (n + 1),
+            |(∫ s in (ptFn k)..(ptFn (k + 1)), g (ptFn k) ω) -
+             (∫ s in (ptFn k)..(ptFn (k + 1)), g s ω)| :=
+          Finset.abs_sum_le_sum_abs _ _
+      _ ≤ ∑ _k ∈ Finset.range (n + 1), ε / (t + 1) * Δ :=
+          Finset.sum_le_sum hterm_bdd
+      _ = ↑(n + 1) * (ε / (t + 1) * Δ) := by
+          simp [Finset.sum_const, Finset.card_range, nsmul_eq_mul]
+      _ = ε * (t / (t + 1)) := by
+          simp only [hΔ_def]; field_simp
+      _ < ε * 1 := by
+          apply mul_lt_mul_of_pos_left _ hε
+          rw [div_lt_one (by linarith : (0:ℝ) < t + 1)]
+          linarith
+      _ = ε := mul_one ε
+  -- Step 4: error²(ω) → 0 for each ω
+  have herr_sq_ptwise : ∀ᵐ ω ∂μ, Filter.Tendsto (fun n => (err n ω) ^ 2) atTop (nhds 0) := by
+    filter_upwards with ω
+    rw [show (0 : ℝ) = 0 ^ 2 from by norm_num]
+    exact (herr_ptwise ω).pow 2
+  -- Step 5: error² is AEStronglyMeasurable
+  have herr_sq_meas : ∀ n, AEStronglyMeasurable (fun ω => (err n ω) ^ 2) μ := by
+    intro n
+    have hsum_meas : Measurable (fun ω => ∑ i : Fin (n + 1),
+        g (↑i * t / ↑(n + 1)) ω * (t / ↑(n + 1))) :=
+      Finset.measurable_sum _ fun i _ => (hg_meas _).mul_const _
+    -- Parametric integral measurability: pointwise limit of measurable Riemann sums
+    have hint_meas : AEStronglyMeasurable (fun ω =>
+        ∫ s in Set.Icc 0 t, g s ω ∂volume) μ := by
+      -- The Riemann sums are measurable and converge pointwise to the integral
+      apply aestronglyMeasurable_of_tendsto_ae (u := atTop)
+        (f := fun n ω => ∑ i : Fin (n + 1), g (↑i * t / ↑(n + 1)) ω * (t / ↑(n + 1)))
+      · intro n
+        exact (Finset.measurable_sum _ fun i _ => (hg_meas _).mul_const _).aestronglyMeasurable
+      · -- From herr_ptwise: err n ω → 0, so Riemann sum → integral
+        filter_upwards with ω
+        have h := herr_ptwise ω
+        have : Filter.Tendsto
+            (fun n => err n ω + ∫ s in Set.Icc 0 t, g s ω ∂volume)
+            atTop (nhds (0 + ∫ s in Set.Icc 0 t, g s ω ∂volume)) :=
+          h.add tendsto_const_nhds
+        simp only [err, sub_add_cancel, zero_add] at this
+        exact this
+    exact (hsum_meas.aestronglyMeasurable.sub hint_meas).pow 2
+  -- Step 6: Apply DCT on Ω to get E[error²] → 0
+  have hgoal : Filter.Tendsto (fun n => ∫ ω, (err n ω) ^ 2 ∂μ) atTop (nhds 0) := by
+    rw [show (0 : ℝ) = ∫ _, (0 : ℝ) ∂μ from by simp]
+    exact tendsto_integral_of_dominated_convergence (fun _ => (2 * C * t) ^ 2)
+      herr_sq_meas (integrable_const _)
+      (fun n => ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        exact herr_sq_bdd n ω)
+      herr_sq_ptwise
+  exact hgoal
 
 /-- Taylor remainder L² convergence summed over partition intervals. -/
 theorem taylor_remainder_L2_convergence {F : Filtration Ω ℝ}
