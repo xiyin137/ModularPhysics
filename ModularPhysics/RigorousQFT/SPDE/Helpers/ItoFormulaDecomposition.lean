@@ -260,7 +260,33 @@ theorem stoch_integral_increment_L2_bound {F : Filtration Ω ℝ}
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
     ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω)^2 ∂μ ≤
     Mσ^2 * (t - s) := by
-  sorry
+  -- Step 1: Apply the Itô isometry bound from ItoProcess
+  have hqv := X.stoch_integral_qv_bound s t hs hst
+  -- Step 2: Bound E[σ(u)²] ≤ Mσ² for each u
+  have hσ_sq_bdd : ∀ u, ∫ ω, (X.diffusion u ω) ^ 2 ∂μ ≤ Mσ ^ 2 := by
+    intro u
+    have h1 : ∫ ω, (X.diffusion u ω) ^ 2 ∂μ ≤ ∫ ω, Mσ ^ 2 ∂μ := by
+      apply integral_mono_of_nonneg
+      · exact ae_of_all _ fun ω => sq_nonneg _
+      · exact integrable_const _
+      · exact ae_of_all _ fun ω =>
+          sq_le_sq' (abs_le.mp (hMσ u ω)).1 (abs_le.mp (hMσ u ω)).2
+    simp only [integral_const, Measure.real, measure_univ, ENNReal.toReal_one, one_smul] at h1
+    exact h1
+  -- Step 3: Bound ∫_[s,t] E[σ²] du ≤ Mσ² · (t - s)
+  -- Use integral_mono_of_nonneg on restricted measure (doesn't need f measurable)
+  calc ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 ∂μ
+      ≤ ∫ u in Set.Icc s t, (∫ ω, (X.diffusion u ω) ^ 2 ∂μ) ∂volume := hqv
+    _ ≤ ∫ u in Set.Icc s t, Mσ ^ 2 ∂volume := by
+        apply integral_mono_of_nonneg
+        · exact ae_of_all _ fun u => integral_nonneg (fun ω => sq_nonneg _)
+        · exact integrableOn_const (by rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top)
+        · exact ae_of_all _ fun u => hσ_sq_bdd u
+    _ = Mσ ^ 2 * (t - s) := by
+        rw [setIntegral_const]
+        simp only [Measure.real, Real.volume_Icc,
+          ENNReal.toReal_ofReal (sub_nonneg.mpr hst), smul_eq_mul]
+        ring
 
 /-! ## Process increment moment bounds -/
 
@@ -273,7 +299,108 @@ theorem ito_process_increment_L2_bound {F : Filtration Ω ℝ}
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) (hdt : t - s ≤ 1) :
     ∫ ω, (X.process t ω - X.process s ω)^2 ∂μ ≤
     (2 * Mμ^2 + 2 * Mσ^2) * (t - s) := by
-  sorry
+  -- Abbreviations
+  set D : Ω → ℝ := fun ω =>
+    ∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+    ∫ u in Set.Icc 0 s, X.drift u ω ∂volume with hD_def
+  set S : Ω → ℝ := fun ω => X.stoch_integral t ω - X.stoch_integral s ω with hS_def
+  -- Step 1: X(t) - X(s) = D + S a.e.
+  have hdecomp : ∀ᵐ ω ∂μ, X.process t ω - X.process s ω = D ω + S ω := by
+    filter_upwards [X.integral_form t (le_trans hs hst), X.integral_form s hs] with ω hωt hωs
+    simp only [D, S]; linarith
+  -- Step 2: Pointwise drift bound |D(ω)| ≤ Mμ·(t-s)
+  have hD_bdd : ∀ ω, |D ω| ≤ Mμ * (t - s) := by
+    intro ω
+    have hint_t : IntegrableOn (fun u => X.drift u ω) (Set.Icc 0 t) volume :=
+      X.drift_time_integrable ω t (le_trans hs hst)
+    -- D(ω) = ∫_{Icc 0 t \ Icc 0 s} drift u ω dv
+    have hD_eq : D ω = ∫ u in Set.Icc 0 t \ Set.Icc 0 s, X.drift u ω ∂volume :=
+      (integral_diff measurableSet_Icc hint_t (Set.Icc_subset_Icc_right hst)).symm
+    rw [hD_eq]
+    -- volume(diff) is finite
+    have hvol_ne_top : volume (Set.Icc 0 t \ Set.Icc 0 s) ≠ ⊤ :=
+      ne_top_of_le_ne_top (by rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top)
+        (measure_mono Set.diff_subset)
+    -- |∫_{diff} drift| ≤ Mμ · volume.real(diff)
+    have hbnd : ‖∫ u in Set.Icc 0 t \ Set.Icc 0 s, X.drift u ω ∂volume‖ ≤
+        Mμ * volume.real (Set.Icc 0 t \ Set.Icc 0 s) :=
+      norm_setIntegral_le_of_norm_le_const (lt_top_iff_ne_top.mpr hvol_ne_top)
+        fun u _ => Real.norm_eq_abs _ ▸ hMμ u ω
+    rw [Real.norm_eq_abs] at hbnd
+    -- volume.real(Icc 0 t \ Icc 0 s) = t - s
+    have h_fin_s : volume (Set.Icc 0 s) ≠ ⊤ := by
+      rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top
+    have hvol_eq : volume.real (Set.Icc 0 t \ Set.Icc 0 s) = t - s := by
+      show (volume (Set.Icc 0 t \ Set.Icc 0 s)).toReal = t - s
+      rw [measure_diff (Set.Icc_subset_Icc_right hst) measurableSet_Icc.nullMeasurableSet h_fin_s]
+      rw [Real.volume_Icc, Real.volume_Icc, sub_zero, sub_zero]
+      rw [ENNReal.toReal_sub_of_le (ENNReal.ofReal_le_ofReal hst) ENNReal.ofReal_ne_top]
+      rw [ENNReal.toReal_ofReal (le_trans hs hst), ENNReal.toReal_ofReal hs]
+    rw [hvol_eq] at hbnd; linarith
+  -- Step 3: D²(ω) ≤ Mμ²·(t-s)²
+  have hD_sq_bdd : ∀ ω, D ω ^ 2 ≤ Mμ ^ 2 * (t - s) ^ 2 := fun ω => by
+    have h := abs_le.mp (hD_bdd ω)
+    calc D ω ^ 2 ≤ (Mμ * (t - s)) ^ 2 := sq_le_sq' h.1 h.2
+      _ = Mμ ^ 2 * (t - s) ^ 2 := by ring
+  -- Step 4: D is AEStronglyMeasurable (= X(t)-X(s)-S a.e., which is measurable)
+  have hD_asm : AEStronglyMeasurable D μ := by
+    have hXt : AEStronglyMeasurable (X.process t) μ :=
+      ((X.process_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
+    have hXs : AEStronglyMeasurable (X.process s) μ :=
+      ((X.process_adapted s).mono (F.le_ambient s) le_rfl).aestronglyMeasurable
+    have hSt : AEStronglyMeasurable (X.stoch_integral t) μ :=
+      ((X.stoch_integral_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
+    have hSs : AEStronglyMeasurable (X.stoch_integral s) μ :=
+      ((X.stoch_integral_adapted s).mono (F.le_ambient s) le_rfl).aestronglyMeasurable
+    exact ((hXt.sub hXs).sub (hSt.sub hSs)).congr
+      (hdecomp.mono fun ω hω => by simp only [D, S, Pi.sub_apply] at hω ⊢; linarith)
+  -- Step 5: D² integrable (bounded on probability space)
+  have hD_sq_int : Integrable (fun ω => D ω ^ 2) μ :=
+    (integrable_const (Mμ ^ 2 * (t - s) ^ 2)).mono' (hD_asm.pow 2)
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        exact hD_sq_bdd ω)
+  -- Step 6: S² integrable
+  have hS_sq_int : Integrable (fun ω => S ω ^ 2) μ := by
+    show Integrable (fun ω => (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2) μ
+    have hSt_sq := X.stoch_integral_sq_integrable t (le_trans hs hst)
+    have hSs_sq := X.stoch_integral_sq_integrable s hs
+    exact ((hSt_sq.add hSs_sq).const_mul 2).mono'
+      (((X.stoch_integral_adapted t).mono (F.le_ambient t) le_rfl |>.aestronglyMeasurable).sub
+        ((X.stoch_integral_adapted s).mono (F.le_ambient s) le_rfl |>.aestronglyMeasurable)
+        |>.pow 2)
+      (ae_of_all _ fun ω => by
+        simp only [Real.norm_eq_abs, Pi.add_apply]
+        rw [abs_of_nonneg (sq_nonneg _)]
+        nlinarith [sq_nonneg (X.stoch_integral t ω + X.stoch_integral s ω)])
+  -- Step 7: E[S²] ≤ Mσ²·(t-s)
+  have hSI := stoch_integral_increment_L2_bound X hMσ s t hs hst
+  -- Step 8: E[D²] ≤ Mμ²·(t-s)²
+  have hE_D_sq : ∫ ω, D ω ^ 2 ∂μ ≤ Mμ ^ 2 * (t - s) ^ 2 := by
+    calc ∫ ω, D ω ^ 2 ∂μ
+        ≤ ∫ ω, (Mμ ^ 2 * (t - s) ^ 2 : ℝ) ∂μ :=
+          integral_mono_of_nonneg (ae_of_all _ fun ω => sq_nonneg _)
+            (integrable_const _) (ae_of_all _ fun ω => hD_sq_bdd ω)
+      _ = Mμ ^ 2 * (t - s) ^ 2 := by
+          simp [integral_const, Measure.real, measure_univ, ENNReal.toReal_one]
+  -- Step 9: Combine via (a+b)² ≤ 2a² + 2b² and split integrals
+  calc ∫ ω, (X.process t ω - X.process s ω) ^ 2 ∂μ
+      ≤ ∫ ω, (2 * D ω ^ 2 + 2 * S ω ^ 2) ∂μ := by
+        apply integral_mono_of_nonneg
+        · exact ae_of_all _ fun ω => sq_nonneg _
+        · exact (hD_sq_int.const_mul 2).add (hS_sq_int.const_mul 2)
+        · filter_upwards [hdecomp] with ω hω
+          rw [hω]; nlinarith [sq_nonneg (D ω - S ω)]
+    _ = 2 * ∫ ω, D ω ^ 2 ∂μ + 2 * ∫ ω, S ω ^ 2 ∂μ := by
+        rw [integral_add (hD_sq_int.const_mul 2) (hS_sq_int.const_mul 2)]
+        rw [integral_const_mul, integral_const_mul]
+    _ ≤ 2 * (Mμ ^ 2 * (t - s) ^ 2) + 2 * (Mσ ^ 2 * (t - s)) :=
+        add_le_add (mul_le_mul_of_nonneg_left hE_D_sq (by norm_num))
+          (mul_le_mul_of_nonneg_left hSI (by norm_num))
+    _ ≤ (2 * Mμ ^ 2 + 2 * Mσ ^ 2) * (t - s) := by
+        have hts_sq : (t - s) ^ 2 ≤ (t - s) := by nlinarith [sub_nonneg.mpr hst]
+        have h := mul_le_mul_of_nonneg_left hts_sq (sq_nonneg Mμ)
+        nlinarith
 
 /-- E[|X(t) - X(s)|⁴] ≤ C · (t - s)² for bounded coefficients. -/
 theorem ito_process_increment_L4_bound {F : Filtration Ω ℝ}

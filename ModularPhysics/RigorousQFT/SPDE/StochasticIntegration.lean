@@ -1370,6 +1370,27 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
       (∫ of non-integrable function = 0). -/
   stoch_integral_sq_integrable : ∀ t : ℝ, t ≥ 0 →
     Integrable (fun ω => (stoch_integral t ω) ^ 2) μ
+  /-- Itô isometry bound: E[|SI(t)-SI(s)|²] ≤ E[∫_s^t σ² du].
+
+      This is the defining property connecting `stoch_integral` to `diffusion`:
+      the quadratic variation of SI on [s,t] is bounded by the L² norm of σ on [s,t].
+
+      In the standard construction, this is an EQUALITY (Itô isometry). The bound
+      suffices for all applications and is easier to verify for specific processes.
+
+      Without this property, `stoch_integral` would be an arbitrary L² martingale
+      with no connection to the diffusion coefficient σ. -/
+  stoch_integral_qv_bound : ∀ s t : ℝ, 0 ≤ s → s ≤ t →
+    ∫ ω, (stoch_integral t ω - stoch_integral s ω) ^ 2 ∂μ ≤
+    ∫ u in Set.Icc s t, (∫ ω, (diffusion u ω) ^ 2 ∂μ) ∂volume
+  /-- The drift is integrable in time for each ω.
+      This ensures the drift integral ∫₀ᵗ μ_s ω ds is meaningful and can be
+      manipulated (split, bounded, etc.) via standard measure theory.
+
+      Without this, `integral_form` uses a possibly-zero integral (by Bochner
+      convention for non-integrable functions), making the drift contribution vacuous. -/
+  drift_time_integrable : ∀ ω (t : ℝ), 0 ≤ t →
+    IntegrableOn (fun s => drift s ω) (Set.Icc 0 t) volume
   /-- The working filtration F is a sub-filtration of the BM's natural filtration.
       This is a compatibility condition: if A ∈ F_s then A ∈ BM.F_s, which allows
       the martingale property (proved w.r.t. BM.F) to imply the F-martingale property.

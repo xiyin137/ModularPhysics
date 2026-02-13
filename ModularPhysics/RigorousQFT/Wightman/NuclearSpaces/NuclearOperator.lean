@@ -9,6 +9,9 @@ import Mathlib.Analysis.InnerProductSpace.LinearMap
 import Mathlib.Analysis.Normed.Operator.Compact
 import Mathlib.Topology.Algebra.InfiniteSum.Basic
 import Mathlib.Topology.Algebra.InfiniteSum.Module
+import Mathlib.Topology.Algebra.InfiniteSum.Constructions
+import Mathlib.Topology.Algebra.InfiniteSum.Order
+import Mathlib.Analysis.Normed.Group.InfiniteSum
 
 /-!
 # Nuclear Operators
@@ -72,6 +75,22 @@ structure NuclearRepresentation (T : E →L[𝕜] F) where
 def IsNuclearOperator (T : E →L[𝕜] F) : Prop :=
   Nonempty (NuclearRepresentation T)
 
+/-! ### Equivalence for combining representations -/
+
+/-- Even/odd interleaving bijection ℕ ⊕ ℕ ≃ ℕ.
+    Maps `inl n ↦ 2n` and `inr n ↦ 2n + 1`. -/
+private def nuclearSumEquiv : ℕ ⊕ ℕ ≃ ℕ where
+  toFun | .inl n => 2 * n | .inr n => 2 * n + 1
+  invFun n := if n % 2 = 0 then .inl (n / 2) else .inr (n / 2)
+  left_inv x := by
+    cases x with
+    | inl n => simp
+    | inr n =>
+      have h : (2 * n + 1) % 2 = 1 := by omega
+      simp [h]; omega
+  right_inv n := by
+    by_cases h : n % 2 = 0 <;> simp [h] <;> omega
+
 /-! ### Basic Properties -/
 
 namespace IsNuclearOperator
@@ -131,13 +150,22 @@ theorem add {S T : E →L[𝕜] F} (hS : IsNuclearOperator S) (hT : IsNuclearOpe
     IsNuclearOperator (S + T) := by
   obtain ⟨repS⟩ := hS
   obtain ⟨repT⟩ := hT
-  -- Interleave: even indices for S, odd indices for T
-  refine ⟨⟨fun n => if n % 2 = 0 then repS.functionals (n / 2) else repT.functionals (n / 2),
-           fun n => if n % 2 = 0 then repS.vectors (n / 2) else repT.vectors (n / 2), ?_, ?_⟩⟩
-  · -- Summability of interleaved norms
-    sorry
-  · -- HasSum for interleaved representation
-    sorry
+  -- Combine representations via the ℕ ⊕ ℕ ≃ ℕ bijection
+  let e := nuclearSumEquiv
+  let fn := Sum.elim repS.functionals repT.functionals ∘ e.symm
+  let vec := Sum.elim repS.vectors repT.vectors ∘ e.symm
+  refine ⟨⟨fn, vec, ?_, ?_⟩⟩
+  · -- Summability: transfer via equiv to ℕ ⊕ ℕ, then use Summable.sum
+    show Summable ((fun i => ‖Sum.elim repS.functionals repT.functionals i‖ *
+      ‖Sum.elim repS.vectors repT.vectors i‖) ∘ e.symm)
+    rw [e.symm.summable_iff]
+    exact Summable.sum _ repS.summable_norms repT.summable_norms
+  · -- HasSum: transfer via equiv to ℕ ⊕ ℕ, then use HasSum.sum
+    intro x
+    show HasSum ((fun i => Sum.elim repS.functionals repT.functionals i x •
+      Sum.elim repS.vectors repT.vectors i) ∘ e.symm) ((S + T) x)
+    rw [e.symm.hasSum_iff, ContinuousLinearMap.add_apply]
+    exact HasSum.sum (repS.hasSum x) (repT.hasSum x)
 
 /-- Nuclear operators are continuous (bounded). This is immediate since
     `NuclearRepresentation` starts from a continuous linear map. -/
@@ -182,14 +210,63 @@ theorem comp_left {G : Type*} [NormedAddCommGroup G] [NormedSpace 𝕜 G]
     simp only [ContinuousLinearMap.map_smul] at hrep
     exact hrep
 
+/-- A rank-1 continuous linear map x ↦ f(x) • y is compact. -/
+private theorem smulRight_isCompactOperator (f : E →L[𝕜] 𝕜) (y : F) :
+    IsCompactOperator (ContinuousLinearMap.smulRight f y) := by
+  -- The compact set: image of closedBall in 𝕜 under (c ↦ c • y)
+  refine ⟨(fun c : 𝕜 => c • y) '' Metric.closedBall 0 ‖f‖, ?_, ?_⟩
+  · -- Image of compact under continuous is compact
+    exact (isCompact_closedBall 0 ‖f‖).image (continuous_id.smul continuous_const)
+  · -- Preimage contains ball 0 1
+    apply Filter.mem_of_superset (Metric.ball_mem_nhds 0 one_pos)
+    intro x hx
+    rw [Metric.mem_ball, dist_zero_right] at hx
+    simp only [Set.mem_preimage, ContinuousLinearMap.smulRight_apply]
+    exact Set.mem_image_of_mem _ (Metric.mem_closedBall.mpr (by
+      rw [dist_zero_right]
+      exact (f.le_opNorm x).trans (mul_le_of_le_one_right (norm_nonneg f) hx.le)))
+
 /-- Nuclear operators are compact.
 
     Proof: A nuclear operator T = Σₙ fₙ ⊗ yₙ is the norm-limit of finite-rank operators
     Tₖ = Σₙ≤ₖ fₙ ⊗ yₙ. Since finite-rank operators are compact and compact operators
     form a closed set, T is compact. -/
-theorem isCompactOperator {T : E →L[𝕜] F} (hT : IsNuclearOperator T) :
+theorem isCompactOperator [CompleteSpace F] {T : E →L[𝕜] F} (hT : IsNuclearOperator T) :
     IsCompactOperator T := by
-  sorry
+  obtain ⟨rep⟩ := hT
+  -- Define the rank-1 operators
+  let T_n : ℕ → (E →L[𝕜] F) := fun n =>
+    ContinuousLinearMap.smulRight (rep.functionals n) (rep.vectors n)
+  -- Step 1: Show the norm series Σ ‖T_n‖ is summable
+  have hnorm_sum : Summable (fun n => ‖T_n n‖) := by
+    apply Summable.of_nonneg_of_le (fun n => norm_nonneg _)
+    · intro n
+      exact ContinuousLinearMap.opNorm_le_bound _ (mul_nonneg (norm_nonneg _) (norm_nonneg _))
+        (fun x => by
+          rw [ContinuousLinearMap.smulRight_apply, norm_smul]
+          calc ‖rep.functionals n x‖ * ‖rep.vectors n‖
+              ≤ (‖rep.functionals n‖ * ‖x‖) * ‖rep.vectors n‖ :=
+                mul_le_mul_of_nonneg_right ((rep.functionals n).le_opNorm x) (norm_nonneg _)
+            _ = ‖rep.functionals n‖ * ‖rep.vectors n‖ * ‖x‖ := by ring)
+    · exact rep.summable_norms
+  have hsum : Summable T_n := hnorm_sum.of_norm
+  -- Step 2: Show ∑' T_n = T
+  have heq : ∑' n, T_n n = T := by
+    ext x
+    have h1 : HasSum (fun n => (ContinuousLinearMap.apply 𝕜 F x) (T_n n))
+        ((ContinuousLinearMap.apply 𝕜 F x) (∑' n, T_n n)) :=
+      hsum.hasSum.mapL (ContinuousLinearMap.apply 𝕜 F x)
+    simp only [ContinuousLinearMap.apply_apply] at h1
+    have h2 : HasSum (fun n => T_n n x) (T x) := rep.hasSum x
+    exact h1.unique h2
+  -- Step 3: Apply isCompactOperator_of_tendsto (compact ops are closed)
+  rw [← heq]
+  apply isCompactOperator_of_tendsto hsum.hasSum.tendsto_sum_nat
+  -- Step 4: Each partial sum is compact (finite sum of rank-1 compact operators)
+  filter_upwards with k
+  exact (Finset.range k).sum_induction T_n (fun f : E →L[𝕜] F => IsCompactOperator f)
+    (fun _ _ ha hb => ha.add hb) isCompactOperator_zero
+    (fun n _ => smulRight_isCompactOperator (rep.functionals n) (rep.vectors n))
 
 end IsNuclearOperator
 
@@ -222,11 +299,22 @@ theorem nuclearNorm_nonneg {T : E →L[𝕜] F} (hT : IsNuclearOperator T) :
 theorem opNorm_le_nuclearNorm {T : E →L[𝕜] F} (hT : IsNuclearOperator T) :
     ‖T‖ ≤ nuclearNorm T := by
   have hne : Nonempty (NuclearRepresentation T) := hT
-  apply ContinuousLinearMap.opNorm_le_bound _ (nuclearNorm_nonneg hT)
+  -- Strategy: show ‖T‖ ≤ rep.cost for EACH representation, then take iInf
+  suffices h : ∀ rep : NuclearRepresentation T, ‖T‖ ≤ rep.cost by
+    exact le_ciInf h
+  intro rep
+  apply ContinuousLinearMap.opNorm_le_bound _ rep.cost_nonneg
   intro x
-  -- For any representation, ‖Tx‖ ≤ (Σₙ ‖fₙ‖ · ‖yₙ‖) · ‖x‖
-  -- Taking inf over representations gives ‖Tx‖ ≤ ‖T‖₁ · ‖x‖
-  sorry
+  -- ‖T x‖ ≤ rep.cost * ‖x‖ via direct norm bound
+  have hhs := rep.hasSum x
+  rw [hhs.tsum_eq.symm]
+  -- Use tsum_of_norm_bounded: ‖Σ fₙ(x) • yₙ‖ ≤ Σ (‖fₙ‖ * ‖yₙ‖ * ‖x‖) = rep.cost * ‖x‖
+  exact tsum_of_norm_bounded (rep.summable_norms.hasSum.mul_right ‖x‖) (fun n => by
+    rw [norm_smul]
+    calc ‖rep.functionals n x‖ * ‖rep.vectors n‖
+        ≤ ‖rep.functionals n‖ * ‖x‖ * ‖rep.vectors n‖ :=
+          mul_le_mul_of_nonneg_right ((rep.functionals n).le_opNorm x) (norm_nonneg _)
+      _ = ‖rep.functionals n‖ * ‖rep.vectors n‖ * ‖x‖ := by ring)
 
 /-! ### Nuclear Operators on Hilbert Spaces -/
 
