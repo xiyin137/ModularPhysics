@@ -7,28 +7,27 @@ import Mathlib.Data.Complex.Basic
 
 namespace ModularPhysics.Core.QFT.Smatrix
 
-open SpaceTime Complex Wightman Quantum
+open SpaceTime Complex
 
 set_option linter.unusedVariables false
 
-/- ============================================================================
-   HAAG-RUELLE SCATTERING THEORY
+/-!
+# Haag-Ruelle Scattering Theory
 
-   The Haag-Ruelle theory provides a rigorous, non-perturbative construction
-   of asymptotic particle states and the S-matrix in relativistic QFT.
+The Haag-Ruelle theory provides a rigorous, non-perturbative construction
+of asymptotic particle states and the S-matrix in relativistic QFT.
 
-   Key features:
-   1. NO interaction picture (which doesn't exist non-perturbatively)
-   2. NO adiabatic switching (unphysical and leads to IR divergences)
-   3. Constructs asymptotic states directly from interacting field operators
-   4. Requires only Wightman axioms + mass gap + cluster decomposition
+## Key features:
+1. **NO interaction picture** (which doesn't exist non-perturbatively)
+2. **NO adiabatic switching** (unphysical and leads to IR divergences)
+3. Constructs asymptotic states directly from interacting field operators
+4. Requires only Wightman axioms + mass gap + cluster decomposition
 
-   References:
-   - Haag, "Quantum Field Theories with Composite Particles" (1958)
-   - Ruelle, "On the Asymptotic Condition in Quantum Field Theory" (1962)
-   - Hepp, "On the Connection between Wightman and LSZ Quantum Field Theory" (1966)
-   - Araki, "Hamiltonian Formalism and the Canonical Commutation Relations" (1960)
-   ============================================================================ -/
+## References:
+- Haag, "Quantum Field Theories with Composite Particles" (1958)
+- Ruelle, "On the Asymptotic Condition in Quantum Field Theory" (1962)
+- Hepp, "On the Connection between Wightman and LSZ QFT" (1966)
+-/
 
 /- ============= WAVE PACKETS WITH ENERGY-MOMENTUM SMEARING ============= -/
 
@@ -62,222 +61,155 @@ structure PositionSpaceSmearing where
   /-- Amplitude bound -/
   amplitude_bound : ∀ x : Fin 3 → ℝ, ‖g x‖ ≤ support_radius
 
-/- ============= SMEARED FIELD OPERATORS ============= -/
+/- ============= HAAG-RUELLE THEORY DATA ============= -/
 
-/-- Smeared field operator φ(f,t) = ∫ d³x f(x⃗) φ(x⃗,t)
+/-- Complete Haag-Ruelle scattering theory data.
 
-    This is the field operator smeared in space at fixed time t.
-    For wave packet f peaked at momentum p⃗, φ(f,t) approximately
-    creates/annihilates a particle with momentum p⃗ at time t. -/
-axiom smearedFieldAtTime {H : Type _} [QuantumStateSpace H]
-  (phi : FieldDistribution H 4)
-  (f : PositionSpaceSmearing)
-  (t : ℝ) :
-  (H → H)
+    Given a relativistic QFT with mass gap, the Haag-Ruelle construction
+    produces asymptotic particle states and the S-matrix non-perturbatively.
 
-/-- Time evolution operator for smeared fields -/
-axiom time_evolved : ∀ {H : Type _}, (H → H) → ℝ → (H → H)
+    The Hilbert space `H` is the interacting QFT Hilbert space
+    (with norm `‖·‖` and scalar multiplication `•` from typeclasses).
 
-/-- Time-translated smeared field U(t) φ(f,0) U†(t) = φ(f,t)
+    This structure bundles:
+    - Smeared field operations and time evolution
+    - Haag-Ruelle creation/annihilation operators
+    - Asymptotic limits (existence as strong operator limits)
+    - Canonical commutation relations for asymptotic operators
+    - Fock space structure and Møller operators
+    - S-matrix with unitarity and cluster decomposition
+    - Asymptotic completeness -/
+structure HaagRuelleData (H : Type*) [NormedAddCommGroup H] [Module ℂ H] where
+  /-- Mass of the stable particle -/
+  mass : ℝ
+  /-- Mass gap: particle mass is positive -/
+  mass_positive : mass > 0
+  /-- Inner product on the interacting Hilbert space -/
+  inner_H : H → H → ℂ
 
-    where U(t) = e^{-iHt} is the time evolution operator. -/
-axiom time_translation {H : Type _} [QuantumStateSpace H]
-  (phi : FieldDistribution H 4)
-  (f : PositionSpaceSmearing)
-  (t s : ℝ) :
-  smearedFieldAtTime phi f (t + s) =
-    time_evolved (smearedFieldAtTime phi f t) s
+  /- === Smeared field operations === -/
 
-/- ============= HAAG-RUELLE CREATION OPERATORS ============= -/
+  /-- Smeared field operator φ(f,t) = ∫ d³x f(x⃗) φ(x⃗,t)
 
-/-- Haag-Ruelle approximation to creation operator a†(p⃗)
+      This is the field operator smeared in space at fixed time t.
+      For wave packet f peaked at momentum p⃗, φ(f,t) approximately
+      creates/annihilates a particle with momentum p⃗ at time t. -/
+  smearedFieldAtTime : PositionSpaceSmearing → ℝ → (H → H)
+  /-- Time evolution operator U(t) = e^{-iHt} -/
+  time_evolved : (H → H) → ℝ → (H → H)
+  /-- Time translation: U(s) φ(f,t) U†(s) = φ(f,t+s) -/
+  time_translation : ∀ (f : PositionSpaceSmearing) (t s : ℝ),
+    smearedFieldAtTime f (t + s) = time_evolved (smearedFieldAtTime f t) s
 
-    For a wave packet f peaked at momentum p⃗ with velocity v⃗ = p⃗/E,
-    consider the smeared field at time t in a boosted frame:
+  /- === Haag-Ruelle creation/annihilation operators === -/
 
-    A†(f,t) := ∫ d³x f(x⃗ - v⃗t) φ(x⃗,t)
+  /-- Haag-Ruelle approximation to creation operator a†(p⃗)
 
-    As t → -∞ (for in-states) or t → +∞ (for out-states),
-    this becomes a true creation operator for asymptotic particles.
+      A†(f,t) := ∫ d³x f(x⃗ - v⃗t) φ(x⃗,t) where v⃗ = p⃗/E.
+      As t → ±∞, this becomes a true creation operator for
+      asymptotic particles. The wave packet moves with velocity v⃗,
+      so at large |t| it's far from the interaction region. -/
+  haagRuelleCreation : MomentumSpaceWavePacket mass → ℝ → (H → H)
+  /-- Haag-Ruelle annihilation operator (adjoint of creation) -/
+  haagRuelleAnnihilation : MomentumSpaceWavePacket mass → ℝ → (H → H)
 
-    Key idea: The wave packet moves with velocity v⃗, so at large |t|
-    it's far from the interaction region and behaves like a free particle. -/
-noncomputable def haagRuelleCreation {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (f : MomentumSpaceWavePacket m)
-    (t : ℝ) :
-  (H → H) :=
-  sorry  -- ∫ d³x f_boosted(x⃗,t) φ(x⃗,t) where f_boosted accounts for velocity
+  /- === Asymptotic limits (Haag-Ruelle theorem) === -/
 
-/-- Haag-Ruelle annihilation operator (adjoint of creation) -/
-noncomputable def haagRuelleAnnihilation {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (f : MomentumSpaceWavePacket m)
-    (t : ℝ) :
-  (H → H) :=
-  sorry  -- Adjoint of haagRuelleCreation
+  /-- Asymptotic in-creation operator: a_in†(f) := s-lim_{t → -∞} A†(f,t)
 
-/- ============= ASYMPTOTIC LIMITS (HAAG-RUELLE THEOREM) ============= -/
+      THEOREM (Haag-Ruelle): Under mass gap + cluster decomposition,
+      this strong operator limit exists. The convergence is:
+      ‖A†(f,t)ψ - a_in†(f)ψ‖ → 0 as t → -∞ for all ψ ∈ ℋ. -/
+  asymptotic_in_creation : ∀ (f : MomentumSpaceWavePacket mass),
+    ∃ (a_in_dag : H → H),
+      ∀ (ψ : H) (ε : ℝ), ε > 0 →
+        ∃ (T : ℝ), T < 0 ∧ ∀ t : ℝ, t < T →
+          ‖haagRuelleCreation f t ψ - a_in_dag ψ‖ < ε
+  /-- Asymptotic out-creation operator (t → +∞) -/
+  asymptotic_out_creation : ∀ (f : MomentumSpaceWavePacket mass),
+    ∃ (a_out_dag : H → H),
+      ∀ (ψ : H) (ε : ℝ), ε > 0 →
+        ∃ (T : ℝ), T > 0 ∧ ∀ t : ℝ, t > T →
+          ‖haagRuelleCreation f t ψ - a_out_dag ψ‖ < ε
 
-/-- Haag-Ruelle asymptotic in-creation operator
+  /- === Canonical commutation relations === -/
 
-    a_in†(f) := s-lim_{t → -∞} A†(f,t)
+  /-- Asymptotic in-operators satisfy CCR: [a_in(f), a_in†(g)] = ⟨f|g⟩ · I
 
-    where s-lim is the strong operator limit on the Hilbert space.
+      This means asymptotic in-states form a Fock space of free particles! -/
+  asymptotic_in_ccr : ∀ (f g : MomentumSpaceWavePacket mass)
+    (a_in_f a_in_dag_g : H → H),
+    ∃ (inner_product : ℂ),
+      ∀ (ψ : H),
+        (a_in_f ∘ a_in_dag_g) ψ - (a_in_dag_g ∘ a_in_f) ψ =
+          inner_product • ψ
+  /-- Asymptotic out-operators satisfy CCR -/
+  asymptotic_out_ccr : ∀ (f g : MomentumSpaceWavePacket mass)
+    (a_out_f a_out_dag_g : H → H),
+    ∃ (inner_product : ℂ),
+      ∀ (ψ : H),
+        (a_out_f ∘ a_out_dag_g) ψ - (a_out_dag_g ∘ a_out_f) ψ =
+          inner_product • ψ
 
-    THEOREM (Haag-Ruelle): Under assumptions (mass gap, cluster decomposition),
-    this limit exists and creates a genuine asymptotic particle state.
+  /- === Fock spaces and Møller operators === -/
 
-    The convergence is in the strong operator topology:
-    ‖A†(f,t)ψ - a_in†(f)ψ‖ → 0 as t → -∞ for all ψ ∈ ℋ. -/
-axiom asymptotic_in_creation {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (f : MomentumSpaceWavePacket m)
-    (h_mass_gap : m > 0) :
-  ∃ (a_in_dag : H → H),
-    -- Strong operator convergence: for any ψ and ε, the limit is achieved
-    ∀ (ψ : H) (ε : ℝ), ε > 0 →
-      ∃ (T : ℝ), T < 0 ∧ ∀ t : ℝ, t < T →
-        -- The Haag-Ruelle creation operator converges to a_in_dag
-        ‖haagRuelleCreation phi f t ψ - a_in_dag ψ‖ < ε
+  /-- Asymptotic in-Fock space: ℱ_in = ℂ|0⟩ ⊕ ⨁_{n≥1} ℋ_n
 
-/-- Haag-Ruelle asymptotic out-creation operator (t → +∞) -/
-axiom asymptotic_out_creation {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (f : MomentumSpaceWavePacket m)
-    (h_mass_gap : m > 0) :
-  ∃ (a_out_dag : H → H),
-    ∀ (ψ : H) (ε : ℝ), ε > 0 →
-      ∃ (T : ℝ), T > 0 ∧ ∀ t : ℝ, t > T →
-        ‖haagRuelleCreation phi f t ψ - a_out_dag ψ‖ < ε
+      Built from asymptotic in-creation operators.
+      Isomorphic to a free particle Hilbert space. -/
+  InFock : Type*
+  /-- Asymptotic out-Fock space -/
+  OutFock : Type*
+  /-- Inner product on in-Fock space -/
+  inner_on_in_fock : InFock → InFock → ℂ
+  /-- Inner product on out-Fock space -/
+  inner_on_out_fock : OutFock → OutFock → ℂ
+  /-- Møller wave operator Ω₊ : ℱ_in → ℋ
 
-/- ============= ASYMPTOTIC CANONICAL COMMUTATION RELATIONS ============= -/
+      Maps asymptotic in-states to interacting states.
+      This is an isometry (preserves inner product). -/
+  moller_wave_in : InFock → H
+  /-- Møller wave operator Ω₋ : ℱ_out → ℋ -/
+  moller_wave_out : OutFock → H
+  /-- Ω₊ is an isometry -/
+  moller_wave_in_isometry : ∀ (ψ φ : InFock),
+    inner_H (moller_wave_in ψ) (moller_wave_in φ) = inner_on_in_fock ψ φ
 
-/-- Asymptotic operators satisfy canonical commutation relations
+  /- === S-matrix === -/
 
-    [a_in(f), a_in†(g)] = ⟨f|g⟩ · I
+  /-- S-matrix: ℱ_in → ℱ_out, defined by S = Ω₋† Ω₊
 
-    where ⟨f|g⟩ = ∫ d³p/(2E_p) f̄(p⃗) g(p⃗)
+      S maps in-states to out-states:
+      |p₁,...,pₙ,out⟩ = S |p₁,...,pₙ,in⟩
 
-    This means asymptotic in-states form a Fock space of free particles! -/
-axiom asymptotic_in_ccr {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (f g : MomentumSpaceWavePacket m)
-    (a_in_f a_in_dag_g : H → H) :
-  ∃ (inner_product : ℂ),
-    ∀ (ψ : H),
-      (a_in_f ∘ a_in_dag_g) ψ - (a_in_dag_g ∘ a_in_f) ψ =
-        inner_product • ψ
+      This is the rigorous, non-perturbative definition. -/
+  smatrix : InFock → OutFock
+  /-- S-matrix is unitary (from isometry of Møller operators) -/
+  smatrix_unitary : ∀ (ψ φ : InFock),
+    inner_H (moller_wave_out (smatrix ψ)) (moller_wave_out (smatrix φ)) =
+    inner_H (moller_wave_in ψ) (moller_wave_in φ)
+  /-- S-matrix cluster decomposition: factorizes for separated groups -/
+  smatrix_cluster : ∀ (n k : ℕ) (_ : k < n),
+    ∀ (ε : ℝ), ε > 0 →
+      ∃ (R_min : ℝ), R_min > 0 ∧
+        ∀ (separation : ℝ), separation > R_min →
+          ∃ (S_combined S_1 S_2 : ℂ), ‖S_combined - S_1 * S_2‖ < ε
 
-/-- Similarly for out-states -/
-axiom asymptotic_out_ccr {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (f g : MomentumSpaceWavePacket m)
-    (a_out_f a_out_dag_g : H → H) :
-  ∃ (inner_product : ℂ),
-    ∀ (ψ : H),
-      (a_out_f ∘ a_out_dag_g) ψ - (a_out_dag_g ∘ a_out_f) ψ =
-        inner_product • ψ
+  /- === Completeness and cluster property === -/
 
-/- ============= ASYMPTOTIC FOCK SPACE ============= -/
+  /-- Cluster property: correlation functions factorize at large separations.
+      This follows from Wightman cluster decomposition axiom. -/
+  cluster_property : ∀ (n m : ℕ) (ε : ℝ), ε > 0 →
+    ∃ (R : ℝ), R > 0
+  /-- Asymptotic completeness: every state is scattering or bound.
 
-/-- Asymptotic in-Fock space: Free particle Hilbert space
-
-    ℱ_in = ℂ |0⟩ ⊕ ⨁_{n=1}^∞ ℋ_n
-
-    where ℋ_n is the n-particle Hilbert space built from a_in†.
-
-    This is isomorphic to InHilbert from AsymptoticStates.lean. -/
-axiom asymptoticInFock {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ) :
-  Type _
-
-/-- Møller wave operator Ω₊: ℱ_in → ℋ
-
-    Ω₊ maps asymptotic in-states to interacting states in ℋ.
-    It is an isometry (preserves inner product).
-
-    This is the rigorous definition of moller_in from AsymptoticStates.lean. -/
-axiom moller_wave_in {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ) :
-  asymptoticInFock phi m → HilbertSpace
-
-/-- Inner product on asymptotic Fock space -/
-axiom inner_on_fock {H : Type _} [QuantumStateSpace H]
-  (phi : FieldDistribution H 4) (m : ℝ) :
-  asymptoticInFock phi m → asymptoticInFock phi m → ℂ
-
-/-- Møller wave operator is an isometry -/
-axiom moller_wave_in_isometry {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (ψ φ : asymptoticInFock phi m) :
-  innerProduct (moller_wave_in phi m ψ) (moller_wave_in phi m φ) =
-    inner_on_fock phi m ψ φ
-
-/-- Similarly for out-states -/
-axiom asymptoticOutFock {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ) :
-  Type _
-
-axiom moller_wave_out {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ) :
-  asymptoticOutFock phi m → HilbertSpace
-
-/- ============= S-MATRIX (HAAG-RUELLE DEFINITION) ============= -/
-
-/-- S-matrix: ℱ_in → ℱ_out defined by S = Ω₋† Ω₊
-
-    S maps in-states to out-states:
-    |p₁,...,pₙ,out⟩ = S |p₁,...,pₙ,in⟩
-
-    This is the rigorous, non-perturbative definition of the S-matrix.
-
-    Physically: prepare system in state |ψ,in⟩ at t → -∞,
-    let it evolve, measure at t → +∞ to find S|ψ,in⟩. -/
-axiom smatrixOperator {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ) :
-  asymptoticInFock phi m → asymptoticOutFock phi m
-
-/-- S-matrix is unitary (from isometry of Møller operators) -/
-axiom smatrix_unitary {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (ψ φ : asymptoticInFock phi m) :
-  innerProduct
-    (moller_wave_out phi m (smatrixOperator phi m ψ))
-    (moller_wave_out phi m (smatrixOperator phi m φ)) =
-  innerProduct
-    (moller_wave_in phi m ψ)
-    (moller_wave_in phi m φ)
-
-/-- Cluster decomposition for S-matrix
-
-    For widely separated particle groups, S-matrix factorizes:
-    S(p₁,...,pₙ; p'₁,...,p'ₙ) → S(p₁,...,pₖ) · S(pₖ₊₁,...,pₙ)
-
-    when particles 1,...,k are far from k+1,...,n.
-
-    This follows from the cluster decomposition of Wightman functions. -/
-axiom smatrix_cluster {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
-    (n k : ℕ)
-    (h : k < n) :
-  -- For any separation distance, the S-matrix approximately factorizes
-  ∀ (ε : ℝ), ε > 0 →
-    ∃ (R_min : ℝ), R_min > 0 ∧
-      ∀ (separation : ℝ), separation > R_min →
-        ∃ (S_combined S_1 S_2 : ℂ), ‖S_combined - S_1 * S_2‖ < ε
+      ℋ = Range(Ω₊) ⊕ ℋ_bound
+      Either ψ can be approximated by scattering states,
+      or ψ is orthogonal to all scattering states (bound state). -/
+  completeness : ∀ (ψ : H) (ε : ℝ), ε > 0 →
+    (∃ (φ_in : InFock),
+      ‖inner_H ψ ψ‖ - ‖inner_H ψ (moller_wave_in φ_in)‖ < ε) ∨
+    (∀ (φ_in : InFock), inner_H ψ (moller_wave_in φ_in) = 0)
 
 /- ============= CONNECTION TO LSZ ============= -/
 
@@ -288,60 +220,13 @@ axiom smatrix_cluster {H : Type _} [QuantumStateSpace H]
 
     This is the consistency check: both methods give the same S-matrix,
     but Haag-Ruelle is more rigorous (no perturbation theory assumptions). -/
-theorem haag_ruelle_equals_lsz {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ)
+theorem haag_ruelle_equals_lsz {H : Type*} [NormedAddCommGroup H] [Module ℂ H]
+    (hr : HaagRuelleData H)
     (n k : ℕ)
-    (p_in : Fin n → OnShellMomentum m)
-    (p_out : Fin k → OnShellMomentum m) :
+    (p_in : Fin n → OnShellMomentum hr.mass)
+    (p_out : Fin k → OnShellMomentum hr.mass) :
   ∃ (S_haag_ruelle S_lsz : ℂ),
     S_haag_ruelle = S_lsz := by
   sorry
-
-/- ============= VALIDITY REQUIREMENTS ============= -/
-
-/-- Structure for Haag-Ruelle mass gap theory -/
-structure HaagRuelleMassGapTheory where
-  /-- Mass gap condition -/
-  haag_ruelle_mass_gap : ∀ (m : ℝ), m > 0
-
-/-- Haag-Ruelle mass gap theory axiom -/
-axiom haagRuelleMassGapTheoryD : HaagRuelleMassGapTheory
-
-/-- Mass gap condition (essential for Haag-Ruelle)
-
-    The theory must have an isolated one-particle state with mass m > 0,
-    separated from the multi-particle continuum by a gap.
-
-    Without this, the asymptotic limits don't exist. -/
-theorem haag_ruelle_mass_gap (m : ℝ) : m > 0 :=
-  haagRuelleMassGapTheoryD.haag_ruelle_mass_gap m
-
-/-- Cluster decomposition (essential for factorization)
-
-    Ensures distant systems decouple, required for S-matrix to factorize.
-    This follows from the Wightman cluster decomposition axiom. -/
-axiom haag_ruelle_cluster_property {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4) :
-  -- Correlation functions factorize at large separations
-  ∀ (n m : ℕ) (ε : ℝ), ε > 0 →
-    ∃ (R : ℝ), R > 0  -- Cluster property holds beyond separation R
-
-/-- Asymptotic completeness
-
-    Every state in ℋ can be approximated by scattering states.
-    Bound states (if any) live in the orthogonal complement to Range(Ω₊).
-
-    More precisely: ℋ = Range(Ω₊) ⊕ ℋ_bound where ℋ_bound contains only
-    bound states (if any exist in the theory). -/
-axiom haag_ruelle_completeness {H : Type _} [QuantumStateSpace H]
-    (phi : FieldDistribution H 4)
-    (m : ℝ) :
-  ∀ (ψ : HilbertSpace) (ε : ℝ), ε > 0 →
-    -- Either ψ can be approximated by scattering states...
-    (∃ (φ_in : asymptoticInFock phi m),
-      ‖innerProduct ψ ψ‖ - ‖innerProduct ψ (moller_wave_in phi m φ_in)‖ < ε) ∨
-    -- ...or ψ is orthogonal to all scattering states (bound state)
-    (∀ (φ_in : asymptoticInFock phi m), innerProduct ψ (moller_wave_in phi m φ_in) = 0)
 
 end ModularPhysics.Core.QFT.Smatrix

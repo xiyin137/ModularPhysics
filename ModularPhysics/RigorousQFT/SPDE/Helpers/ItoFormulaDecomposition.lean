@@ -409,9 +409,10 @@ theorem ito_process_increment_L2_bound {F : Filtration Ω ℝ}
 theorem stoch_integral_increment_L4_integrable {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
     Integrable (fun ω => (X.stoch_integral t ω - X.stoch_integral s ω)^4) μ :=
-  stoch_integral_increment_L4_integrable_proof X s t hs hst
+  stoch_integral_increment_L4_integrable_proof X hMσ s t hs hst
 
 /-- E[(SI(t) - SI(s))⁴] ≤ 3 Mσ⁴ (t - s)² for bounded diffusion.
     This is a consequence of the BDG inequality / quartic moment bound for
@@ -497,7 +498,7 @@ theorem ito_process_increment_L4_bound {F : Filtration Ω ℝ}
         exact hD_fourth_bdd ω)
   -- Step 5: S⁴ integrable (from helper)
   have hS_fourth_int : Integrable (fun ω => S ω ^ 4) μ :=
-    stoch_integral_increment_L4_integrable X s t hs hst
+    stoch_integral_increment_L4_integrable X hMσ s t hs hst
   -- Step 6: E[D⁴] ≤ Mμ⁴·(t-s)⁴
   have hE_D4 : ∫ ω, D ω ^ 4 ∂μ ≤ Mμ ^ 4 * (t - s) ^ 4 := by
     calc ∫ ω, D ω ^ 4 ∂μ

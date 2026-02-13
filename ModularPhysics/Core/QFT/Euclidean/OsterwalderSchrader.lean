@@ -33,19 +33,37 @@ def combinePoints {d : ℕ} {n m : ℕ}
 
 /- ============= OSTERWALDER-SCHRADER AXIOMS ============= -/
 
-/-- Structure for Osterwalder-Schrader axiom theory -/
-structure OsterwalderSchraderAxiomTheory where
+/-- The Osterwalder-Schrader axioms for a Euclidean QFT.
+    A QFT satisfying these axioms can be analytically continued to a
+    relativistic Wightman QFT via the OS reconstruction theorem.
+
+    The axioms are:
+    - E1: Euclidean covariance (rotations + translations)
+    - E2: Reflection positivity (crucial for unitarity!)
+    - E3: Permutation symmetry (already in QFT structure)
+    - E4: Cluster property (factorization at large separation)
+    - E5: Growth bound (added in 1975 follow-up) -/
+structure OSAxioms {d : ℕ} [NeZero d] (theory : QFT d) where
   /-- OS Axiom E1: Euclidean covariance (rotation + translation invariance) -/
-  euclidean_covariance : ∀ {d : ℕ} (theory : QFT d) (n : ℕ)
+  euclidean_covariance : ∀ (n : ℕ)
     (rotation : Fin d → Fin d → ℝ)
     (h_orthogonal : IsOrthogonal rotation)
     (translation : EuclideanPoint d)
     (points : Fin n → EuclideanPoint d),
     theory.schwinger n points =
     theory.schwinger n (fun i μ => translation μ + ∑ ν, rotation μ ν * points i ν)
-  /-- OS Axiom E2: Reflection positivity (crucial for unitarity!) -/
-  reflection_positivity : ∀ {d : ℕ} [NeZero d] (theory : QFT d)
-    (n : ℕ)
+  /-- OS Axiom E2: Reflection positivity (crucial for unitarity!)
+
+      For any finite set of test functions {fᵢ} with support in the upper half-space
+      (x₀ ≥ 0), the quadratic form must be non-negative:
+      ∑ᵢⱼ f̄ᵢ(xᵢ) fⱼ(xⱼ) S(xᵢ, θ(xⱼ)) ≥ 0
+
+      where θ is time reflection: θ(x₀, x) = (-x₀, x).
+
+      SIMPLIFICATION: This formulation only checks the 2-point function S₂(xᵢ, θxⱼ).
+      The full OS axiom requires positivity for all n-point functions with arbitrary
+      field insertions in the upper half-space. -/
+  reflection_positivity : ∀ (n : ℕ)
     (points : Fin n → EuclideanPoint d)
     (h_upper : ∀ i, points i 0 ≥ 0)
     (coeffs : Fin n → ℝ),
@@ -53,7 +71,7 @@ structure OsterwalderSchraderAxiomTheory where
       coeffs i * coeffs j *
       theory.schwinger 2 (fun k => if k = 0 then points i else timeReflection (points j)) ≥ 0
   /-- OS Axiom E4: Cluster property (factorization at large separation) -/
-  cluster_property : ∀ {d : ℕ} (theory : QFT d) (n m : ℕ)
+  cluster_property : ∀ (n m : ℕ)
     (points_x : Fin n → EuclideanPoint d)
     (points_y : Fin m → EuclideanPoint d)
     (separation : EuclideanPoint d),
@@ -62,90 +80,16 @@ structure OsterwalderSchraderAxiomTheory where
       let combined := combinePoints points_x shifted_y
       |theory.schwinger (n + m) combined -
        theory.schwinger n points_x * theory.schwinger m shifted_y| < ε
-  /-- OS Axiom E5: Growth bound on n-point functions -/
-  multipoint_growth_bound : ∀ {d : ℕ} (theory : QFT d),
+  /-- OS Axiom E5: Growth bound on n-point functions (added in OS 1975 follow-up).
+
+      This is the crucial condition that was missing in the original 1973 paper.
+      It ensures convergence of the GNS construction in the reconstruction theorem.
+
+      The n-point Schwinger functions must satisfy a growth bound of the form:
+      |S_n(x₁,...,xₙ)| ≤ C^n · n!^α · (1 + ∑ᵢ |xᵢ|)^β -/
+  multipoint_growth_bound :
     ∃ (C α β : ℝ), C > 0 ∧ ∀ (n : ℕ) (points : Fin n → EuclideanPoint d),
       |theory.schwinger n points| ≤
         rpow C (n : ℝ) * rpow (Nat.factorial n : ℝ) α * rpow (1 + ∑ i, ‖points i‖) β
-
-/-- Osterwalder-Schrader axiom theory holds -/
-axiom osterwalderSchraderAxiomTheoryD : OsterwalderSchraderAxiomTheory
-
-/-- OS Axiom E1: Euclidean covariance (rotation + translation invariance).
-    The Schwinger functions are invariant under Euclidean transformations. -/
-theorem euclidean_covariance {d : ℕ} (theory : QFT d) (n : ℕ)
-  (rotation : Fin d → Fin d → ℝ)
-  (h_orthogonal : IsOrthogonal rotation)
-  (translation : EuclideanPoint d) :
-  ∀ (points : Fin n → EuclideanPoint d),
-    theory.schwinger n points =
-    theory.schwinger n (fun i μ => translation μ + ∑ ν, rotation μ ν * points i ν) :=
-  fun points => osterwalderSchraderAxiomTheoryD.euclidean_covariance theory n rotation h_orthogonal translation points
-
-/-- OS Axiom E2: Reflection positivity (crucial for unitarity!).
-
-    For any finite set of test functions {fᵢ} with support in the upper half-space
-    (x₀ ≥ 0), the quadratic form must be non-negative:
-
-    ∑ᵢⱼ f̄ᵢ(xᵢ) fⱼ(xⱼ) S(xᵢ, θ(xⱼ)) ≥ 0
-
-    where θ is time reflection: θ(x₀, x) = (-x₀, x).
-
-    This is the key axiom ensuring that the reconstructed Hilbert space has
-    positive-definite inner product (unitarity of the quantum theory).
-
-    SIMPLIFICATION: This formulation only checks the 2-point function S₂(xᵢ, θxⱼ).
-    The full OS axiom requires positivity for all n-point functions with arbitrary
-    field insertions in the upper half-space. For a complete formalization, one would
-    need: ∑ᵢⱼ c̄ᵢ cⱼ S_{nᵢ+nⱼ}(f̄ᵢ, θfⱼ) ≥ 0 for sequences of smeared insertions. -/
-theorem reflection_positivity {d : ℕ} [NeZero d] (theory : QFT d)
-  (n : ℕ)
-  (points : Fin n → EuclideanPoint d)
-  (h_upper : ∀ i, points i 0 ≥ 0)
-  (coeffs : Fin n → ℝ) :
-  ∑ i : Fin n, ∑ j : Fin n,
-    coeffs i * coeffs j *
-    theory.schwinger 2 (fun k => if k = 0 then points i else timeReflection (points j)) ≥ 0 :=
-  osterwalderSchraderAxiomTheoryD.reflection_positivity theory n points h_upper coeffs
-
-/-- OS Axiom E4: Cluster property (factorization at large separation).
-
-    When two clusters of points are separated by a large distance,
-    correlations factorize into products of lower-point functions:
-
-    S_{n+m}(x₁...xₙ, y₁+a·v...yₘ+a·v) → S_n(x₁...xₙ) · S_m(y₁...yₘ) as a → ∞
-
-    This expresses that widely separated subsystems are independent. -/
-theorem cluster_property {d : ℕ} (theory : QFT d) (n m : ℕ)
-  (points_x : Fin n → EuclideanPoint d)
-  (points_y : Fin m → EuclideanPoint d)
-  (separation : EuclideanPoint d) :
-  ∀ ε > 0, ∃ R : ℝ, ∀ a > R,
-    let shifted_y : Fin m → EuclideanPoint d := fun i μ => points_y i μ + a * separation μ
-    let combined := combinePoints points_x shifted_y
-    |theory.schwinger (n + m) combined -
-     theory.schwinger n points_x * theory.schwinger m shifted_y| < ε :=
-  osterwalderSchraderAxiomTheoryD.cluster_property theory n m points_x points_y separation
-
-/-- OS Axiom E5: Growth bound on n-point functions (added in OS 1975 follow-up).
-
-    This is the crucial condition that was missing in the original 1973 paper.
-    It ensures convergence of the GNS construction in the reconstruction theorem.
-
-    The n-point Schwinger functions must satisfy a growth bound of the form:
-    |S_n(x₁,...,xₙ)| ≤ C^n · n!^α · (1 + ∑ᵢ |xᵢ|)^β
-
-    for some constants C, α, β independent of n. This controls the factorial
-    growth as the number of field insertions increases, ensuring that the
-    infinite series in the reconstruction converge.
-
-    Physical meaning: This bound ensures the Hilbert space construction via
-    GNS (Gel'fand-Naimark-Segal) is well-defined, preventing pathological
-    growth that would make the vacuum state non-normalizable. -/
-theorem multipoint_growth_bound {d : ℕ} (theory : QFT d) :
-  ∃ (C α β : ℝ), C > 0 ∧ ∀ (n : ℕ) (points : Fin n → EuclideanPoint d),
-    |theory.schwinger n points| ≤
-      rpow C (n : ℝ) * rpow (Nat.factorial n : ℝ) α * rpow (1 + ∑ i, ‖points i‖) β :=
-  osterwalderSchraderAxiomTheoryD.multipoint_growth_bound theory
 
 end ModularPhysics.Core.QFT.Euclidean

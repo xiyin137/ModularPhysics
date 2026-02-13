@@ -63,8 +63,27 @@ theorem ItoProcess.quadraticVariation_le {F : Filtration Ω ℝ}
     (X : ItoProcess F μ) {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
     (t : ℝ) (ht : 0 ≤ t) (ω : Ω) :
     X.quadraticVariation t ω ≤ Mσ ^ 2 * t := by
-  -- ∫₀ᵗ σ² ds ≤ ∫₀ᵗ Mσ² ds = Mσ²·t (pointwise σ² ≤ Mσ² from |σ| ≤ Mσ)
-  sorry
+  unfold ItoProcess.quadraticVariation
+  -- Pointwise bound: σ(s,ω)² ≤ Mσ² from |σ| ≤ Mσ
+  have h_pw : ∀ s, (X.diffusion s ω) ^ 2 ≤ Mσ ^ 2 := by
+    intro s; exact sq_le_sq' (neg_le_of_abs_le (hMσ s ω)) (abs_le.mp (hMσ s ω)).2
+  by_cases h_int : IntegrableOn (fun s => (X.diffusion s ω) ^ 2) (Set.Icc 0 t) volume
+  · -- Integrable case: use setIntegral_mono_on
+    have h_fin : IsFiniteMeasure (volume.restrict (Set.Icc 0 t)) :=
+      ⟨by rw [Measure.restrict_apply_univ]; exact measure_Icc_lt_top⟩
+    have h_const_int : IntegrableOn (fun _ : ℝ => Mσ ^ 2) (Set.Icc 0 t) volume :=
+      integrable_const _
+    calc ∫ s in Set.Icc 0 t, (X.diffusion s ω) ^ 2 ∂volume
+        ≤ ∫ s in Set.Icc 0 t, Mσ ^ 2 ∂volume :=
+          setIntegral_mono_on h_int h_const_int measurableSet_Icc (fun s _ => h_pw s)
+      _ = Mσ ^ 2 * t := by
+          rw [setIntegral_const]
+          simp only [Measure.real, Real.volume_Icc, sub_zero,
+            ENNReal.toReal_ofReal ht, smul_eq_mul]
+          ring
+  · -- Non-integrable case: integral = 0 by Bochner convention
+    rw [integral_undef h_int]
+    exact mul_nonneg (sq_nonneg Mσ) ht
 
 /-- QV squared is integrable when diffusion is bounded.
     Uses: QV ≤ Mσ²t (bounded on probability space → integrable).
@@ -74,7 +93,18 @@ theorem ItoProcess.quadraticVariation_sq_integrable {F : Filtration Ω ℝ}
     (X : ItoProcess F μ) {Mσ : ℝ} (_hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
     (t : ℝ) (_ht : 0 ≤ t) :
     Integrable (fun ω => (X.quadraticVariation t ω) ^ 2) μ := by
-  sorry -- Bounded by (Mσ²t)² on probability space; needs AEStronglyMeasurable of QV
+  -- QV(t,ω) ≤ Mσ²·t for all ω (from quadraticVariation_le), so QV² ≤ (Mσ²·t)²
+  -- Bounded functions on probability spaces are integrable (if AEStronglyMeasurable)
+  have h_bdd : ∀ ω, ‖(X.quadraticVariation t ω) ^ 2‖ ≤ (Mσ ^ 2 * t) ^ 2 := by
+    intro ω
+    rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+    exact sq_le_sq' (by linarith [X.quadraticVariation_nonneg t ω,
+      X.quadraticVariation_le _hMσ t _ht ω])
+      (X.quadraticVariation_le _hMσ t _ht ω)
+  -- AEStronglyMeasurable: sorry (requires joint measurability of diffusion in (s,ω))
+  have h_asm : AEStronglyMeasurable (fun ω => (X.quadraticVariation t ω) ^ 2) μ := by
+    sorry
+  exact (integrable_const ((Mσ ^ 2 * t) ^ 2)).mono' h_asm (ae_of_all _ h_bdd)
 
 /-! ## Discrete QV L² convergence -/
 

@@ -86,17 +86,14 @@ structure Field where
   /-- Grassmann parity -/
   parity : GrassmannParity
 
-/-- Field configuration space for gauge theory -/
-structure GaugeFieldSpaceElement where
-  data : Unit
+/-- Functional on gauge field space (observable or action).
 
-/-- Gauge field space type -/
-abbrev GaugeFieldSpace := GaugeFieldSpaceElement
-
-/-- Functional on field space (observable or action) -/
-structure FieldFunctional where
-  /-- The functional -/
-  functional : GaugeFieldSpace → ℝ
+    Parameterized by `GFS`, the type of gauge field configurations.
+    In practice, `GFS` is the space of all field configurations
+    (gauge fields, ghosts, antighosts, auxiliary fields) for a specific gauge theory. -/
+structure FieldFunctional (GFS : Type*) where
+  /-- The functional mapping field configurations to values -/
+  functional : GFS → ℝ
   /-- Ghost number -/
   ghost_number : GhostNumber
   /-- Grassmann parity -/
@@ -107,21 +104,18 @@ structure FieldFunctional where
     A derivation on the field algebra satisfying:
     - s² = 0 (nilpotency)
     - gh#(s) = 1
-    - s is fermionic (odd Grassmann parity) -/
-structure BRSTOperator where
+    - s is fermionic (odd Grassmann parity)
+
+    Parameterized by `GFS`, the gauge field configuration space. -/
+structure BRSTOperator (GFS : Type*) where
   /-- Action on functionals -/
-  action : FieldFunctional → FieldFunctional
+  action : FieldFunctional GFS → FieldFunctional GFS
   /-- BRST raises ghost number by 1 -/
-  raises_ghost : ∀ F : FieldFunctional, (action F).ghost_number.value = F.ghost_number.value + 1
+  raises_ghost : ∀ F : FieldFunctional GFS, (action F).ghost_number.value = F.ghost_number.value + 1
   /-- BRST flips parity -/
-  flips_parity : ∀ F : FieldFunctional, (action F).parity = F.parity.flip
-
-/-- Nilpotency of BRST operator: s² = 0
-
-    This is the key property ensuring gauge invariance is properly encoded.
-    For functionals F: s(sF) has the same value as the zero functional. -/
-axiom brst_nilpotent (s : BRSTOperator) (F : FieldFunctional) :
-  (s.action (s.action F)).functional = fun _ => 0
+  flips_parity : ∀ F : FieldFunctional GFS, (action F).parity = F.parity.flip
+  /-- Nilpotency: s² = 0. The defining property of a BRST operator. -/
+  nilpotent : ∀ F : FieldFunctional GFS, (action (action F)).functional = fun _ => 0
 
 /-- BRST transformations for Yang-Mills theory
 
@@ -132,7 +126,7 @@ axiom brst_nilpotent (s : BRSTOperator) (F : FieldFunctional) :
 
     The transformation of A_μ is a gauge transformation with parameter c.
     The transformation s c = -½[c,c] encodes the structure constants. -/
-structure YangMillsBRST where
+structure YangMillsBRST (GFS : Type*) where
   /-- Gauge field -/
   A : Field
   /-- Ghost field -/
@@ -142,7 +136,7 @@ structure YangMillsBRST where
   /-- Lagrange multiplier -/
   B : Field
   /-- BRST operator -/
-  s : BRSTOperator
+  s : BRSTOperator GFS
   /-- Ghost number constraints -/
   A_ghost : A.ghost_number = physicalGhostNumber
   c_ghost : c.ghost_number = ghostGhostNumber
@@ -151,37 +145,39 @@ structure YangMillsBRST where
 
 /- ============= BRST COHOMOLOGY ============= -/
 
+variable {GFS : Type*}
+
 /-- Zero functional (identically zero on all field configurations) -/
-def zeroFunctional (gh : GhostNumber) (p : GrassmannParity) : FieldFunctional :=
+def zeroFunctional (gh : GhostNumber) (p : GrassmannParity) : FieldFunctional GFS :=
   ⟨fun _ => 0, gh, p⟩
 
 /-- BRST-closed: s·F = 0
 
     A functional is BRST-closed if it's annihilated by s.
     Necessary condition for being physical. -/
-def BRSTClosed (s : BRSTOperator) (F : FieldFunctional) : Prop :=
+def BRSTClosed (s : BRSTOperator GFS) (F : FieldFunctional GFS) : Prop :=
   (s.action F).functional = fun _ => 0
 
 /-- BRST-exact: F = s·G for some G
 
     BRST-exact functionals are trivial in cohomology.
     They decouple from physical observables. -/
-def BRSTExact (s : BRSTOperator) (F : FieldFunctional) : Prop :=
-  ∃ G : FieldFunctional, G.ghost_number.value = F.ghost_number.value - 1 ∧
+def BRSTExact (s : BRSTOperator GFS) (F : FieldFunctional GFS) : Prop :=
+  ∃ G : FieldFunctional GFS, G.ghost_number.value = F.ghost_number.value - 1 ∧
     (s.action G).functional = F.functional
 
 /-- Exact functionals are closed (follows from nilpotency)
 
     If F = sG, then sF = s(sG) = 0 by nilpotency. -/
-theorem exact_implies_closed (s : BRSTOperator) (F : FieldFunctional)
+theorem exact_implies_closed (s : BRSTOperator GFS) (F : FieldFunctional GFS)
     (h : BRSTExact s F) : BRSTClosed s F := by
   obtain ⟨G, _, hG⟩ := h
   unfold BRSTClosed
   -- We need: (s.action F).functional = 0
-  -- We have: F.functional = (s.action G).functional (from hG, after adjustment)
+  -- We have: F.functional = (s.action G).functional (from hG)
   -- And: (s.action (s.action G)).functional = 0 (from nilpotency)
   -- The proof requires that s.action respects the functional equality
-  sorry  -- Requires additional structure on BRSTOperator
+  sorry  -- Requires additional structure on BRSTOperator (linearity)
 
 /-- BRST cohomology H(s) = ker(s)/im(s)
 
@@ -191,18 +187,18 @@ theorem exact_implies_closed (s : BRSTOperator) (F : FieldFunctional)
 
     At ghost number 0, H⁰(s) gives gauge-invariant observables.
     Higher ghost cohomology encodes anomalies and consistency conditions. -/
-structure BRSTCohomology where
+structure BRSTCohomology (GFS : Type*) where
   /-- The BRST operator -/
-  s : BRSTOperator
+  s : BRSTOperator GFS
   /-- Representatives of cohomology classes at each ghost number -/
-  representatives : GhostNumber → Set FieldFunctional
+  representatives : GhostNumber → Set (FieldFunctional GFS)
   /-- Representatives are closed -/
   closed : ∀ gh F, F ∈ representatives gh → BRSTClosed s F
   /-- Representatives have correct ghost number -/
   ghost_number_match : ∀ gh F, F ∈ representatives gh → F.ghost_number = gh
 
 /-- Physical observables: H⁰(s) at ghost number 0 -/
-def physicalObservables (coh : BRSTCohomology) : Set FieldFunctional :=
+def physicalObservables (coh : BRSTCohomology GFS) : Set (FieldFunctional GFS) :=
   coh.representatives physicalGhostNumber
 
 /- ============= GAUGE FIXING ============= -/
@@ -215,9 +211,9 @@ def physicalObservables (coh : BRSTCohomology) : Set FieldFunctional :=
     Common choices:
     - Lorenz gauge: Ψ = c̄(∂·A + ξB/2) giving ∂·A = 0
     - Axial gauge: Ψ = c̄(n·A) giving n·A = 0 -/
-structure GaugeFixingFermion where
+structure GaugeFixingFermion (GFS : Type*) where
   /-- The fermion as a functional -/
-  functional : FieldFunctional
+  functional : FieldFunctional GFS
   /-- Ghost number -1 -/
   ghost_constraint : functional.ghost_number = ⟨-1⟩
   /-- Fermionic -/
@@ -230,20 +226,20 @@ structure GaugeFixingFermion where
     where S_inv is the gauge-invariant classical action and Ψ is the
     gauge-fixing fermion. The term s·Ψ is BRST-exact, so physical
     observables are independent of the choice of Ψ. -/
-structure GaugeFixedAction where
+structure GaugeFixedAction (GFS : Type*) where
   /-- Gauge-invariant action as a functional -/
-  invariant_action : FieldFunctional
+  invariant_action : FieldFunctional GFS
   /-- Classical action has ghost number 0 -/
   inv_ghost : invariant_action.ghost_number = physicalGhostNumber
   /-- Gauge-fixing fermion -/
-  gf_fermion : GaugeFixingFermion
+  gf_fermion : GaugeFixingFermion GFS
   /-- BRST operator -/
-  s : BRSTOperator
+  s : BRSTOperator GFS
   /-- Gauge-invariant action is BRST-closed -/
   inv_closed : BRSTClosed s invariant_action
 
 /-- The gauge-fixed action functional -/
-def GaugeFixedAction.action (gf : GaugeFixedAction) : FieldFunctional :=
+def GaugeFixedAction.action (gf : GaugeFixedAction GFS) : FieldFunctional GFS :=
   ⟨fun φ => gf.invariant_action.functional φ + (gf.s.action gf.gf_fermion.functional).functional φ,
    physicalGhostNumber,  -- sΨ has ghost number 0 since Ψ has ghost number -1
    GrassmannParity.even⟩
@@ -254,7 +250,7 @@ def GaugeFixedAction.action (gf : GaugeFixedAction) : FieldFunctional :=
 
     This follows from gauge invariance of S_inv and nilpotency of s:
     s·S_gf = s·S_inv + s²·Ψ = 0 + 0 = 0 -/
-theorem gauge_fixed_brst_invariant (gf : GaugeFixedAction) :
+theorem gauge_fixed_brst_invariant (gf : GaugeFixedAction GFS) :
     BRSTClosed gf.s gf.action := by
   unfold BRSTClosed GaugeFixedAction.action
   -- Would need linearity of s and nilpotency
@@ -265,12 +261,15 @@ theorem gauge_fixed_brst_invariant (gf : GaugeFixedAction) :
     S_gf' - S_gf = s·(Ψ' - Ψ)
 
     This is the key fact ensuring gauge-fixing independence. -/
-axiom gauge_fixing_difference_exact (gf₁ gf₂ : GaugeFixedAction)
+theorem gauge_fixing_difference_exact (gf₁ gf₂ : GaugeFixedAction GFS)
     (h_same_inv : gf₁.invariant_action = gf₂.invariant_action)
     (h_same_s : gf₁.s = gf₂.s) :
-  ∃ Δ : FieldFunctional,
+  ∃ Δ : FieldFunctional GFS,
     (fun φ => gf₂.action.functional φ - gf₁.action.functional φ) =
-    (gf₁.s.action Δ).functional
+    (gf₁.s.action Δ).functional := by
+  -- The difference S_gf' - S_gf = s·Ψ' - s·Ψ = s·(Ψ' - Ψ)
+  -- by linearity of the BRST operator
+  sorry
 
 /- ============= PHYSICAL STATE SPACE ============= -/
 
@@ -283,8 +282,10 @@ axiom gauge_fixing_difference_exact (gf₁ gf₂ : GaugeFixedAction)
 structure BRSTCharge (H : Type) where
   /-- Action of Q on states -/
   action : H → H
+  /-- Zero state -/
+  zero : H
   /-- Nilpotency: Q² = 0 -/
-  nilpotent : ∀ ψ : H, action (action ψ) = action ψ  -- Placeholder for zero
+  nilpotent : ∀ ψ : H, action (action ψ) = zero
   /-- Ghost number of Q is 1 -/
   ghost_number : GhostNumber := ⟨1⟩
 
@@ -298,14 +299,12 @@ structure BRSTCharge (H : Type) where
 structure PhysicalHilbert where
   /-- Full (unphysical) Hilbert space -/
   full_space : Type
-  /-- Zero state -/
-  zero : full_space
   /-- BRST charge -/
   Q : BRSTCharge full_space
   /-- Q-closed states -/
   closed_states : Set full_space
   /-- Closed means Q|ψ⟩ = 0 -/
-  closed_def : ∀ ψ ∈ closed_states, Q.action ψ = zero
+  closed_def : ∀ ψ ∈ closed_states, Q.action ψ = Q.zero
   /-- Q-exact states -/
   exact_states : Set full_space
   /-- Exact means ψ = Q|χ⟩ for some χ -/
@@ -327,11 +326,11 @@ def PhysicalHilbert.physical_states (H : PhysicalHilbert) : Set H.full_space :=
     ⟨s·O⟩ = 0 for any operator O (when s·S = 0)
 
     These generalize QED Ward identities to non-Abelian theories. -/
-structure SlavnovTaylorIdentity where
+structure SlavnovTaylorIdentity (GFS : Type*) where
   /-- The BRST operator -/
-  s : BRSTOperator
+  s : BRSTOperator GFS
   /-- The functional O -/
-  O : FieldFunctional
+  O : FieldFunctional GFS
   /-- The identity: ⟨sO⟩ = 0 as a functional equation -/
   identity : BRSTClosed s O → (s.action O).functional = fun _ => 0
 
@@ -344,11 +343,11 @@ structure SlavnovTaylorIdentity where
 
     The anomaly A must satisfy the Wess-Zumino consistency condition:
     s·A = 0 (A is BRST-closed but not exact) -/
-structure BRSTAnomaly where
+structure BRSTAnomaly (GFS : Type*) where
   /-- The BRST operator -/
-  s : BRSTOperator
+  s : BRSTOperator GFS
   /-- The anomaly as a functional -/
-  anomaly : FieldFunctional
+  anomaly : FieldFunctional GFS
   /-- Ghost number of anomaly is 1 -/
   ghost_constraint : anomaly.ghost_number = ⟨1⟩
   /-- Wess-Zumino consistency: s·A = 0 -/
@@ -360,14 +359,14 @@ structure BRSTAnomaly where
     A = s·Ψ for some local functional Ψ.
 
     This is equivalent to the anomaly being cohomologically trivial. -/
-def AnomalyFree (anom : BRSTAnomaly) : Prop :=
+def AnomalyFree (anom : BRSTAnomaly GFS) : Prop :=
   BRSTExact anom.s anom.anomaly
 
 /-- Non-trivial anomaly: closed but not exact
 
     An anomaly that cannot be removed by adding local counterterms.
     Represents an obstruction in H¹(s). -/
-def NonTrivialAnomaly (anom : BRSTAnomaly) : Prop :=
+def NonTrivialAnomaly (anom : BRSTAnomaly GFS) : Prop :=
   ¬ AnomalyFree anom
 
 end ModularPhysics.Core.QFT.BV.BRST

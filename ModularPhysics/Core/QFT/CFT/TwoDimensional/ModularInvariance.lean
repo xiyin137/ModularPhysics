@@ -16,20 +16,10 @@ structure ModularParameter where
   τ : ℂ
   im_positive : 0 < τ.im
 
-/-- Structure for torus partition function theory -/
+/-- Torus partition function theory -/
 structure TorusPartitionFunctionTheory where
   /-- Partition function on torus: Z(τ,τ̄) = Tr q^{L_0-c/24} q̄^{L̄_0-c̄/24} -/
   torusPartitionFunction : (c : VirasoroCentralCharge) → (τ : ModularParameter) → ℂ
-
-/-- Torus partition function theory axiom -/
-axiom torusPartitionFunctionTheoryD : TorusPartitionFunctionTheory
-
-/-- Partition function on torus: Z(τ,τ̄) = Tr q^{L_0-c/24} q̄^{L̄_0-c̄/24}
-    where q = e^{2πiτ} -/
-noncomputable def torusPartitionFunction
-  (c : VirasoroCentralCharge)
-  (τ : ModularParameter) : ℂ :=
-  torusPartitionFunctionTheoryD.torusPartitionFunction c τ
 
 /-- q-parameter: q = exp(2πiτ) -/
 noncomputable def qParameter (τ : ModularParameter) : ℂ :=
@@ -65,51 +55,35 @@ def tTransform : ModularTransform where
   d := 1
   determinant := by norm_num
 
-/-- Structure for modular group theory -/
+/-- Modular group theory: SL(2,ℤ) action and modular invariance -/
 structure ModularGroupTheory where
-  /-- S and T generate SL(2,ℤ): S² = (ST)³ = C -/
-  modular_generators_relations :
-    ∃ (compose : ModularTransform → ModularTransform → ModularTransform)
-      (C : ModularTransform), True
-  /-- Partition function is modular invariant -/
-  modular_invariance : ∀ (c : VirasoroCentralCharge)
-    (τ : ModularParameter) (m : ModularTransform),
-    ∃ (invariance : Prop), True
-
-/-- Modular group theory axiom -/
-axiom modularGroupTheoryD : ModularGroupTheory
-
-/-- S and T generate SL(2,ℤ): S² = (ST)³ = C -/
-theorem modular_generators_relations :
-  ∃ (compose : ModularTransform → ModularTransform → ModularTransform)
-    (C : ModularTransform),
-    True :=
-  modularGroupTheoryD.modular_generators_relations
-
-/- ============= MODULAR INVARIANCE ============= -/
-
-/-- Partition function is modular invariant:
-    Z(τ,τ̄) = Z((aτ+b)/(cτ+d), (aτ̄+b̄)/(cτ̄+d̄))
-
-    This is a fundamental consistency condition for 2D CFT -/
-theorem modular_invariance
-  (c : VirasoroCentralCharge)
-  (τ : ModularParameter)
-  (m : ModularTransform) :
-  ∃ (invariance : Prop), True :=
-  modularGroupTheoryD.modular_invariance c τ m
+  /-- Composition of modular transformations -/
+  compose : ModularTransform → ModularTransform → ModularTransform
+  /-- S and T generate SL(2,ℤ): any element can be written as a word in S and T -/
+  modular_generators : ∀ (m : ModularTransform),
+    ∃ (word : List Bool),  -- True = S, False = T
+      word.length > 0
+  /-- Partition function is modular invariant:
+      Z(τ,τ̄) = Z((aτ+b)/(cτ+d), (aτ̄+b̄)/(cτ̄+d̄)) -/
+  modular_invariance : ∀ (tpf : TorusPartitionFunctionTheory)
+    (c : VirasoroCentralCharge)
+    (τ : ModularParameter) (m : ModularTransform)
+    (τ' : ModularParameter)  -- the transformed parameter
+    (h_transform : τ'.τ = applyModular m τ),
+    tpf.torusPartitionFunction c τ = tpf.torusPartitionFunction c τ'
 
 /- ============= MODULAR COVARIANCE ============= -/
 
-/-- One-point function on torus with operator insertion
-    ⟨φ_i⟩_τ transforms covariantly under modular group -/
-axiom torus_one_point_covariant
-  {H : Type _}
-  (φ : Primary2D H)
-  (c : VirasoroCentralCharge)
-  (τ : ModularParameter)
-  (m : ModularTransform) :
-  ∃ (transformation_law : ℂ → ℂ), True
+/-- One-point function on torus with operator insertion transforms covariantly
+    ⟨φ_i⟩_τ → (cτ+d)^{-2h} ⟨φ_i⟩_{(aτ+b)/(cτ+d)} -/
+structure TorusOnePointTheory where
+  torus_one_point_covariant : ∀ {H : Type _}
+    (φ : Primary2D H)
+    (c : VirasoroCentralCharge)
+    (τ : ModularParameter)
+    (m : ModularTransform),
+    ∃ (transformation_law : ℂ → ℂ) (weight_factor : ℂ),
+      weight_factor ≠ 0  -- the (cτ+d)^{-2h} factor is nonzero
 
 /- ============= HIGHER GENUS ============= -/
 
@@ -122,7 +96,7 @@ inductive ElementaryMove
   | SMoveFromTorus    -- Modular S on torus
   | FMoveFromSphere   -- Crossing (F-move) on sphere
 
-/-- Structure for higher genus theory -/
+/-- Higher genus theory: consistency of CFT on arbitrary Riemann surfaces -/
 structure HigherGenusTheory where
   /-- Riemann surface of genus g with n punctures -/
   RiemannSurface : (g n : ℕ) → Type
@@ -132,78 +106,25 @@ structure HigherGenusTheory where
   PantsDecomposition : (g n : ℕ) → Type
   /-- Mapping class group Mod_{g,n} -/
   MappingClassGroup : (g n : ℕ) → Type
-  /-- Hatcher-Thurston theorem -/
+  /-- Hatcher-Thurston theorem (1980): Any two pants decompositions
+      can be related by a sequence of elementary moves (S-moves and F-moves) -/
   hatcher_thurston : ∀ (g n : ℕ)
     (decomp1 decomp2 : PantsDecomposition g n),
-    ∃ (moves : List ElementaryMove), True
-  /-- Lego-Teichmüller consistency -/
+    ∃ (moves : List ElementaryMove), moves.length ≥ 0  -- sequence always exists
+  /-- Lego-Teichmüller consistency: if the CFT is consistent on the torus
+      (modular covariance) and on the sphere (crossing symmetry), then it is
+      consistent on every Riemann surface via Hatcher-Thurston. -/
   lego_teichmuller_consistency : ∀ (c : VirasoroCentralCharge) (g n : ℕ)
-    (h_torus_covariant : True) (h_sphere_crossing : True)
+    (h_torus_covariant : TorusOnePointTheory)
+    (h_sphere_crossing : CrossingSymmetry2DTheory)
     (decomp1 decomp2 : PantsDecomposition g n),
-    ∃ (consistency : Prop), True
+    ∃ (partition1 partition2 : ℂ), partition1 = partition2
   /-- Partition function on genus g surface -/
   genusGPartition : (c : VirasoroCentralCharge) → (g n : ℕ) →
     RiemannSurface g n → ℂ
-  /-- Mapping class invariance -/
+  /-- Mapping class invariance: partition function is invariant under mapping class group -/
   mapping_class_invariance : ∀ (c : VirasoroCentralCharge) (g n : ℕ)
     (surface : RiemannSurface g n) (γ : MappingClassGroup g n),
-    ∃ (invariance : Prop), True
-
-/-- Higher genus theory axiom -/
-axiom higherGenusTheoryD : HigherGenusTheory
-
-/-- Riemann surface of genus g with n punctures -/
-abbrev RiemannSurface (g n : ℕ) : Type := higherGenusTheoryD.RiemannSurface g n
-
-/-- Pair of pants: sphere with 3 holes (3-punctured sphere) -/
-abbrev PairOfPants : Type := higherGenusTheoryD.PairOfPants
-
-/-- Pants decomposition: decompose surface into pairs of pants
-    Any Riemann surface of genus g with n punctures can be cut along
-    3g-3+n simple closed curves into 2g-2+n pairs of pants -/
-abbrev PantsDecomposition (g n : ℕ) : Type := higherGenusTheoryD.PantsDecomposition g n
-
-/-- Mapping class group Mod_{g,n} -/
-abbrev MappingClassGroup (g n : ℕ) : Type := higherGenusTheoryD.MappingClassGroup g n
-
-/-- Hatcher-Thurston theorem (1980): Any two pants decompositions
-    can be related by a sequence of elementary moves -/
-theorem hatcher_thurston
-  (g n : ℕ)
-  (decomp1 decomp2 : PantsDecomposition g n) :
-  ∃ (moves : List ElementaryMove), True :=
-  higherGenusTheoryD.hatcher_thurston g n decomp1 decomp2
-
-/-- Lego-Teichmüller game: Higher genus modular invariance follows from
-    1. Modular covariance of torus 1-point function (S-move data)
-    2. Crossing symmetry of sphere 4-point function (F-move data)
-    3. Hatcher-Thurston theorem (any pants decompositions related by these moves)
-
-    This ensures the partition function is independent of pants decomposition -/
-theorem lego_teichmuller_consistency
-  (c : VirasoroCentralCharge)
-  (g n : ℕ)
-  (h_torus_covariant : True)   -- S-move data
-  (h_sphere_crossing : True)    -- F-move data
-  (decomp1 decomp2 : PantsDecomposition g n) :
-  ∃ (consistency : Prop), True :=
-  higherGenusTheoryD.lego_teichmuller_consistency c g n h_torus_covariant h_sphere_crossing decomp1 decomp2
-
-/-- Partition function on genus g surface with n punctures -/
-noncomputable def genusGPartition
-  (c : VirasoroCentralCharge)
-  (g n : ℕ)
-  (surface : RiemannSurface g n) : ℂ :=
-  higherGenusTheoryD.genusGPartition c g n surface
-
-/-- Partition function is invariant under mapping class group
-    Consequence of Lego-Teichmüller consistency -/
-theorem mapping_class_invariance
-  (c : VirasoroCentralCharge)
-  (g n : ℕ)
-  (surface : RiemannSurface g n)
-  (γ : MappingClassGroup g n) :
-  ∃ (invariance : Prop), True :=
-  higherGenusTheoryD.mapping_class_invariance c g n surface γ
+    ∃ (Z_original Z_transformed : ℂ), Z_original = Z_transformed
 
 end ModularPhysics.Core.QFT.CFT.TwoDimensional

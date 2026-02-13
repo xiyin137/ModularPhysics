@@ -5,8 +5,8 @@
 | File | Sorrys | Key Items |
 |------|--------|-----------|
 | **StochasticIntegration.lean** | **9** | ito_formula(martingale), quadratic_variation, bdg_inequality, sde_existence, sde_uniqueness_law, stratonovich, semimartingale_integral, girsanov, martingale_representation |
-| **BrownianMotion.lean** | **6** | time_inversion, eval_unit_is_brownian, Q-Wiener continuous_paths, Q-Wiener regularity_from_trace, levy_characterization, (t<0 design) |
-| **SPDE.lean** | **6** | Generator/semigroup infrastructure (renormalized_spde nontriviality FIXED) |
+| **BrownianMotion.lean** | **5** | time_inversion, eval_unit_is_brownian, Q-Wiener continuous_paths, Q-Wiener regularity_from_trace, levy_characterization |
+| **SPDE.lean** | **4** | Generator/semigroup infrastructure (renormalized_spde nontriviality FIXED) |
 | **Basic.lean** | **1** | is_martingale_of_bounded (needs uniform integrability) |
 | **RegularityStructures.lean** | **1** | Abstract approach (complementary to folder) |
 | **Probability/Basic.lean** | **2** | condexp_jensen, doob_maximal_L2 |
@@ -15,11 +15,11 @@
 | **Helpers/ItoFormulaProof.lean** | **2** | ito_lower_order_L2_convergence, ito_formula_martingale (1 L2 conv at t') |
 | **Helpers/ItoFormulaDecomposition.lean** | **1** | taylor_remainder_L2_convergence (Fatou structure in place, needs QV infra) |
 | **Helpers/QuadraticVariation.lean** | **4** | QV bound, QV sq integrable, discrete QV L² conv, Taylor remainders a.e. |
-| **Helpers/QuarticBound.lean** | **3** | L4 transfer sorrys |
+| **Helpers/QuarticBound.lean** | **2** | stoch_integral_bounded_approx, simple_integral_increment_quartic_bound |
 | **Helpers/** (all other) | **0** | 13 files, all fully proven |
-| **RegularityStructures/** | **44** | See RegularityStructures/TODO.md |
+| **RegularityStructures/** | **38** | See RegularityStructures/TODO.md |
 
-**Total: 82 sorrys** (38 SPDE core + 44 RegularityStructures)
+**Total: 72 sorrys** (34 SPDE core + 38 RegularityStructures)
 
 ---
 
@@ -143,8 +143,10 @@ ito_formula (StochasticIntegration.lean, line 1651)
 | `stoch_integral_increment_L2_bound` | SORRY | E[|SI(t)-SI(s)|²] ≤ Mσ²(t-s) |
 | `ito_process_increment_L2_bound` | SORRY | E[|X(t)-X(s)|²] ≤ C(t-s) |
 | `ito_process_increment_L4_bound` | PROVEN | E[|X(t)-X(s)|⁴] ≤ C(t-s)², key for C2 approach |
+| `stoch_integral_increment_L4_integrable` | **PROVEN** | Integrability from Fatou transfer (delegates to QuarticBound) |
+| `stoch_integral_increment_L4_bound` | **PROVEN** | E[|SI(t)-SI(s)|⁴] ≤ C(t-s)² |
 | `riemann_sum_L2_convergence` | SORRY | Σ g(tᵢ)Δt → ∫ g ds in L² |
-| `taylor_remainder_L2_convergence` | REWRITE NEEDED | C2 Fatou approach (replacing C3 6th moment) |
+| `taylor_remainder_L2_convergence` | SORRY | C2 Fatou approach, needs QV infrastructure from Phase 1 |
 
 **Key infrastructure already available:**
 - `ito_integral_martingale_setIntegral` — martingale from L² limits ✅
@@ -155,6 +157,14 @@ ito_formula (StochasticIntegration.lean, line 1651)
 - `integral_mul_zero_of_indep_zero_mean` — E[X·Y]=0 for adapted×independent ✅
 - `integral_mul_eq_zero_of_setIntegral_eq_zero` — martingale orthogonality ✅
 - `simple_bilinear_isometry_different_times` — E[S(t)S(s)] = E[S(s)²] ✅
+
+**Recent progress (2026-02-13):**
+- **Phase 0a COMPLETE**: `integrable_pow4_of_L2_convergence` proven (generic Fatou transfer helper).
+  `stoch_integral_increment_L4_integrable_proof` simplified to delegate to this helper.
+  Added `{Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)` parameter (bounded diffusion needed for L²→L⁴).
+  Updated `ItoFormulaDecomposition.lean` caller to pass Mσ parameter.
+- **Phase 0b/0c remaining**: `simple_integral_increment_quartic_bound` (express increment as finite sum matching `quartic_sum_bound`), `stoch_integral_bounded_approx` (truncation of approximants to get uniform Mσ bound).
+- **Phase 1c issue identified**: `taylor_remainders_ae_tendsto_zero` requires joint continuity of f'' in (t,x) for modulus-of-continuity argument. Current hypotheses only give separate continuity per t (`∀ t, ContDiff ℝ 2 (fun x => f t x)`). Standard Itô formula assumes C^{1,2} joint regularity — may need to strengthen the hypothesis on `f`.
 
 **Priority ordering:**
 1. Itô formula via direct partition approach (solve blocking sorrys above)

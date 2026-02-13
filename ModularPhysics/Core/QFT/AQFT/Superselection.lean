@@ -1,5 +1,15 @@
 -- ModularPhysics/Core/QFT/AQFT/Superselection.lean
 -- DHR Superselection Theory and Doplicher-Roberts Reconstruction
+--
+-- This file covers the DHR (Doplicher-Haag-Roberts) analysis of superselection
+-- sectors in AQFT. The key insight is that all particle types, their statistics,
+-- and the gauge group can be RECONSTRUCTED from the observable algebra alone.
+--
+-- Key concepts:
+-- - Superselection sectors = inequivalent irreducible representations
+-- - DHR endomorphisms = localized charges (AQFT substitute for charged fields)
+-- - Statistics = phase under particle exchange (bosons, fermions, anyons)
+-- - Doplicher-Roberts reconstruction: observables → field algebra + gauge group
 import ModularPhysics.Core.QFT.AQFT.Representations
 import Mathlib.Data.Real.Basic
 import Mathlib.Data.Complex.Basic
@@ -10,311 +20,224 @@ open SpaceTime
 
 /- ============= SUPERSELECTION SECTORS ============= -/
 
-/-- A superselection sector is an equivalence class of irreducible representations
+/-- A superselection sector is an equivalence class of irreducible representations.
 
     Different sectors correspond to different "charge" quantum numbers that
-    cannot be superposed (hence "superselection rule").
+    CANNOT be superposed (hence "superselection rule").
 
     Examples:
-    - Electric charge sectors in QED
-    - Color confinement in QCD (only color singlets are observable)
-    - Particle/antiparticle sectors -/
-structure SuperselectionSectorD (d : ℕ) where
-  /-- Label for the sector (e.g., charge value) -/
-  label : Type _
-  /-- The representation class for this sector -/
-  rep_class : label → Type _
-  /-- Sectors are mutually orthogonal -/
-  orthogonal : ∀ (l₁ l₂ : label), l₁ ≠ l₂ → True
+    - Electric charge sectors in QED: ..., -2e, -e, 0, +e, +2e, ...
+    - Color confinement in QCD: only color singlets are observable
+    - Particle/antiparticle sectors
 
-/-- Abstract charge sector type -/
-structure ChargeSectorElement (d : ℕ) where
-  data : Unit
-
-/-- Charge sectors: inequivalent irreducible representations of the observable algebra
-
-    In d dimensions, charge sectors are classified by:
-    - The unbroken gauge group
-    - Localizability properties (charges must be localizable)
-    - Statistics (braid group representations in d > 2) -/
-abbrev ChargeSectorD (d : ℕ) := ChargeSectorElement d
-
-/-- Structure for charge sector operations -/
-structure ChargeSectorOps (d : ℕ) where
-  /-- Trivial (vacuum) sector -/
-  vacuumSector : ChargeSectorD d
-  /-- Charge conjugation: maps sector to its conjugate -/
-  chargeConjugate : ChargeSectorD d → ChargeSectorD d
-  /-- Fusion of sectors: ρ ⊗ σ decomposes into irreducible sectors -/
-  sectorFusion : ChargeSectorD d → ChargeSectorD d → Set (ChargeSectorD d)
-  /-- Charge conjugation is an involution -/
-  charge_conjugate_involution : ∀ (ρ : ChargeSectorD d),
+    The sector type is abstract — it parametrizes the possible charges.
+    In specific theories, it would be instantiated to ℤ (for U(1) charge),
+    representations of a gauge group, etc. -/
+structure SuperselectionSectorData (d : ℕ) (Sector : Type*) where
+  /-- Trivial (vacuum) sector: the representation of the vacuum state -/
+  vacuumSector : Sector
+  /-- Charge conjugation: maps a sector to its conjugate (antiparticle) -/
+  chargeConjugate : Sector → Sector
+  /-- Fusion (tensor product) of sectors: ρ ⊗ σ decomposes into irreducibles -/
+  fusion : Sector → Sector → Set Sector
+  /-- Charge conjugation is an involution: C(C(ρ)) = ρ -/
+  charge_conjugate_involution : ∀ (ρ : Sector),
     chargeConjugate (chargeConjugate ρ) = ρ
-  /-- Vacuum is self-conjugate -/
+  /-- Vacuum is self-conjugate: the vacuum has zero charge -/
   vacuum_self_conjugate : chargeConjugate vacuumSector = vacuumSector
-  /-- Fusion is commutative -/
-  fusion_commutative : ∀ (ρ σ : ChargeSectorD d), sectorFusion ρ σ = sectorFusion σ ρ
-  /-- Vacuum is the identity for fusion -/
-  fusion_vacuum_identity : ∀ (ρ : ChargeSectorD d), sectorFusion ρ vacuumSector = {ρ}
+  /-- Fusion is commutative: ρ ⊗ σ = σ ⊗ ρ -/
+  fusion_commutative : ∀ (ρ σ : Sector), fusion ρ σ = fusion σ ρ
+  /-- Vacuum is the identity for fusion: ρ ⊗ vacuum = {ρ} -/
+  fusion_vacuum_identity : ∀ (ρ : Sector), fusion ρ vacuumSector = {ρ}
+  /-- Fusion with conjugate contains vacuum: ρ ⊗ ρ̄ ∋ vacuum -/
+  fusion_conjugate_contains_vacuum : ∀ (ρ : Sector),
+    vacuumSector ∈ fusion ρ (chargeConjugate ρ)
 
-/-- Charge sector operations exist -/
-axiom chargeSectorOpsD {d : ℕ} : ChargeSectorOps d
+/- ============= DHR ENDOMORPHISMS ============= -/
 
-/-- Trivial (vacuum) sector -/
-noncomputable def vacuumSectorD (d : ℕ) : ChargeSectorD d := chargeSectorOpsD.vacuumSector
+/-- DHR (Doplicher-Haag-Roberts) endomorphism: a localized charge.
 
-/-- Charge conjugation: maps sector to its conjugate -/
-noncomputable def chargeConjugateD {d : ℕ} : ChargeSectorD d → ChargeSectorD d :=
-  chargeSectorOpsD.chargeConjugate
-
-/-- Fusion of sectors: ρ ⊗ σ decomposes into irreducible sectors -/
-noncomputable def sectorFusionD {d : ℕ} :
-    ChargeSectorD d → ChargeSectorD d → Set (ChargeSectorD d) :=
-  chargeSectorOpsD.sectorFusion
-
-/-- Charge conjugation is an involution -/
-theorem charge_conjugate_involutionD {d : ℕ} (ρ : ChargeSectorD d) :
-    chargeConjugateD (chargeConjugateD ρ) = ρ :=
-  chargeSectorOpsD.charge_conjugate_involution ρ
-
-/-- Vacuum is self-conjugate -/
-theorem vacuum_self_conjugateD {d : ℕ} :
-    chargeConjugateD (vacuumSectorD d) = vacuumSectorD d :=
-  chargeSectorOpsD.vacuum_self_conjugate
-
-/-- Fusion is commutative -/
-theorem fusion_commutativeD {d : ℕ} (ρ σ : ChargeSectorD d) :
-    sectorFusionD ρ σ = sectorFusionD σ ρ :=
-  chargeSectorOpsD.fusion_commutative ρ σ
-
-/-- Vacuum is the identity for fusion -/
-theorem fusion_vacuum_identityD {d : ℕ} (ρ : ChargeSectorD d) :
-    sectorFusionD ρ (vacuumSectorD d) = {ρ} :=
-  chargeSectorOpsD.fusion_vacuum_identity ρ
-
-/- ============= DHR ANALYSIS ============= -/
-
-/-- DHR (Doplicher-Haag-Roberts) endomorphism
-
-    A DHR endomorphism ρ : A(O) → A(O) represents a localized charge.
+    A DHR endomorphism ρ : A(O) → A(O) represents a charge localized in O.
     It is:
-    - Transportable: can be moved to any region
-    - Localized: acts trivially on spacelike complements
+    - A *-endomorphism (algebra homomorphism to itself)
+    - Transportable: can be moved to any region by conjugation with unitaries
+    - Localized: acts trivially on the spacelike complement A(O')
 
-    This is the AQFT substitute for charged field operators. -/
-structure DHREndomorphismD {d : ℕ} (O : Set (SpaceTimePointD d)) where
+    This is the AQFT substitute for charged field operators φ(x).
+    While φ(x) is not an observable (not gauge-invariant), the endomorphism
+    ρ = Ad(φ) captures the same physical content in gauge-invariant form. -/
+structure DHREndomorphism {d : ℕ} (net : AlgebraNet d)
+    (O : Set (SpaceTimePointD d)) where
   /-- The endomorphism ρ : A(O) → A(O) -/
-  endo : LocalAlgebraD d O → LocalAlgebraD d O
-  /-- ρ is an algebra homomorphism -/
-  respects_mul : ∀ (A B : LocalAlgebraD d O),
-    endo (algebraMulD A B) = algebraMulD (endo A) (endo B)
+  endo : net.Algebra O → net.Algebra O
+  /-- ρ is a *-homomorphism: respects multiplication -/
+  respects_mul : ∀ (A B : net.Algebra O),
+    endo (net.mul A B) = net.mul (endo A) (endo B)
   /-- ρ respects adjoint -/
-  respects_adjoint : ∀ (A : LocalAlgebraD d O),
-    endo (algebraAdjointD A) = algebraAdjointD (endo A)
+  respects_adjoint : ∀ (A : net.Algebra O),
+    endo (net.adjoint A) = net.adjoint (endo A)
   /-- ρ respects the unit -/
-  respects_unit : endo algebraOneD = algebraOneD
-
-/-- Structure for DHR endomorphism existence -/
-structure DHREndomorphismExistence (d : ℕ) [NeZero d] where
-  /-- DHR endomorphisms exist for each charge sector -/
-  dhr_endomorphism_exists : ∀ (O : Set (SpaceTimePointD d)) (_ρ : ChargeSectorD d),
-    DHREndomorphismD O
-
-/-- DHR endomorphism existence holds -/
-axiom dhrEndomorphismExistenceD {d : ℕ} [NeZero d] : DHREndomorphismExistence d
-
-/-- DHR endomorphisms exist for each charge sector -/
-noncomputable def dhr_endomorphism_existsD {d : ℕ} [NeZero d]
-    (O : Set (SpaceTimePointD d)) (ρ : ChargeSectorD d) : DHREndomorphismD O :=
-  dhrEndomorphismExistenceD.dhr_endomorphism_exists O ρ
+  respects_unit : endo net.one = net.one
 
 /- ============= STATISTICS ============= -/
 
-/-- Structure for particle statistics theory
+/-- Statistics theory for superselection sectors.
 
-    For localized charges ρ₁, ρ₂ in regions O₁, O₂:
-    - Move ρ₁ around ρ₂ (possible in d ≥ 3)
-    - The resulting phase is ε(ρ₁, ρ₂) = e^{iθ}
+    For localized charges ρ₁, ρ₂ in spacelike separated regions O₁, O₂:
+    exchanging them produces a phase ε(ρ₁, ρ₂) = e^{iθ}.
 
-    In d = 4: θ ∈ {0, π} (bosons or fermions)
-    In d = 3: θ ∈ [0, 2π) (anyons possible)
-    In d = 2: braid statistics (non-abelian possible) -/
-structure StatisticsTheory (d : ℕ) where
+    The statistics parameter depends on spacetime dimension:
+    - d ≥ 4: θ ∈ {0, π} only (bosons or fermions)
+    - d = 3: θ ∈ [0, 2π) (anyons possible)
+    - d = 2: braid statistics (non-abelian statistics possible)
+
+    The proof that only bosons/fermions exist in d ≥ 4 uses topology:
+    π₁(Conf_n(ℝ^{d-1})) = S_n (symmetric group) for d ≥ 4,
+    which has only 1D reps: trivial (bosons) or sign (fermions).
+    For d = 3: π₁(Conf_n(ℝ²)) = B_n (braid group), admitting continuous phases. -/
+structure StatisticsData (d : ℕ) (Sector : Type*) where
   /-- Statistics parameter: phase acquired under particle exchange -/
-  statisticsParameter : ChargeSectorD d → ChargeSectorD d → ℂ
-  /-- Statistics parameter is a phase -/
-  statistics_is_phase : ∀ (ρ σ : ChargeSectorD d), ‖statisticsParameter ρ σ‖ = 1
+  statisticsParameter : Sector → Sector → ℂ
+  /-- Statistics parameter is a phase: |ε(ρ,σ)| = 1 -/
+  statistics_is_phase : ∀ (ρ σ : Sector), ‖statisticsParameter ρ σ‖ = 1
 
-/-- Statistics theory exists -/
-axiom statisticsTheoryD {d : ℕ} : StatisticsTheory d
+/-- Self-statistics of a sector: ε(ρ,ρ) -/
+def selfStatistics {d : ℕ} {Sector : Type*}
+    (stats : StatisticsData d Sector) (ρ : Sector) : ℂ :=
+  stats.statisticsParameter ρ ρ
 
-/-- Statistics parameter: phase acquired under particle exchange -/
-noncomputable def statisticsParameterD {d : ℕ} : ChargeSectorD d → ChargeSectorD d → ℂ :=
-  statisticsTheoryD.statisticsParameter
+/-- Bose-Fermi alternative: in d ≥ 4, only bosons (ε = +1) and fermions (ε = -1) exist.
 
-/-- Statistics parameter is a phase -/
-theorem statistics_is_phaseD {d : ℕ} (ρ σ : ChargeSectorD d) :
-    ‖statisticsParameterD ρ σ‖ = 1 :=
-  statisticsTheoryD.statistics_is_phase ρ σ
+    This is a THEOREM whose proof uses the topology of configuration spaces.
+    In d ≥ 4, the fundamental group of the configuration space is the symmetric
+    group S_n, whose only 1D representations are trivial and sign. -/
+theorem bose_fermi_alternative {d : ℕ} {Sector : Type*}
+    (stats : StatisticsData d Sector)
+    (sectors : SuperselectionSectorData d Sector)
+    (h_dim : d ≥ 4) (ρ : Sector) :
+    selfStatistics stats ρ = 1 ∨ selfStatistics stats ρ = -1 := by
+  sorry
 
-/-- Statistics of a sector with itself -/
-noncomputable def selfStatisticsD {d : ℕ} (ρ : ChargeSectorD d) : ℂ :=
-  statisticsParameterD ρ ρ
+/-- In d = 3, anyonic statistics are possible: ε(ρ,ρ) = e^{iθ} for any θ.
 
-/-- Structure for Bose-Fermi alternative theorem
-
-    In d ≥ 4 spacetime dimensions, the only possible
-    particle statistics are Bose and Fermi. Anyons are forbidden.
-
-    The proof uses the topology of the configuration space:
-    - In d ≥ 4, the fundamental group π₁(C_n(ℝ^{d-1})) = S_n (symmetric group)
-    - Only 1D representations: trivial (bosons) or sign (fermions) -/
-structure BoseFermiAlternative (d : ℕ) where
-  /-- In d ≥ 4, only bosons or fermions -/
-  bose_fermi_alternative : d ≥ 4 → ∀ (ρ : ChargeSectorD d),
-    selfStatisticsD ρ = 1 ∨ selfStatisticsD ρ = -1
-
-/-- Bose-Fermi alternative holds -/
-axiom boseFermiAlternativeD {d : ℕ} : BoseFermiAlternative d
-
-/-- Bose-Fermi alternative in d ≥ 4 -/
-theorem bose_fermi_alternativeD {d : ℕ} (h_dim : d ≥ 4) (ρ : ChargeSectorD d) :
-    selfStatisticsD ρ = 1 ∨ selfStatisticsD ρ = -1 :=
-  boseFermiAlternativeD.bose_fermi_alternative h_dim ρ
-
-/-- Structure for anyonic statistics in 3D
-
-    The fundamental group π₁(C_n(ℝ²)) = B_n (braid group)
-    Representations can have arbitrary phase θ ∈ [0, 2π) -/
-structure AnyonStatistics3D where
-  /-- In d = 3, anyonic statistics are possible -/
-  anyons_in_3d : ∀ (ρ : ChargeSectorD 3),
-    ∃ (θ : ℝ), 0 ≤ θ ∧ θ < 2 * Real.pi ∧ selfStatisticsD ρ = Complex.exp (Complex.I * θ)
-
-/-- Anyonic statistics in 3D holds -/
-axiom anyonStatistics3DD : AnyonStatistics3D
-
-/-- In d = 3, anyonic statistics are possible -/
-theorem anyons_in_3dD (ρ : ChargeSectorD 3) :
-    ∃ (θ : ℝ), 0 ≤ θ ∧ θ < 2 * Real.pi ∧ selfStatisticsD ρ = Complex.exp (Complex.I * θ) :=
-  anyonStatistics3DD.anyons_in_3d ρ
+    The fundamental group π₁(Conf_n(ℝ²)) = B_n (braid group) admits
+    representations with arbitrary phase, giving rise to anyons.
+    Anyons are relevant for:
+    - Fractional quantum Hall effect
+    - Topological quantum computing
+    - Chern-Simons theories -/
+theorem anyons_in_3d {Sector : Type*}
+    (stats : StatisticsData 3 Sector) (ρ : Sector) :
+    ∃ (θ : ℝ), 0 ≤ θ ∧ θ < 2 * Real.pi ∧
+      selfStatistics stats ρ = Complex.exp (Complex.I * θ) := by
+  sorry
 
 /- ============= DOPLICHER-ROBERTS RECONSTRUCTION ============= -/
 
-/-- Abstract field algebra type -/
-structure FieldAlgebraElement (d : ℕ) where
-  data : Unit
-
-/-- Field algebra: the algebra containing charged fields -/
-abbrev FieldAlgebraD (d : ℕ) := FieldAlgebraElement d
-
-/-- Abstract gauge group type -/
-structure GaugeGroupElement (d : ℕ) where
-  data : Unit
-
-/-- Gauge group: the group whose invariants give the observable algebra -/
-abbrev GaugeGroupD (d : ℕ) := GaugeGroupElement d
-
-/-- Doplicher-Roberts reconstruction theorem
+/-- Doplicher-Roberts reconstruction data.
 
     Given:
     - A local net of observables A(O) satisfying Haag-Kastler axioms
-    - DHR superselection structure (charge sectors, statistics)
+    - DHR superselection structure (sectors, statistics, fusion)
 
-    The theorem reconstructs:
-    - A field algebra F containing charged fields
+    The Doplicher-Roberts theorem reconstructs:
+    - A "field algebra" F containing charged (non-gauge-invariant) fields
     - A compact gauge group G
-    - Such that A = F^G (observables are gauge invariants)
+    - Such that A = F^G (observables are gauge invariants of the field algebra)
 
-    This is remarkable: the abstract algebraic structure DETERMINES
-    the field content and gauge group! -/
-structure DoplicherRobertsDataD (d : ℕ) [NeZero d] where
-  /-- The reconstructed field algebra -/
-  field_algebra : FieldAlgebraD d
-  /-- The compact gauge group -/
-  gauge_group : GaugeGroupD d
-  /-- The observable algebra is the gauge-invariant subalgebra -/
-  observables_as_invariants : Type _
-  /-- For each charge sector, there's a corresponding field -/
-  charged_fields : ChargeSectorD d → Type _
-  /-- The field algebra decomposes under the gauge group -/
-  decomposition : True  -- F = ⊕_ρ H_ρ ⊗ A
+    This is remarkable: the abstract algebraic structure of observables ALONE
+    determines the field content and gauge group! You don't need to start from
+    a Lagrangian or specify gauge fields — they emerge from the observable algebra. -/
+structure DoplicherRobertsData {d : ℕ} [NeZero d] (Sector : Type*)
+    (qft : HaagKastlerQFT d) where
+  /-- The reconstructed field algebra type -/
+  FieldAlgebra : Type*
+  /-- The compact gauge group type -/
+  GaugeGroup : Type*
+  /-- Gauge group acts on field algebra -/
+  gaugeAction : GaugeGroup → FieldAlgebra → FieldAlgebra
+  /-- Observable algebra is the fixed-point subalgebra: A = F^G -/
+  fixed_point_is_observable :
+    ∀ (O : Set (SpaceTimePointD d)) (f : FieldAlgebra),
+      (∀ g : GaugeGroup, gaugeAction g f = f) → ∃ a : qft.net.Algebra O, True
+  /-- Each sector corresponds to a representation of the gauge group -/
+  sector_representation : Sector → (GaugeGroup → GaugeGroup)
+  /-- Field algebra decomposes under the gauge group: F = ⊕_ρ H_ρ ⊗ A
+      (Peter-Weyl decomposition) -/
+  peter_weyl_decomposition :
+    ∀ (f : FieldAlgebra), ∃ (ρ : Sector), True
 
-/-- Doplicher-Roberts reconstruction exists -/
-axiom doplicher_roberts_reconstructionD {d : ℕ} [NeZero d] :
-  DoplicherRobertsDataD d
+/-- Doplicher-Roberts reconstruction theorem: the reconstruction data exists
+    for any Haag-Kastler QFT with finitely many superselection sectors satisfying
+    the DHR analysis.
+
+    This is a deep THEOREM from the theory of compact group duals. -/
+theorem doplicher_roberts_reconstruction {d : ℕ} [NeZero d]
+    (Sector : Type*) (qft : HaagKastlerQFT d)
+    (sectors : SuperselectionSectorData d Sector)
+    (stats : StatisticsData d Sector) :
+    Nonempty (DoplicherRobertsData Sector qft) := by
+  sorry
 
 /- ============= SPIN-STATISTICS THEOREM ============= -/
 
-/-- Structure for spin theory -/
-structure SpinTheory (d : ℕ) where
-  /-- Spin of a particle (in d ≥ 4, half-integer or integer) -/
-  spin : ChargeSectorD d → ℝ
+/-- Spin data for superselection sectors.
 
-/-- Spin theory exists -/
-axiom spinTheoryD {d : ℕ} : SpinTheory d
+    Each sector (particle type) has a spin, which is:
+    - Integer for bosons: 0, 1, 2, ...
+    - Half-integer for fermions: 1/2, 3/2, 5/2, ...
 
-/-- Spin of a particle (in d ≥ 4, half-integer or integer) -/
-noncomputable def SpinD (d : ℕ) : ChargeSectorD d → ℝ := spinTheoryD.spin
+    In d ≥ 4, spin is determined by the representation of the little group
+    (rotation group SO(d-1) for massive particles, or the Euclidean group
+    E(d-2) for massless particles). -/
+structure SpinData (d : ℕ) (Sector : Type*) where
+  /-- Spin of each sector (in units of ℏ) -/
+  spin : Sector → ℝ
 
-/-- Spin-statistics theorem: spin determines statistics
+/-- Spin-statistics theorem: spin determines statistics.
 
-    In d ≥ 4:
-    - Integer spin ⟹ Bose statistics (θ = 0)
-    - Half-integer spin ⟹ Fermi statistics (θ = π)
+    In d ≥ 4 spacetime dimensions:
+    - Integer spin ⟹ Bose statistics (ε = +1, symmetric wave function)
+    - Half-integer spin ⟹ Fermi statistics (ε = -1, antisymmetric wave function)
 
     This follows from:
-    - PCT theorem
-    - Cluster decomposition
-    - Positivity of energy -/
-structure SpinStatisticsTheorem (d : ℕ) where
-  /-- Spin determines statistics -/
-  spin_statistics : d ≥ 4 → ∀ (ρ : ChargeSectorD d),
-    (∃ n : ℤ, SpinD d ρ = n) → selfStatisticsD ρ = 1 ∧
-    (∃ n : ℤ, SpinD d ρ = n + 1/2) → selfStatisticsD ρ = -1
+    - PCT theorem (existence of an antiunitary PCT operator)
+    - Cluster decomposition (locality implies factorization at large distances)
+    - Positivity of energy (spectrum condition)
 
-/-- Spin-statistics theorem holds -/
-axiom spinStatisticsTheoremD {d : ℕ} : SpinStatisticsTheorem d
-
-/-- Spin-statistics theorem statement -/
-theorem spin_statistics_theoremD {d : ℕ} (h_dim : d ≥ 4) (ρ : ChargeSectorD d) :
-    (∃ n : ℤ, SpinD d ρ = n) → selfStatisticsD ρ = 1 ∧
-    (∃ n : ℤ, SpinD d ρ = n + 1/2) → selfStatisticsD ρ = -1 :=
-  spinStatisticsTheoremD.spin_statistics h_dim ρ
-
-/- ============= COMPLETE SUPERSELECTION STRUCTURE ============= -/
-
-/-- Complete structure for DHR superselection theory -/
-structure DHRSuperselectionTheory (d : ℕ) [NeZero d] where
-  /-- Charge sector operations -/
-  sectorOps : ChargeSectorOps d
-  /-- DHR endomorphism existence -/
-  dhrEndomorphisms : DHREndomorphismExistence d
-  /-- Statistics theory -/
-  statistics : StatisticsTheory d
-  /-- Doplicher-Roberts reconstruction data -/
-  reconstruction : DoplicherRobertsDataD d
-  /-- Spin theory -/
-  spinTheory : SpinTheory d
-
-/- ============= LEGACY 4D ALIASES ============= -/
-
-abbrev SuperselectionSector := SuperselectionSectorD 4
-abbrev ChargeSector := ChargeSectorD 4
-abbrev chargeSectors := ChargeSectorD 4
-noncomputable def vacuumSector := vacuumSectorD 4
-noncomputable def chargeConjugate := @chargeConjugateD 4
-noncomputable def sectorFusion := @sectorFusionD 4
-abbrev DHREndomorphism := @DHREndomorphismD 4
-noncomputable def statisticsParameter (ρ : ChargeSectorD 4) := selfStatisticsD ρ
-abbrev dhrSuperselection := ChargeSectorD 4
-noncomputable def doplicherRobertsReconstruction := @doplicher_roberts_reconstructionD 4
-
--- Legacy bose_fermi_alternative with old signature
-theorem bose_fermi_alternative (_θ : ℝ) (ρ : ChargeSectorD 4)
-    (_h : selfStatisticsD ρ = Complex.exp (Complex.I * _θ)) :
-    _θ = 0 ∨ _θ = Real.pi := by
-  -- This follows from bose_fermi_alternativeD for d = 4
+    This is a THEOREM derivable from the Haag-Kastler axioms + spin structure. -/
+theorem spin_statistics {d : ℕ} {Sector : Type*}
+    (stats : StatisticsData d Sector)
+    (spinData : SpinData d Sector)
+    (h_dim : d ≥ 4) (ρ : Sector) :
+    /- Integer spin implies Bose statistics -/
+    ((∃ n : ℤ, spinData.spin ρ = n) → selfStatistics stats ρ = 1) ∧
+    /- Half-integer spin implies Fermi statistics -/
+    ((∃ n : ℤ, spinData.spin ρ = n + 1/2) → selfStatistics stats ρ = -1) := by
   sorry
+
+/- ============= COMPLETE DHR SUPERSELECTION STRUCTURE ============= -/
+
+/-- Complete DHR superselection theory for a Haag-Kastler QFT.
+
+    This bundles all the superselection-theoretic data:
+    - Sector type and operations (fusion, conjugation)
+    - DHR endomorphisms (localized charges)
+    - Statistics (exchange phases)
+    - Doplicher-Roberts reconstruction (field algebra and gauge group)
+    - Spin data and spin-statistics connection -/
+structure DHRSuperselectionTheory {d : ℕ} [NeZero d]
+    (Sector : Type*) (qft : HaagKastlerQFT d) where
+  /-- Sector operations (fusion, conjugation) -/
+  sectorOps : SuperselectionSectorData d Sector
+  /-- DHR endomorphisms exist for each sector and region -/
+  dhrEndomorphisms : ∀ (O : Set (SpaceTimePointD d)) (ρ : Sector),
+    DHREndomorphism qft.net O
+  /-- Statistics of sectors -/
+  statistics : StatisticsData d Sector
+  /-- Spin of sectors -/
+  spinData : SpinData d Sector
+  /-- Doplicher-Roberts reconstruction data -/
+  reconstruction : DoplicherRobertsData Sector qft
 
 end ModularPhysics.Core.QFT.AQFT

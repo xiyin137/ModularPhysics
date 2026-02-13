@@ -155,7 +155,11 @@ structure TQFTProperties (n : ℕ) (mtb : ManifoldTheoryWithBoundary n)
 
 /- ============= STANDALONE MANIFOLD TYPES (for convenience) ============= -/
 
-/-- Structure for standalone manifold data (the concrete realization of manifold theory) -/
+/-- Structure for standalone manifold data (the concrete realization of manifold theory).
+
+    This bundles specific manifold theories for each dimension together with
+    standard manifold constructions (spheres, tori, surfaces, etc.).
+    Downstream structures take this as a parameter rather than using a global axiom. -/
 structure StandaloneManifoldData where
   /-- Standalone manifold theory with boundary for dimension n -/
   manifoldTheoryWithBoundaryD : (n : ℕ) → ManifoldTheoryWithBoundary n
@@ -177,71 +181,82 @@ structure StandaloneManifoldData where
   /-- Sphere as a closed n-manifold -/
   sphereAsClosed : (n : ℕ) → ClosedManifold' (manifoldTheoryWithBoundaryD n)
 
-/-- Standalone manifold data holds -/
-axiom standaloneManifoldDataD : StandaloneManifoldData
+/- === Convenience definitions parameterized by StandaloneManifoldData === -/
 
-/-- Standalone manifold theory with boundary for dimension n -/
-noncomputable def manifoldTheoryWithBoundaryD (n : ℕ) : ManifoldTheoryWithBoundary n :=
-  standaloneManifoldDataD.manifoldTheoryWithBoundaryD n
+variable (md : StandaloneManifoldData)
+
+/-- Manifold theory with boundary for dimension n -/
+noncomputable def StandaloneManifoldData.mtbD (n : ℕ) : ManifoldTheoryWithBoundary n :=
+  md.manifoldTheoryWithBoundaryD n
 
 /-- Standalone manifold type for dimension n -/
-abbrev Manifold (n : ℕ) := (manifoldTheoryWithBoundaryD n).theory.Manifold
+abbrev StandaloneManifoldData.ManifoldOf (n : ℕ) := (md.manifoldTheoryWithBoundaryD n).theory.Manifold
 
 /-- Standalone manifold with boundary type for dimension n -/
-abbrev ManifoldWithBoundary (n : ℕ) := (manifoldTheoryWithBoundaryD n).theory.ManifoldWithBoundary
+abbrev StandaloneManifoldData.ManifoldWithBoundaryOf (n : ℕ) :=
+  (md.manifoldTheoryWithBoundaryD n).theory.ManifoldWithBoundary
 
 /-- Standalone closed manifold type for dimension n -/
-abbrev ClosedManifold (n : ℕ) := ClosedManifold' (manifoldTheoryWithBoundaryD n)
+abbrev StandaloneManifoldData.ClosedManifoldOf (n : ℕ) :=
+  ClosedManifold' (md.manifoldTheoryWithBoundaryD n)
 
 /-- Standalone TQFTType for dimension n -/
-abbrev TQFTType' (n : ℕ) := TQFTType n (manifoldTheoryWithBoundaryD n)
+abbrev StandaloneManifoldData.TQFTTypeOf (n : ℕ) :=
+  TQFTType n (md.manifoldTheoryWithBoundaryD n)
 
 /-- n-sphere in dimension n -/
-noncomputable def sphere (n : ℕ) : Manifold n :=
-  standaloneManifoldDataD.sphere n
+noncomputable def StandaloneManifoldData.sphereOf (n : ℕ) : md.ManifoldOf n :=
+  md.sphere n
 
 /-- n-torus in dimension n -/
-noncomputable def torus (n : ℕ) : Manifold n :=
-  standaloneManifoldDataD.torus n
+noncomputable def StandaloneManifoldData.torusOf (n : ℕ) : md.ManifoldOf n :=
+  md.torus n
 
 /-- Empty manifold in dimension n -/
-noncomputable def emptyManifold (n : ℕ) : Manifold n :=
-  (manifoldTheoryWithBoundaryD n).theory.emptyManifold
+noncomputable def StandaloneManifoldData.emptyManifoldOf (n : ℕ) : md.ManifoldOf n :=
+  (md.manifoldTheoryWithBoundaryD n).theory.emptyManifold
 
 /-- Empty manifold in the boundary theory (dimension n-1) -/
-noncomputable def emptyManifoldBoundary (n : ℕ) : (manifoldTheoryWithBoundaryD n).boundaryTheory.Manifold :=
-  (manifoldTheoryWithBoundaryD n).boundaryTheory.emptyManifold
+noncomputable def StandaloneManifoldData.emptyManifoldBoundaryOf (n : ℕ) :
+    (md.manifoldTheoryWithBoundaryD n).boundaryTheory.Manifold :=
+  (md.manifoldTheoryWithBoundaryD n).boundaryTheory.emptyManifold
 
-/-- Boundary of a manifold with boundary -/
-noncomputable def boundary (M : ManifoldWithBoundary 3) : (manifoldTheoryWithBoundaryD 3).boundaryTheory.Manifold :=
-  (manifoldTheoryWithBoundaryD 3).boundaryMap M
+/-- Boundary of a manifold with boundary (dimension 3) -/
+noncomputable def StandaloneManifoldData.boundaryOf
+    (M : md.ManifoldWithBoundaryOf 3) :
+    (md.manifoldTheoryWithBoundaryD 3).boundaryTheory.Manifold :=
+  (md.manifoldTheoryWithBoundaryD 3).boundaryMap M
 
 /-- Homeomorphic relation for 3-manifolds -/
-def Homeomorphic : ManifoldWithBoundary 3 → ManifoldWithBoundary 3 → Prop :=
-  standaloneManifoldDataD.Homeomorphic
+def StandaloneManifoldData.HomeomorphicOf :
+    md.ManifoldWithBoundaryOf 3 → md.ManifoldWithBoundaryOf 3 → Prop :=
+  md.Homeomorphic
 
-/-- Triangulation of a manifold -/
-def Triangulation : Manifold 3 → Type :=
-  standaloneManifoldDataD.Triangulation
+/-- Triangulation of a 3-manifold -/
+def StandaloneManifoldData.TriangulationOf : md.ManifoldOf 3 → Type :=
+  md.Triangulation
 
 /-- Convert manifold with boundary to manifold (forgets boundary) -/
-noncomputable def ManifoldWithBoundary.toManifold (n : ℕ) : ManifoldWithBoundary n → Manifold n :=
-  (manifoldTheoryWithBoundaryD n).theory.toManifold
+noncomputable def StandaloneManifoldData.toManifoldOf (n : ℕ) :
+    md.ManifoldWithBoundaryOf n → md.ManifoldOf n :=
+  (md.manifoldTheoryWithBoundaryD n).theory.toManifold
 
 /-- Surface of genus g -/
-noncomputable def surfaceGenus (g : ℕ) : Manifold 2 :=
-  standaloneManifoldDataD.surfaceGenus g
+noncomputable def StandaloneManifoldData.surfaceGenusOf (g : ℕ) : md.ManifoldOf 2 :=
+  md.surfaceGenus g
 
 /-- TQFT vector space for dimension n on a surface -/
-def tqftVectorSpace (n : ℕ) (M : Manifold 2) : Type :=
-  standaloneManifoldDataD.tqftVectorSpace n M
+def StandaloneManifoldData.tqftVectorSpaceOf (n : ℕ) (M : md.ManifoldOf 2) : Type :=
+  md.tqftVectorSpace n M
 
 /-- Dimension of TQFT vector space -/
-noncomputable def vectorDimension {n : ℕ} (V : tqftVectorSpace n (surfaceGenus 0)) : ℕ :=
-  standaloneManifoldDataD.vectorDimension V
+noncomputable def StandaloneManifoldData.vectorDimensionOf {n : ℕ}
+    (V : md.tqftVectorSpaceOf n (md.surfaceGenusOf 0)) : ℕ :=
+  md.vectorDimension V
 
-/-- Sphere as a closed 3-manifold -/
-noncomputable def sphereAsClosed (n : ℕ) : ClosedManifold n :=
-  standaloneManifoldDataD.sphereAsClosed n
+/-- Sphere as a closed n-manifold -/
+noncomputable def StandaloneManifoldData.sphereAsClosedOf (n : ℕ) :
+    md.ClosedManifoldOf n :=
+  md.sphereAsClosed n
 
 end ModularPhysics.Core.QFT.TQFT

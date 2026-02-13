@@ -37,16 +37,28 @@ Wightman QFTs — OS reconstruction is strictly more general than the NuclearSpa
 These are needed for *constructive QFT* (building concrete examples of Schwinger functions)
 but not for the OS reconstruction theorems themselves.
 
-## Sorry Census (22 on critical path)
+## Sorry Census (26 on critical path)
+
+### SeparatelyAnalytic.lean — 3 sorrys (complex analysis infrastructure)
+
+| # | Line | Theorem | Description | Blocked by |
+|---|------|---------|-------------|------------|
+| 0a | 72 | `differentiableOn_cauchyIntegral_param` | Cauchy integral with holomorphic parameter | — |
+| 0b1 | 95 | `continuousAt_deriv_of_continuousOn` | z-derivative continuous in x (Cauchy integral) | — |
+| 0b2 | 117 | `taylor_remainder_bound` | Uniform Taylor remainder O(\|h\|²) | — |
+
+**Note**: `osgood_lemma_prod` is PROVEN using #0b1 and #0b2 (2026-02-13).
+`osgood_lemma` (Fin m → ℂ version) is PROVEN by induction using `osgood_lemma_prod`.
+`holomorphic_extension_across_real` and `tube_domain_gluing` are PROVEN using `osgood_lemma`.
 
 ### AnalyticContinuation.lean — 2 sorrys
 
 | # | Line | Theorem | Description | Blocked by |
 |---|------|---------|-------------|------------|
-| 1 | 479 | `edge_of_the_wedge` | Multi-D edge-of-wedge (Bogoliubov) | 1D version (done) |
+| 1 | 479 | `edge_of_the_wedge` | Multi-D edge-of-wedge (Bogoliubov) | #0b (Osgood) |
 | 2 | 530 | `bargmann_hall_wightman` | BHW: extend to permuted extended tube | #1 |
 
-### WickRotation.lean — 16 sorrys
+### WickRotation.lean — 17 sorrys
 
 **R→E direction (constructedSchwinger_*):**
 
@@ -93,12 +105,31 @@ but not for the OS reconstruction theorems themselves.
 | 21 | 1239 | `wightman_to_os` | Wire to wightman_to_os_full | wightman_to_os_full (done) |
 | 22 | 1269 | `os_to_wightman` | Wire to os_to_wightman_full | #18 |
 
+### GNSConstruction.lean — 0 sorrys ✅
+
+(Previously listed as having sorrys — verified sorry-free on 2026-02-13)
+
 ## Execution Plan
+
+### Phase 0: Osgood's Lemma Helpers (unblocks Phase 1) ← CURRENT
+- ~~**osgood_lemma_prod**~~: ✅ PROVEN (2026-02-13) via direct Fréchet derivative construction
+  - Decomposes remainder into Taylor (T₁) + derivative variation (T₂) + Fréchet (T₃)
+  - Uses `hasFDerivAt_iff_isLittleO_nhds_zero`, `ContinuousLinearMap.coprod`
+  - Depends on two sorry'd helper lemmas:
+- **continuousAt_deriv_of_continuousOn** (#0b1): z-derivative varies continuously in x ← NEXT
+  - Proof idea: Cauchy integral formula gives `deriv_z f(z₀,x) = (2πi)⁻¹ ∮ f(ζ,x)/(ζ-z₀)² dζ`
+  - Integrand is continuous in x (from joint continuity), uniformly bounded on circle
+  - Apply `continuous_of_dominated` to get continuity of the integral in x
+- **taylor_remainder_bound** (#0b2): Uniform Taylor remainder O(|h|²)
+  - Proof idea: Power series expansion, Cauchy estimates |aₙ(x)| ≤ M/ρⁿ
+  - M = sup|f| on compact set closedBall × K, continuous on compact ⟹ bounded
+  - Geometric series for remainder: |Σ_{n≥2} aₙ hⁿ| ≤ 2M|h|²/ρ²
+- **differentiableOn_cauchyIntegral_param** (#0a): May follow from osgood_lemma_prod or prove independently
 
 ### Phase 1: Deep Complex Analysis (unblocks both R→E and E→R)
 - **edge_of_the_wedge** (#1): Multi-D version via induction on dimension using 1D base case
   - 1D proven in `Helpers/EdgeOfWedge.lean` using Morera's theorem
-  - Multi-D: fix (m-1) variables, apply 1D, then glue via identity theorem
+  - Multi-D: fix (m-1) variables, apply 1D, then glue via Osgood lemma
   - Key Mathlib: `AnalyticOnNhd.eqOn_of_preconnected_of_frequently_eq`
 - **bargmann_hall_wightman** (#2): Extend F from forward tube to permuted extended tube
   - Step 1: Real Lorentz invariance → complex Lorentz invariance (identity theorem)
@@ -143,15 +174,16 @@ but not for the OS reconstruction theorems themselves.
 | OperatorDistribution.lean | 1 | Not blocking reconstruction |
 | Reconstruction/GNSConstruction.lean | 0 | ✅ Complete |
 | Reconstruction/Helpers/EdgeOfWedge.lean | 0 | ✅ Complete (1D edge-of-wedge) |
+| **Reconstruction/Helpers/SeparatelyAnalytic.lean** | **3** | 2 Osgood helpers + Cauchy param |
 | **Reconstruction/AnalyticContinuation.lean** | **2** | edge_of_wedge + BHW |
-| **Reconstruction/WickRotation.lean** | **16** | OS↔Wightman bridge |
+| **Reconstruction/WickRotation.lean** | **17** | OS↔Wightman bridge |
 | **Reconstruction.lean** | **4** | Core theorems + wiring |
 | NuclearSpaces/NuclearOperator.lean | 0 | ✅ Complete (deferred, not blocking) |
-| NuclearSpaces/NuclearSpace.lean | 4 | Deferred |
-| NuclearSpaces/BochnerMinlos.lean | 6 | Deferred |
-| NuclearSpaces/SchwartzNuclear.lean | 8 | Deferred |
+| NuclearSpaces/NuclearSpace.lean | 2 | Deferred |
+| NuclearSpaces/BochnerMinlos.lean | 3 | Deferred |
+| NuclearSpaces/SchwartzNuclear.lean | 4 | Deferred |
 | NuclearSpaces/EuclideanMeasure.lean | 1 | Deferred |
-| **Critical path total** | **22** | |
+| **Critical path total** | **26** | |
 
 ## Proven Infrastructure (sorry-free)
 

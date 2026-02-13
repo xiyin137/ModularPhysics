@@ -5,117 +5,74 @@ namespace ModularPhysics.Core.QFT.Euclidean
 
 open Real ModularPhysics.Core.QFT.Euclidean
 
+set_option linter.unusedVariables false
+
 /-- Bare coupling constants on the lattice (depend on lattice spacing a).
     In renormalizable theories, these must be tuned as a → 0 to reach a continuum limit. -/
 structure BareCoupling where
   spacing : ℝ
   couplings : ℝ  -- Simplified: in reality this would be a vector of coupling constants
 
-/- ============= LATTICE REGULARIZATION THEORY ============= -/
+/- ============= LATTICE REGULARIZATION ============= -/
 
-/-- Structure for lattice regularization theory -/
-structure LatticeRegularizationTheory where
-  /-- Lattice regularization: discretize Euclidean spacetime with lattice spacing a -/
-  latticeRegularization : ∀ {d : ℕ} (spacing : ℝ), (Fin d → ℤ) → EuclideanPoint d
+/-- Lattice regularization data: discretize Euclidean spacetime with lattice spacing a.
+    Maps integer lattice sites to continuum Euclidean points.
+
+    The lattice provides a UV cutoff Λ ~ 1/a, making the path integral well-defined
+    as a finite-dimensional integral over field values at lattice sites. -/
+structure LatticeRegularizationData (d : ℕ) where
+  /-- Map lattice sites to continuum points: site n → a·n -/
+  embed : (spacing : ℝ) → (Fin d → ℤ) → EuclideanPoint d
   /-- Lattice Schwinger function with bare couplings g(a) -/
-  latticeSchwinger : ∀ {d : ℕ} (params : BareCoupling) (n : ℕ), (Fin n → (Fin d → ℤ)) → ℝ
-  /-- Renormalization group trajectory: how bare couplings g(a) must be tuned -/
-  rgTrajectory : ∀ {d : ℕ} (theory : QFT d) (spacing : ℝ), BareCoupling
-  /-- Continuum limit a → 0 along RG trajectory -/
-  continuumLimit : ∀ {d : ℕ} (theory : QFT d) (n : ℕ),
-    ∀ ε > 0, ∃ a₀ > 0, ∀ (spacing : ℝ) (_ : 0 < spacing) (_ : spacing < a₀),
-    ∀ (lattice_points : Fin n → (Fin d → ℤ)),
-      let continuum_points := fun i => latticeRegularization spacing (lattice_points i)
-      let g_a := rgTrajectory theory spacing
-      |latticeSchwinger g_a n lattice_points - theory.schwinger n continuum_points| < ε
+  latticeSchwinger : (params : BareCoupling) → (n : ℕ) → (Fin n → (Fin d → ℤ)) → ℝ
 
-/-- Lattice regularization theory holds -/
-axiom latticeRegularizationTheoryD : LatticeRegularizationTheory
-
-/-- Lattice regularization: discretize Euclidean spacetime with lattice spacing a.
-    Maps integer lattice sites to continuum Euclidean points. -/
-noncomputable def latticeRegularization {d : ℕ} (spacing : ℝ) :
-  (Fin d → ℤ) → EuclideanPoint d :=
-  latticeRegularizationTheoryD.latticeRegularization spacing
-
-/-- Lattice Schwinger function with bare couplings g(a) -/
-noncomputable def latticeSchwinger {d : ℕ} (params : BareCoupling) (n : ℕ) :
-  (Fin n → (Fin d → ℤ)) → ℝ :=
-  latticeRegularizationTheoryD.latticeSchwinger params n
-
-/-- Renormalization group trajectory: how bare couplings g(a) must be tuned
+/-- Renormalization group trajectory data: how bare couplings g(a) must be tuned
     as lattice spacing a → 0 to approach a fixed continuum theory.
     This is the critical ingredient for defining the continuum limit. -/
-noncomputable def rgTrajectory {d : ℕ} (theory : QFT d) (spacing : ℝ) : BareCoupling :=
-  latticeRegularizationTheoryD.rgTrajectory theory spacing
+structure ContinuumLimitData {d : ℕ} (lattice : LatticeRegularizationData d) (theory : QFT d) where
+  /-- Bare couplings as function of lattice spacing -/
+  rgTrajectory : (spacing : ℝ) → BareCoupling
+  /-- Continuum limit a → 0 along RG trajectory -/
+  continuumLimit : ∀ (n : ℕ),
+    ∀ ε > 0, ∃ a₀ > 0, ∀ (spacing : ℝ) (_ : 0 < spacing) (_ : spacing < a₀),
+    ∀ (lattice_points : Fin n → (Fin d → ℤ)),
+      let continuum_points := fun i => lattice.embed spacing (lattice_points i)
+      let g_a := rgTrajectory spacing
+      |lattice.latticeSchwinger g_a n lattice_points - theory.schwinger n continuum_points| < ε
 
-/-- Continuum limit a → 0 along RG trajectory.
-    If bare couplings are tuned according to the RG flow g(a) = rgTrajectory(a),
-    then lattice correlations converge to the continuum theory. -/
-theorem continuumLimit {d : ℕ} (theory : QFT d) (n : ℕ) :
-  ∀ ε > 0, ∃ a₀ > 0, ∀ (spacing : ℝ) (_ : 0 < spacing) (_ : spacing < a₀),
-  ∀ (lattice_points : Fin n → (Fin d → ℤ)),
-    let continuum_points := fun i => latticeRegularization spacing (lattice_points i)
-    let g_a := rgTrajectory theory spacing
-    |latticeSchwinger g_a n lattice_points - theory.schwinger n continuum_points| < ε :=
-  latticeRegularizationTheoryD.continuumLimit theory n
+/- ============= TRANSFER MATRIX ============= -/
 
-/- ============= TRANSFER MATRIX THEORY ============= -/
+/-- Transfer matrix data: relates field configurations on adjacent time slices.
+    In Euclidean formulation: T = exp(-a·H) where H is the Hamiltonian.
 
-/-- Transfer matrix T_a (relates field configurations on adjacent time slices).
-    In Euclidean formulation: T = exp(-a·H) where H is the Hamiltonian. -/
-structure TransferMatrixElement {d : ℕ} (spacing : ℝ) where
-  data : Unit
-
-/-- Transfer matrix type -/
-abbrev transferMatrix {d : ℕ} (spacing : ℝ) := TransferMatrixElement (d := d) spacing
-
-/-- Structure for transfer matrix theory -/
-structure TransferMatrixTheory where
+    The transfer matrix connects the lattice formulation to the Hamiltonian formulation:
+    lattice partition function = Tr(T^N) for N time slices. -/
+structure TransferMatrixData (d : ℕ) where
+  /-- The transfer matrix type (abstract — could be an operator on Hilbert space) -/
+  TransferMatrix : Type*
   /-- Extract Hamiltonian from transfer matrix: H = -log(T)/a -/
-  transferMatrixHamiltonian : ∀ {d : ℕ} (spacing : ℝ), transferMatrix (d := d) spacing → ℝ
+  hamiltonian : (spacing : ℝ) → TransferMatrix → ℝ
   /-- Transfer matrix reconstruction: as a → 0, T_a → e^{-aH} defines a Hamiltonian H -/
-  transfer_matrix_limit : ∀ {d : ℕ},
-    ∀ ε > 0, ∃ a₀ > 0, ∀ (a : ℝ) (T : transferMatrix (d := d) a),
+  transfer_matrix_limit :
+    ∀ ε > 0, ∃ a₀ > 0, ∀ (a : ℝ) (T : TransferMatrix),
       0 < a → a < a₀ →
-      ∃ (H : ℝ), |transferMatrixHamiltonian a T - H| < ε
-
-/-- Transfer matrix theory holds -/
-axiom transferMatrixTheoryD : TransferMatrixTheory
-
-/-- Extract Hamiltonian from transfer matrix: H = -log(T)/a -/
-noncomputable def transferMatrixHamiltonian {d : ℕ} (spacing : ℝ) :
-  transferMatrix (d := d) spacing → ℝ :=
-  transferMatrixTheoryD.transferMatrixHamiltonian spacing
-
-/-- Transfer matrix reconstruction: as a → 0, T_a → e^{-aH} defines a Hamiltonian H.
-    The limit requires the transfer matrix to be well-behaved (positive, bounded). -/
-theorem transfer_matrix_limit {d : ℕ} :
-  ∀ ε > 0, ∃ a₀ > 0, ∀ (a : ℝ) (T : transferMatrix (d := d) a),
-    0 < a → a < a₀ →
-    ∃ (H : ℝ), |transferMatrixHamiltonian a T - H| < ε :=
-  transferMatrixTheoryD.transfer_matrix_limit
+      ∃ (H : ℝ), |hamiltonian a T - H| < ε
 
 /- ============= EUCLIDEAN GENERATING FUNCTIONALS ============= -/
 
-/-- Structure for Euclidean generating functional theory -/
-structure EuclideanGeneratingFunctionalTheory where
+/-- Euclidean generating functional data for a QFT.
+    Z[J] = ∫ Dφ e^{-S_E[φ] + ∫J·φ}
+
+    The generating functional encodes all correlation functions:
+    S_n(x₁,...,xₙ) = δⁿ log Z[J] / δJ(x₁)...δJ(xₙ) |_{J=0}
+
+    The effective action Γ[φ_cl] is the Legendre transform of log Z[J],
+    generating 1PI (one-particle-irreducible) correlation functions. -/
+structure EuclideanGeneratingData {d : ℕ} (theory : QFT d) where
   /-- Generating functional Z[J] = ∫ Dφ e^{-S_E[φ] + ∫J·φ} -/
-  generatingFunctional : ∀ {d : ℕ} (source : EuclideanPoint d → ℝ), ℝ
+  generatingFunctional : (source : EuclideanPoint d → ℝ) → ℝ
   /-- Effective action Γ[φ_cl] (1PI generating functional) -/
-  effectiveAction : ∀ {d : ℕ}, (EuclideanPoint d → ℝ) → ℝ
-
-/-- Euclidean generating functional theory holds -/
-axiom euclideanGeneratingFunctionalTheoryD : EuclideanGeneratingFunctionalTheory
-
-/-- Generating functional Z[J] = ∫ Dφ e^{-S_E[φ] + ∫J·φ}.
-    Functional integral over field configurations weighted by Euclidean action. -/
-noncomputable def generatingFunctional {d : ℕ} (source : EuclideanPoint d → ℝ) : ℝ :=
-  euclideanGeneratingFunctionalTheoryD.generatingFunctional source
-
-/-- Effective action Γ[φ_cl] (1PI generating functional, Legendre transform of log Z[J]) -/
-noncomputable def effectiveAction {d : ℕ} : (EuclideanPoint d → ℝ) → ℝ :=
-  euclideanGeneratingFunctionalTheoryD.effectiveAction
+  effectiveAction : (EuclideanPoint d → ℝ) → ℝ
 
 /-- Schwinger-Dyson equations relate n-point and (n+1)-point functions.
     For a theory with action S[φ], the SD equation is:
@@ -149,13 +106,12 @@ structure IsFerromagnetic {d : ℕ} (theory : QFT d) where
   fkg_condition : Prop  -- Full statement requires lattice structure
 
 /-- Gaussian (GHS) inequality: for theories with ferromagnetic-type interactions
-    (where the interaction favors field alignment, e.g., -λ(φ(x)-φ(y))² ≤ 0),
-    two-point functions dominate products: ⟨φ(x)φ(y)⟩ ⟨φ(z)φ(w)⟩ ≤ ⟨φ(x)φ(w)⟩ ⟨φ(y)φ(z)⟩.
+    (where the interaction favors field alignment), two-point functions dominate products.
 
-    This is NOT a general property - it requires ferromagnetic structure.
+    This is NOT a general property — it requires ferromagnetic structure.
     Examples: φ⁴ with positive coupling in certain regimes, Ising model.
 
-    This is a THEOREM (provable under ferromagnetic conditions), not an axiom itself. -/
+    This is a THEOREM (provable under ferromagnetic conditions), not an axiom. -/
 theorem ghs_inequality {d : ℕ} (theory : QFT d)
   (h_ferromagnetic : IsFerromagnetic theory) :
   ∀ (x y z w : EuclideanPoint d),

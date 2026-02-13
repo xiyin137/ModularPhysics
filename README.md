@@ -6,9 +6,9 @@ A work-in-progress formalization of physics in Lean 4 with Mathlib.
 
 The project explores how physical theories can be expressed in a formal proof assistant. The `Core/` module captures the logical structure of physics using Lean's type system, while `StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, and `Topology/` pursue rigorous mathematical foundations.
 
-In `Core/`, physical principles are encoded as axioms bundled into structures. At the moment its use is to parse the logical content of physics papers and to explore the interrelations between different physical frameworks without requiring complete mathematical foundations. Note that the use of "axiom" in the Lean environment is risky; while "axiom" is tolerated for now, eventually we will replace all "axiom" with "structure" or "def".
+In `Core/`, physical principles are encoded as structure fields, making all assumptions explicit and visible in Lean's type system. The module contains zero Lean `axiom` declarations — every physical assumption is a field in a `structure`, so the reader can see exactly what each framework presupposes. `Core/` is used to parse the logical content of physics papers and to explore the interrelations between different physical frameworks without requiring complete mathematical foundations.
 
-In `StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, and `Topology/`, the goal is different: all definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs. Here "axiom" is strictly forbidden.
+In `StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, and `Topology/`, the goal is different: all definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs. Here too, `axiom` is strictly forbidden.
 
 ## Structure
 

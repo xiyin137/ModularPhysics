@@ -19,35 +19,14 @@ noncomputable def euclideanDistance {d : ℕ} (x y : EuclideanPoint d) : ℝ :=
 noncomputable def radialDistance {d : ℕ} (x : EuclideanPoint d) : ℝ :=
   euclideanDistance x (euclideanOrigin d)
 
-/-- Structure for basic Schwinger function operations -/
-structure SchwingerFunctionTheory where
-  /-- Schwinger function S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E in d dimensions -/
-  schwingerFunction : ∀ {d : ℕ} (n : ℕ), (Fin n → EuclideanPoint d) → ℝ
-  /-- Schwinger functions are symmetric under permutations (bosonic) -/
-  symmetric : ∀ {d : ℕ} (n : ℕ) (σ : Equiv.Perm (Fin n)) (points : Fin n → EuclideanPoint d),
-    schwingerFunction n points = schwingerFunction n (points ∘ σ)
-
-/-- Schwinger function theory holds -/
-axiom schwingerFunctionTheoryD : SchwingerFunctionTheory
-
-/-- Schwinger function S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E in d dimensions.
-    NOTE: This is a standalone axiom for simple examples. For full theories,
-    use the QFT.schwinger field which packages the n-point functions together
-    with their required properties (symmetry, translation invariance, etc.). -/
-noncomputable def schwingerFunction {d : ℕ} (n : ℕ) : (Fin n → EuclideanPoint d) → ℝ :=
-  schwingerFunctionTheoryD.schwingerFunction n
-
-/-- 2-point Schwinger function (Euclidean propagator) -/
-noncomputable def twoPointSchwinger {d : ℕ} (x y : EuclideanPoint d) : ℝ :=
-  schwingerFunction 2 (fun i => if i = 0 then x else y)
-
-/-- Correlation length ξ ~ 1/m -/
-noncomputable def correlationLength (m : ℝ) : ℝ := 1 / m
-
 /-- A quantum field theory in d dimensions, characterized by its Schwinger functions
     satisfying the Osterwalder-Schrader axioms.
 
-    NOTE: Some axioms (euclidean_invariant, reflection_positive) are stored as Prop
+    The Schwinger functions S_n(x₁,...,xₙ) = ⟨φ(x₁)...φ(xₙ)⟩_E are the Euclidean
+    correlation functions that define the theory. All physical observables can be
+    extracted from these functions.
+
+    NOTE: Some properties (euclidean_invariant, reflection_positive) are stored as Prop
     fields rather than proof obligations. This is because:
     1. Full formalization would require defining rotation matrices, time reflection, etc.
     2. In practice, these are verified separately for specific theories (e.g., φ⁴)
@@ -74,6 +53,9 @@ def vev {d : ℕ} (theory : QFT d) : ℝ :=
 noncomputable def correlationFunction {d : ℕ} (theory : QFT d) (x y : EuclideanPoint d) : ℝ :=
   theory.schwinger 2 (fun i => if i = 0 then x else y)
 
+/-- Correlation length ξ ~ 1/m -/
+noncomputable def correlationLength (m : ℝ) : ℝ := 1 / m
+
 /-- A theory has a mass gap m > 0 if correlations decay exponentially
     with rate m. NOT all theories have a mass gap (e.g., massless theories). -/
 structure HasMassGap {d : ℕ} (theory : QFT d) (m : ℝ) where
@@ -91,44 +73,25 @@ theorem exponential_decay {d : ℕ} (theory : QFT d) (m : ℝ) (h : HasMassGap t
   obtain ⟨C, hC_pos, hC_bound⟩ := h.decay_bound
   exact ⟨C, hC_pos, hC_bound x y⟩
 
-/- ============= MASSIVE KERNEL THEORY ============= -/
+/- ============= MASSIVE KERNEL (EUCLIDEAN PROPAGATOR) ============= -/
 
-/-- Structure for massive kernel (Euclidean propagator) theory -/
-structure MassiveKernelTheory where
-  /-- The massive Euclidean propagator K_d(m, r) in d dimensions.
-      This is the Fourier transform of 1/(k² + m²). -/
-  massiveKernel : (d : ℕ) → (m : ℝ) → (r : ℝ) → ℝ
-  /-- For any mass m > 0, the massive kernel decays exponentially in d dimensions. -/
-  massive_kernel_decay : ∀ {d : ℕ} (m : ℝ) (hm : m > 0),
-    ∃ C > 0, ∀ r ≥ 0, |massiveKernel d m r| ≤ C * exp (-m * r)
-  /-- In 2D, the massless kernel K(0,r) = lim_{m→0⁺} K(m,r) has logarithmic behavior -/
-  massless_kernel_2d_logarithmic :
+/-- The massive Euclidean propagator data: K_d(m, r) in d dimensions.
+    This is the Fourier transform of 1/(k² + m²), the free scalar propagator.
+
+    In Core we specify it abstractly through its defining properties
+    (exponential decay, logarithmic behavior in 2D massless limit).
+    Rigorous construction via Bessel functions belongs in RigorousQFT. -/
+structure MassiveKernelData where
+  /-- The massive Euclidean propagator K_d(m, r) in d dimensions -/
+  kernel : (d : ℕ) → (m : ℝ) → (r : ℝ) → ℝ
+  /-- For any mass m > 0, the massive kernel decays exponentially in d dimensions -/
+  kernel_decay : ∀ {d : ℕ} (m : ℝ) (hm : m > 0),
+    ∃ C > 0, ∀ r ≥ 0, |kernel d m r| ≤ C * exp (-m * r)
+  /-- In 2D, the massless kernel K(0,r) has logarithmic behavior for large r -/
+  massless_2d_logarithmic :
     ∀ r > 1, ∃ ε_r : ℝ,
-      massiveKernel 2 0 r = -log r + ε_r ∧
+      kernel 2 0 r = -log r + ε_r ∧
       |ε_r| ≤ 1
-
-/-- Massive kernel theory holds -/
-axiom massiveKernelTheoryD : MassiveKernelTheory
-
-/-- The massive Euclidean propagator K_d(m, r) in d dimensions.
-    This is the Fourier transform of 1/(k² + m²). -/
-noncomputable def massiveKernel (d : ℕ) (m : ℝ) (r : ℝ) : ℝ :=
-  massiveKernelTheoryD.massiveKernel d m r
-
-/-- For any mass m > 0, the massive kernel decays exponentially in d dimensions. -/
-theorem massive_kernel_decay {d : ℕ} (m : ℝ) (hm : m > 0) :
-  ∃ C > 0, ∀ r ≥ 0, |massiveKernel d m r| ≤ C * exp (-m * r) :=
-  massiveKernelTheoryD.massive_kernel_decay m hm
-
-/-- In 2D, the massless kernel K(0,r) = lim_{m→0⁺} K(m,r) has logarithmic behavior.
-    The massive kernel K(m,r) is the well-defined Fourier transform of 1/(k²+m²).
-    Taking m → 0 gives the massless limit: K(0,r) ∼ -log r for large r.
-    We normalize so the coefficient is -1 (absorbing factors like 1/2π into field normalization). -/
-theorem massless_kernel_2d_logarithmic :
-  ∀ r > 1, ∃ ε_r : ℝ,
-    massiveKernel 2 0 r = -log r + ε_r ∧
-    |ε_r| ≤ 1 :=
-  massiveKernelTheoryD.massless_kernel_2d_logarithmic
 
 /-- Spectral density ρ(m²) in the Källén-Lehmann representation. -/
 structure SpectralDensity (d : ℕ) where
@@ -155,18 +118,18 @@ structure HasSpectralRepresentation {d : ℕ} (theory : QFT d) where
     ∃ continuous_part : ℝ,
     correlationFunction theory x (euclideanOrigin d) = continuous_part
     -- In a full formalization, this would be the actual integral
-    -- ∫₀^∞ dm² spectral.ρ(m²) · massiveKernel d (√m²) (radialDistance x)
+    -- ∫₀^∞ dm² spectral.ρ(m²) · K.kernel d (√m²) (radialDistance x)
 
 /-- Isolated mass: a delta function contribution δ(m² - m₀²) to the spectral density,
     representing a stable single-particle state of mass m₀. -/
-structure IsolatedMass {d : ℕ} (spec : SpectralDensity d) (m₀ : ℝ) where
+structure IsolatedMass {d : ℕ} (K : MassiveKernelData) (spec : SpectralDensity d) (m₀ : ℝ) where
   /-- The residue Z > 0 (field strength renormalization) -/
   residue : ℝ
   residue_pos : residue > 0
   /-- The contribution of this pole to correlations -/
   pole_contribution : ∀ (x : EuclideanPoint d),
     ∃ pole_part : ℝ,
-    pole_part = residue * massiveKernel d m₀ (radialDistance x)
+    pole_part = residue * K.kernel d m₀ (radialDistance x)
 
 /-- Spectral decomposition: correlation function splits into isolated poles + continuum.
     For a theory with isolated masses, the 2-point function is:

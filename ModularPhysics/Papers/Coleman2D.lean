@@ -31,10 +31,12 @@ structure ContinuousSymmetry (theory : QFT2D) where
     so there's no mass gap. The continuum can contribute additional logarithmic terms.
     We only know ρ(m²) ≥ 0 from positivity - nothing more. -/
 structure HasMasslessMode (theory : QFT2D) where
+  /-- The massive kernel data (Euclidean propagator) -/
+  K : MassiveKernelData
   /-- The theory admits a spectral representation -/
   has_spectral : HasSpectralRepresentation theory
   /-- There is an isolated mass at m = 0 -/
-  massless_pole : IsolatedMass has_spectral.spectral 0
+  massless_pole : IsolatedMass K has_spectral.spectral 0
   /-- The residue (field strength) is positive -/
   Z : ℝ
   Z_pos : Z > 0
@@ -44,7 +46,7 @@ structure HasMasslessMode (theory : QFT2D) where
   /-- The correlation function decomposes as: pole + continuum -/
   correlation_decomposition : ∀ x : EuclideanPoint 2,
     correlationFunction theory x (euclideanOrigin 2) =
-      Z * massiveKernel 2 0 (radialDistance x) + decomp.continuum_part x
+      Z * K.kernel 2 0 (radialDistance x) + decomp.continuum_part x
 
 /-- Long-range order: correlations remain bounded away from zero at infinity -/
 def hasLongRangeOrder (theory : QFT2D) : Prop :=
@@ -66,7 +68,7 @@ theorem massless_pole_logarithmic_contribution
     correlationFunction theory x (euclideanOrigin 2) =
       massless.Z * (-log (radialDistance x) + ε_r) + massless.decomp.continuum_part x := by
   have decomp := massless.correlation_decomposition x
-  obtain ⟨ε_r, hε_eq, hε_bound⟩ := massless_kernel_2d_logarithmic (radialDistance x) hx
+  obtain ⟨ε_r, hε_eq, hε_bound⟩ := massless.K.massless_2d_logarithmic (radialDistance x) hx
   exact ⟨ε_r, hε_bound, by rw [decomp, hε_eq]⟩
 
 /-- Mean square fluctuation ⟨(φ(x) - φ(0))²⟩ = ⟨φ²⟩ + ⟨φ²⟩ - 2⟨φ(x)φ(0)⟩ -/

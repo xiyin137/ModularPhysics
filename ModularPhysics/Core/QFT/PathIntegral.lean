@@ -8,3 +8,4 @@ import ModularPhysics.Core.QFT.PathIntegral.FieldRedefinitions
 import ModularPhysics.Core.QFT.PathIntegral.PathIntegrals
 import ModularPhysics.Core.QFT.PathIntegral.Symmetries
 import ModularPhysics.Core.QFT.PathIntegral.Regularization
+import ModularPhysics.Core.QFT.PathIntegral.Semiclassical

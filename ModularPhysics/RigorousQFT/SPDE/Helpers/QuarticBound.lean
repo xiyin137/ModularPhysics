@@ -763,6 +763,104 @@ theorem integral_pow4_le_of_L2_convergence
       ((continuous_pow 4).comp_aestronglyMeasurable hg_meas)]
   exact ENNReal.toReal_le_of_le_ofReal hC h_lint_le
 
+/-- Integrability version of `integral_pow4_le_of_L2_convergence`.
+    Under the same hypotheses, g⁴ is integrable.
+    Proof: the Fatou argument gives ∫⁻ g⁴ ≤ ofReal C < ⊤. -/
+theorem integrable_pow4_of_L2_convergence
+    [IsProbabilityMeasure μ]
+    {f : ℕ → Ω → ℝ} {g : Ω → ℝ}
+    (hf_meas : ∀ n, AEStronglyMeasurable (f n) μ)
+    (hg_meas : AEStronglyMeasurable g μ)
+    (hL2 : Filter.Tendsto (fun n => ∫ ω, (f n ω - g ω)^2 ∂μ) atTop (nhds 0))
+    (hL2_int : ∀ n, Integrable (fun ω => (f n ω - g ω)^2) μ)
+    {C : ℝ} (hC : 0 ≤ C)
+    (hbound : ∀ n, ∫ ω, (f n ω)^4 ∂μ ≤ C)
+    (hf4_int : ∀ n, Integrable (fun ω => (f n ω)^4) μ) :
+    Integrable (fun ω => (g ω)^4) μ := by
+  -- Step 1: Extract a.e. convergent subsequence (same as integral_pow4_le_of_L2_convergence)
+  have h_ae_subseq : ∃ (ns : ℕ → ℕ), StrictMono ns ∧
+      ∀ᵐ ω ∂μ, Filter.Tendsto (fun k => f (ns k) ω) atTop (nhds (g ω)) := by
+    apply TendstoInMeasure.exists_seq_tendsto_ae
+    rw [tendstoInMeasure_iff_norm]
+    intro ε hε
+    have h_lint_eq : ∀ n, ∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ =
+        ENNReal.ofReal (∫ ω, (f n ω - g ω) ^ 2 ∂μ) :=
+      fun n => (ofReal_integral_eq_lintegral_ofReal (hL2_int n)
+        (ae_of_all _ fun ω => by positivity)).symm
+    have h_tend_lint : Filter.Tendsto
+        (fun n => ∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ) atTop (nhds 0) := by
+      simp_rw [h_lint_eq]
+      have : Filter.Tendsto (fun n => ENNReal.ofReal (∫ ω, (f n ω - g ω) ^ 2 ∂μ))
+          atTop (nhds (ENNReal.ofReal 0)) :=
+        (ENNReal.continuous_ofReal.tendsto 0).comp hL2
+      rwa [ENNReal.ofReal_zero] at this
+    have hε2_pos : ENNReal.ofReal (ε ^ 2) ≠ 0 := by positivity
+    have h_div_tend : Filter.Tendsto
+        (fun n => (∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ) /
+          ENNReal.ofReal (ε ^ 2)) atTop (nhds 0) := by
+      have h := ENNReal.Tendsto.div_const h_tend_lint (Or.inr hε2_pos)
+      rwa [ENNReal.zero_div] at h
+    apply tendsto_of_tendsto_of_tendsto_of_le_of_le tendsto_const_nhds h_div_tend
+    · intro n; exact zero_le _
+    · intro n
+      have h_subset : {ω | (ε : ℝ) ≤ ‖f n ω - g ω‖} ⊆
+          {ω | ε ^ 2 ≤ (f n ω - g ω) ^ 2} := by
+        intro ω (hω : ε ≤ ‖f n ω - g ω‖)
+        show ε ^ 2 ≤ (f n ω - g ω) ^ 2
+        rw [Real.norm_eq_abs] at hω
+        nlinarith [abs_nonneg (f n ω - g ω), sq_abs (f n ω - g ω)]
+      have h_aem : AEMeasurable (fun ω => ENNReal.ofReal ((f n ω - g ω) ^ 2)) μ :=
+        ENNReal.measurable_ofReal.comp_aemeasurable
+          ((continuous_pow 2).measurable.comp_aemeasurable
+            ((hf_meas n).sub hg_meas).aemeasurable)
+      have h_cheb := mul_meas_ge_le_lintegral₀ h_aem (ENNReal.ofReal (ε ^ 2))
+      have h_set_eq : {ω | ENNReal.ofReal (ε ^ 2) ≤ ENNReal.ofReal ((f n ω - g ω) ^ 2)} =
+          {ω | ε ^ 2 ≤ (f n ω - g ω) ^ 2} := by
+        ext ω; simp only [Set.mem_setOf_eq]
+        exact ENNReal.ofReal_le_ofReal_iff (by positivity)
+      rw [h_set_eq] at h_cheb
+      calc μ {ω | (ε : ℝ) ≤ ‖f n ω - g ω‖}
+          ≤ μ {ω | ε ^ 2 ≤ (f n ω - g ω) ^ 2} := measure_mono h_subset
+        _ ≤ (∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ) / ENNReal.ofReal (ε ^ 2) :=
+            ENNReal.le_div_iff_mul_le (Or.inl hε2_pos) (Or.inl ENNReal.ofReal_ne_top) |>.mpr <|
+              by rw [mul_comm]; exact h_cheb
+  obtain ⟨ns, _, hns_ae⟩ := h_ae_subseq
+  -- Step 2: Fatou on lintegral of g⁴
+  have h_pow4_nn : ∀ n, 0 ≤ᵐ[μ] fun ω => (f n ω) ^ 4 :=
+    fun n => ae_of_all _ fun ω => by positivity
+  have h_ae_meas : ∀ k,
+      AEMeasurable (fun ω => ENNReal.ofReal ((f (ns k) ω) ^ 4)) μ :=
+    fun k => ENNReal.measurable_ofReal.comp_aemeasurable
+      ((continuous_pow 4).measurable.comp_aemeasurable (hf_meas (ns k)).aemeasurable)
+  have h_lint_bound : ∀ k,
+      ∫⁻ ω, ENNReal.ofReal ((f (ns k) ω) ^ 4) ∂μ ≤ ENNReal.ofReal C := by
+    intro k
+    rw [← ofReal_integral_eq_lintegral_ofReal (hf4_int (ns k)) (h_pow4_nn (ns k))]
+    exact ENNReal.ofReal_le_ofReal (hbound (ns k))
+  have h_liminf_ae : ∀ᵐ ω ∂μ,
+      Filter.liminf (fun k => ENNReal.ofReal ((f (ns k) ω) ^ 4)) atTop =
+        ENNReal.ofReal ((g ω) ^ 4) := by
+    filter_upwards [hns_ae] with ω hω
+    exact ((ENNReal.continuous_ofReal.tendsto _).comp
+      (((continuous_pow 4).tendsto _).comp hω)).liminf_eq
+  have h_lint_le : ∫⁻ ω, ENNReal.ofReal ((g ω) ^ 4) ∂μ ≤ ENNReal.ofReal C :=
+    calc ∫⁻ ω, ENNReal.ofReal ((g ω) ^ 4) ∂μ
+        ≤ ∫⁻ ω, Filter.liminf (fun k => ENNReal.ofReal ((f (ns k) ω) ^ 4)) atTop ∂μ :=
+          lintegral_mono_ae (h_liminf_ae.mono fun ω hω => hω ▸ le_refl _)
+      _ ≤ Filter.liminf (fun k => ∫⁻ ω, ENNReal.ofReal ((f (ns k) ω) ^ 4) ∂μ) atTop :=
+          lintegral_liminf_le' h_ae_meas
+      _ ≤ ENNReal.ofReal C :=
+          Filter.liminf_le_of_frequently_le'
+            (Filter.Eventually.of_forall h_lint_bound).frequently
+  -- Step 3: Finite lintegral → Integrable
+  refine ⟨hg_meas.pow 4, ?_⟩
+  show ∫⁻ ω, ↑‖(g ω) ^ 4‖₊ ∂μ < ⊤
+  have h_convert : ∫⁻ ω, ↑‖(g ω) ^ 4‖₊ ∂μ = ∫⁻ ω, ENNReal.ofReal ((g ω) ^ 4) ∂μ := by
+    congr 1; ext ω
+    rw [← enorm_eq_nnnorm, ← ofReal_norm_eq_enorm, Real.norm_of_nonneg (by positivity)]
+  rw [h_convert]
+  exact lt_of_le_of_lt h_lint_le ENNReal.ofReal_lt_top
+
 /-! ## Transfer to ItoProcess stochastic integral
 
 The proof strategy for transferring the quartic bound from simple processes to the
@@ -776,16 +874,117 @@ The L² convergence of increments (S_n(t)-S_n(s) → SI(t)-SI(s) in L²) follows
 the individual convergences at t and s via (a-b)² ≤ 2a² + 2b².
 -/
 
-/-- The stochastic integral increment is L⁴ integrable.
-    Uses the L² limit definition + Fatou's lemma to transfer from simple processes. -/
+/-- The stochastic integral increment is L⁴ integrable when diffusion is bounded.
+    Delegates to `integrable_pow4_of_L2_convergence` with the same setup as the bound proof. -/
 theorem stoch_integral_increment_L4_integrable_proof {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
     Integrable (fun ω => (X.stoch_integral t ω - X.stoch_integral s ω)^4) μ := by
-  -- Any constant bound on |diffusion| suffices for integrability
-  -- Use a trivial bound: diffusion is bounded by some M (exists since it's adapted)
-  sorry -- Follows from stoch_integral_increment_L4_bound_proof with any Mσ
+  -- Ω is nonempty since μ is a probability measure
+  haveI : Nonempty Ω := by
+    by_contra h; rw [not_nonempty_iff] at h
+    have h1 := @IsProbabilityMeasure.measure_univ _ _ μ _
+    rw [Set.univ_eq_empty_iff.mpr h, measure_empty] at h1
+    exact zero_ne_one h1
+  have hMσ_nn : 0 ≤ Mσ := le_trans (abs_nonneg _) (hMσ 0 (Classical.arbitrary Ω))
+  -- Get bounded approximating simple processes
+  obtain ⟨approx, hadapt, hbdd, htimes_nn, hL2_conv⟩ :=
+    stoch_integral_bounded_approx X hMσ_nn hMσ
+  -- Define approximating increments and target
+  set f : ℕ → Ω → ℝ := fun n ω =>
+    (approx n).stochasticIntegral_at X.BM t ω -
+    (approx n).stochasticIntegral_at X.BM s ω
+  set g : Ω → ℝ := fun ω => X.stoch_integral t ω - X.stoch_integral s ω
+  -- Each f_n satisfies quartic bound and integrability
+  have hf4_data : ∀ n,
+      Integrable (fun ω => (f n ω) ^ 4) μ ∧
+      ∫ ω, (f n ω) ^ 4 ∂μ ≤ 3 * Mσ ^ 4 * (t - s) ^ 2 := by
+    intro n
+    exact simple_integral_increment_quartic_bound (approx n) X.BM
+      (hadapt n) hMσ_nn (hbdd n) (htimes_nn n) s t hs hst
+  -- Helper: convert uniform bound to existential bound
+  have hbdd_ex : ∀ n, ∀ i : Fin (approx n).n, ∃ C : ℝ, ∀ ω, |(approx n).values i ω| ≤ C :=
+    fun n i => ⟨Mσ, hbdd n i⟩
+  have ht_nn : 0 ≤ t := le_trans hs hst
+  -- L² integrability of stochastic integral approximation errors
+  have hSI_sub_sq_int_t : ∀ n, Integrable (fun ω =>
+      ((approx n).stochasticIntegral_at X.BM t ω - X.stoch_integral t ω) ^ 2) μ :=
+    fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx n) X.BM
+      (hadapt n) (hbdd_ex n) (htimes_nn n)
+      (X.stoch_integral t) (X.stoch_integral_integrable t ht_nn)
+      (X.stoch_integral_sq_integrable t ht_nn) t ht_nn
+  have hSI_sub_sq_int_s : ∀ n, Integrable (fun ω =>
+      ((approx n).stochasticIntegral_at X.BM s ω - X.stoch_integral s ω) ^ 2) μ :=
+    fun n => SimpleProcess.stochasticIntegral_at_sub_sq_integrable (approx n) X.BM
+      (hadapt n) (hbdd_ex n) (htimes_nn n)
+      (X.stoch_integral s) (X.stoch_integral_integrable s hs)
+      (X.stoch_integral_sq_integrable s hs) s hs
+  -- f_n → g in L²
+  have hL2_incr : Filter.Tendsto (fun n => ∫ ω, (f n ω - g ω) ^ 2 ∂μ)
+      atTop (nhds 0) := by
+    apply squeeze_zero
+    · exact fun n => integral_nonneg fun ω => sq_nonneg _
+    · intro n
+      calc ∫ ω, (f n ω - g ω) ^ 2 ∂μ
+          ≤ ∫ ω, (2 * ((approx n).stochasticIntegral_at X.BM t ω -
+                      X.stoch_integral t ω) ^ 2 +
+                  2 * ((approx n).stochasticIntegral_at X.BM s ω -
+                      X.stoch_integral s ω) ^ 2) ∂μ := by
+            apply integral_mono_of_nonneg
+            · exact ae_of_all _ fun ω => sq_nonneg _
+            · exact ((hSI_sub_sq_int_t n).const_mul 2).add
+                ((hSI_sub_sq_int_s n).const_mul 2)
+            · exact ae_of_all _ fun ω => by
+                show (f n ω - g ω) ^ 2 ≤ _
+                simp only [f, g]
+                nlinarith [sq_nonneg ((approx n).stochasticIntegral_at X.BM t ω -
+                    X.stoch_integral t ω +
+                    ((approx n).stochasticIntegral_at X.BM s ω -
+                    X.stoch_integral s ω))]
+        _ = 2 * ∫ ω, ((approx n).stochasticIntegral_at X.BM t ω -
+                      X.stoch_integral t ω) ^ 2 ∂μ +
+            2 * ∫ ω, ((approx n).stochasticIntegral_at X.BM s ω -
+                      X.stoch_integral s ω) ^ 2 ∂μ := by
+            rw [integral_add ((hSI_sub_sq_int_t n).const_mul 2)
+                ((hSI_sub_sq_int_s n).const_mul 2),
+              integral_const_mul, integral_const_mul]
+    · have h_sum := (hL2_conv t ht_nn).add (hL2_conv s hs)
+      simp only [add_zero] at h_sum
+      have h2 := h_sum.const_mul 2
+      rw [mul_zero] at h2
+      exact h2.congr (fun n => by ring)
+  -- Apply Fatou transfer for integrability
+  exact integrable_pow4_of_L2_convergence
+    (fun n =>
+      (SimpleProcess.stochasticIntegral_at_integrable (approx n) X.BM
+        (hadapt n) (hbdd_ex n) (htimes_nn n) t ht_nn).aestronglyMeasurable.sub
+      (SimpleProcess.stochasticIntegral_at_integrable (approx n) X.BM
+        (hadapt n) (hbdd_ex n) (htimes_nn n) s hs).aestronglyMeasurable)
+    ((X.stoch_integral_integrable t ht_nn).aestronglyMeasurable.sub
+      (X.stoch_integral_integrable s hs).aestronglyMeasurable)
+    hL2_incr
+    (fun n => by
+      apply Integrable.mono'
+        (((hSI_sub_sq_int_t n).const_mul 2).add ((hSI_sub_sq_int_s n).const_mul 2))
+      · exact (continuous_pow 2).comp_aestronglyMeasurable
+          (((SimpleProcess.stochasticIntegral_at_integrable (approx n) X.BM
+              (hadapt n) (hbdd_ex n) (htimes_nn n) t ht_nn).sub
+            (SimpleProcess.stochasticIntegral_at_integrable (approx n) X.BM
+              (hadapt n) (hbdd_ex n) (htimes_nn n) s hs)).sub
+          ((X.stoch_integral_integrable t ht_nn).sub
+            (X.stoch_integral_integrable s hs))).aestronglyMeasurable
+      · filter_upwards with ω
+        simp only [Pi.add_apply, Pi.sub_apply]
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        nlinarith [sq_nonneg ((approx n).stochasticIntegral_at X.BM t ω -
+            X.stoch_integral t ω +
+            ((approx n).stochasticIntegral_at X.BM s ω -
+            X.stoch_integral s ω))])
+    (by positivity)
+    (fun n => (hf4_data n).2)
+    (fun n => (hf4_data n).1)
 
 /-- The quartic bound for stochastic integral increments.
     E[(SI(t) - SI(s))⁴] ≤ 3 Mσ⁴ (t - s)²

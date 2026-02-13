@@ -10,14 +10,6 @@ set_option linter.unusedVariables false
 
 /- ============= FREE BOSON ============= -/
 
-/-- Free boson CFT: the simplest 2D CFT
-    Action: S = (1/4π) ∫ ∂φ ∂̄φ
-    Central charge: c = 1
-    Spectrum: continuous family of primaries with h = (n+αR)²/2 for n ∈ ℤ, α ∈ ℝ -/
-structure FreeBosonCFT where
-  compactification_radius : ℝ
-  radius_positive : compactification_radius > 0
-
 /-- Free boson central charge is always c = 1 -/
 def free_boson_central_charge : ℝ := 1
 
@@ -30,24 +22,32 @@ noncomputable def momentum_winding_weight (R : ℝ) (n m : ℤ) : ℝ × ℝ :=
   let h_bar := ((n : ℝ)/R - m*R)^2 / 2
   (h, h_bar)
 
+/-- Free boson CFT: the simplest 2D CFT
+    Action: S = (1/4π) ∫ ∂φ ∂̄φ
+    Central charge: c = 1
+    Spectrum: continuous family of primaries with h = (n+αR)²/2 for n ∈ ℤ, α ∈ ℝ -/
+structure FreeBosonCFT (H : Type _) where
+  compactification_radius : ℝ
+  radius_positive : compactification_radius > 0
+  /-- Primary operators V_{n,m} labeled by momentum n and winding m -/
+  primary : ℤ → ℤ → Primary2D H
+  /-- Weights match momentum-winding formula -/
+  primary_weights : ∀ (n m : ℤ),
+    let (h_val, h_bar_val) := momentum_winding_weight compactification_radius n m
+    (primary n m).h = h_val ∧ (primary n m).h_bar = h_bar_val
+
 /-- T-duality map: exchange R ↔ 1/R -/
-noncomputable def t_dual (fb : FreeBosonCFT) : FreeBosonCFT where
+noncomputable def t_dual {H : Type _} (fb : FreeBosonCFT H) : FreeBosonCFT H where
   compactification_radius := 1 / fb.compactification_radius
   radius_positive := by
     apply div_pos
     · norm_num
     · exact fb.radius_positive
+  primary := fun n m => fb.primary m n  -- T-duality swaps momentum and winding
+  primary_weights := sorry  -- follows from momentum_winding_weight symmetry under R ↔ 1/R, n ↔ m
 
 /-- Self-dual radius where R = 1/R -/
 def self_dual_radius : ℝ := 1
-
-/-- Primary operators exist (axiomatized since we haven't constructed them) -/
-axiom free_boson_primary (fb : FreeBosonCFT) (n m : ℤ) (H : Type _) : Primary2D H
-
-axiom free_boson_primary_weights (fb : FreeBosonCFT) (n m : ℤ) (H : Type _) :
-  let φ := free_boson_primary fb n m H
-  let (h, h_bar) := momentum_winding_weight fb.compactification_radius n m
-  φ.h = h ∧ φ.h_bar = h_bar
 
 /- ============= ISING MODEL ============= -/
 
@@ -55,9 +55,15 @@ axiom free_boson_primary_weights (fb : FreeBosonCFT) (n m : ℤ) (H : Type _) :
     Minimal model with m=3
     Central charge: c = 1/2
     Three primary fields: 𝟙 (h=0), ε (h=1/2), σ (h=1/16) -/
-structure IsingCFT where
-  -- Structure is trivial, fully determined by c=1/2
-  dummy : Unit := ()
+structure IsingCFT (H : Type _) where
+  /-- The three primary operators -/
+  identity : Primary2D H
+  energy : Primary2D H
+  spin : Primary2D H
+  /-- Correct conformal weights -/
+  identity_weight : identity.h = 0
+  energy_weight : energy.h = 1/2
+  spin_weight : spin.h = 1/16
 
 /-- Ising central charge -/
 noncomputable def ising_central_charge : ℝ := 1/2
@@ -76,131 +82,98 @@ def ising_critical_exponent_nu : ℝ := 1  -- from energy operator
 noncomputable def ising_critical_exponent_beta : ℝ := 1/8  -- from spin operator
 noncomputable def ising_critical_exponent_gamma : ℝ := 7/4  -- from σ²
 
-/-- The three primary operators (axiomatized) -/
-axiom isingIdentity (ising : IsingCFT) (H : Type _) : Primary2D H
-axiom isingEnergy (ising : IsingCFT) (H : Type _) : Primary2D H
-axiom isingSpin (ising : IsingCFT) (H : Type _) : Primary2D H
-
-axiom ising_weights_correct (ising : IsingCFT) (H : Type _) :
-  (isingIdentity ising H).h = ising_identity_weight ∧
-  (isingEnergy ising H).h = ising_energy_weight ∧
-  (isingSpin ising H).h = ising_spin_weight
-
 /- ============= MINIMAL MODELS ============= -/
+
+/-- Minimal model central charge formula -/
+noncomputable def minimal_model_c (m : ℕ) : ℝ :=
+  1 - 6 / (m * (m + 1))
+
+/-- Primary field conformal weight formula -/
+noncomputable def minimal_model_weight_formula (m r s : ℕ) : ℝ :=
+  (((m + 1 : ℝ) * r - m * s)^2 - 1) / (4 * m * (m + 1))
 
 /-- Virasoro minimal model M(m,m+1)
     Rational CFTs with c < 1 for m ≥ 3 -/
-structure MinimalModel where
+structure MinimalModel (H : Type _) where
   m : ℕ
   m_geq_3 : m ≥ 3
-
-/-- Minimal model central charge formula -/
-noncomputable def minimal_model_c (mm : MinimalModel) : ℝ :=
-  1 - 6 / (mm.m * (mm.m + 1))
-
-/-- Primary field conformal weight formula -/
-noncomputable def minimal_model_weight (mm : MinimalModel) (r s : ℕ) : ℝ :=
-  (((mm.m + 1 : ℝ) * r - mm.m * s)^2 - 1) / (4 * mm.m * (mm.m + 1))
+  /-- Primary operators φ_{r,s} for 1 ≤ s ≤ r < m -/
+  primary : (r s : ℕ) → (1 ≤ r ∧ r < m) → (1 ≤ s ∧ s ≤ r) → Primary2D H
+  /-- Weights match Kac table formula -/
+  primary_weight : ∀ (r s : ℕ) (hr : 1 ≤ r ∧ r < m) (hs : 1 ≤ s ∧ s ≤ r),
+    (primary r s hr hs).h = minimal_model_weight_formula m r s
 
 /-- Ising model is minimal model with m=3 -/
-def ising_as_minimal_model : MinimalModel where
-  m := 3
-  m_geq_3 := by norm_num
+noncomputable def ising_as_minimal_model_m : ℕ := 3
 
 /-- Tricritical Ising: m=4, c=7/10 -/
-def tricritical_ising : MinimalModel where
-  m := 4
-  m_geq_3 := by norm_num
+noncomputable def tricritical_ising_m : ℕ := 4
 
 /-- 3-state Potts: m=5, c=4/5 -/
-def three_state_potts : MinimalModel where
-  m := 5
-  m_geq_3 := by norm_num
-
-/-- Primary operators exist (axiomatized) -/
-axiom minimal_model_primary (mm : MinimalModel) (r s : ℕ)
-  (hr : 1 ≤ r ∧ r < mm.m) (hs : 1 ≤ s ∧ s ≤ r) (H : Type _) : Primary2D H
-
-axiom minimal_model_primary_weight (mm : MinimalModel) (r s : ℕ)
-  (hr : 1 ≤ r ∧ r < mm.m) (hs : 1 ≤ s ∧ s ≤ r) (H : Type _) :
-  (minimal_model_primary mm r s hr hs H).h = minimal_model_weight mm r s
+noncomputable def three_state_potts_m : ℕ := 5
 
 /- ============= LIOUVILLE THEORY ============= -/
 
-/-- Liouville CFT: non-rational CFT with continuous spectrum
-    Parameterized by b > 0 (or equivalently central charge c > 1) -/
-structure LiouvilleCFT where
-  b : ℝ
-  b_positive : b > 0
-
 /-- Background charge Q = b + 1/b -/
-noncomputable def liouville_Q (lft : LiouvilleCFT) : ℝ :=
-  lft.b + 1/lft.b
+noncomputable def liouville_Q (b : ℝ) : ℝ :=
+  b + 1/b
 
 /-- Liouville central charge: c = 1 + 6Q² -/
-noncomputable def liouville_c (lft : LiouvilleCFT) : ℝ :=
-  let Q := liouville_Q lft
+noncomputable def liouville_c (b : ℝ) : ℝ :=
+  let Q := liouville_Q b
   1 + 6 * Q^2
 
 /-- Primary operator conformal weight: h = α(Q - α) -/
-noncomputable def liouville_weight (lft : LiouvilleCFT) (α : ℝ) : ℝ :=
-  let Q := liouville_Q lft
+noncomputable def liouville_weight (b α : ℝ) : ℝ :=
+  let Q := liouville_Q b
   α * (Q - α)
 
-/-- Duality transformation b ↔ 1/b -/
-noncomputable def liouville_dual (lft : LiouvilleCFT) : LiouvilleCFT where
-  b := 1 / lft.b
-  b_positive := by
-    apply div_pos
-    · norm_num
-    · exact lft.b_positive
+/-- Liouville CFT: non-rational CFT with continuous spectrum
+    Parameterized by b > 0 (or equivalently central charge c > 1) -/
+structure LiouvilleCFT (H : Type _) where
+  b : ℝ
+  b_positive : b > 0
+  /-- Primary operators V_α parameterized by momentum α -/
+  primary : ℝ → Primary2D H
+  /-- Weights match Liouville formula -/
+  primary_weight : ∀ (α : ℝ),
+    (primary α).h = liouville_weight b α
 
-/-- Structure for Liouville structure constants -/
-structure LiouvilleStructureConstantsTheory where
-  /-- DOZZ formula (structure constants for Liouville theory) -/
-  dozz_formula : LiouvilleCFT → ℝ → ℝ → ℝ → ℂ
+/-- Duality transformation b ↔ 1/b leaves c invariant -/
+noncomputable def liouville_dual_b (b : ℝ) (hb : b > 0) : ℝ := 1 / b
 
-/-- Liouville structure constants theory axiom -/
-axiom liouvilleStructureConstantsTheoryD : LiouvilleStructureConstantsTheory
-
-/-- DOZZ formula (axiomatized, very technical to prove) -/
-noncomputable def dozz_formula (lft : LiouvilleCFT) (α₁ α₂ α₃ : ℝ) : ℂ :=
-  liouvilleStructureConstantsTheoryD.dozz_formula lft α₁ α₂ α₃
-
-/-- Primary operators exist (axiomatized) -/
-axiom liouville_primary (lft : LiouvilleCFT) (α : ℝ) (H : Type _) : Primary2D H
-
-axiom liouville_primary_weight (lft : LiouvilleCFT) (α : ℝ) (H : Type _) :
-  (liouville_primary lft α H).h = liouville_weight lft α
+/-- DOZZ formula (Dorn-Otto-Zamolodchikov-Zamolodchikov):
+    Structure constants for Liouville theory.
+    This is the unique solution to crossing symmetry + conformal bootstrap for c > 1. -/
+structure DOZZTheory where
+  dozz_formula : ℝ → ℝ → ℝ → ℝ → ℂ  -- b, α₁, α₂, α₃ → C_{α₁α₂α₃}
 
 /- ============= WZW MODELS ============= -/
 
 /-- WZW model: current algebra CFT based on Lie group G at level k -/
-structure WZWModel (G : Type) where
+structure WZWModel (G : Type) (H : Type _) where
   level : ℕ
   level_positive : level > 0
   group_dim : ℕ
   dual_coxeter : ℕ
+  /-- Primary operators labeled by highest weight representations -/
+  primary : ℕ → Primary2D H
+  /-- Weight formula -/
+  primary_weight : ∀ (j : ℕ),
+    ∃ (h_val : ℝ), (primary j).h = h_val
 
 /-- WZW central charge formula -/
-noncomputable def wzw_c {G : Type} (wzw : WZWModel G) : ℝ :=
-  (wzw.level * wzw.group_dim : ℝ) / (wzw.level + wzw.dual_coxeter)
+noncomputable def wzw_c (level group_dim dual_coxeter : ℕ) : ℝ :=
+  (level * group_dim : ℝ) / (level + dual_coxeter)
 
-/-- SU(2)_k WZW model -/
-def su2_wzw (k : ℕ) (h_pos : k > 0) : WZWModel Unit where
-  level := k
-  level_positive := h_pos
-  group_dim := 3  -- dim(SU(2)) = 3
-  dual_coxeter := 2  -- h^∨ = 2 for SU(2)
-
-/-- SU(2) primary weight formula: h_j = j(j+1)/(k+2) -/
-noncomputable def su2_primary_weight (k j : ℕ) : ℝ :=
-  (j * (j + 1) : ℝ) / (k + 2)
-
-/-- Primary operators exist (axiomatized) -/
-axiom wzw_primary {G : Type} (wzw : WZWModel G) (j : ℕ) (H : Type _) : Primary2D H
-
-axiom su2_primary_weight_correct (k j : ℕ) (h_pos : k > 0) (hj : 2 * j ≤ k) (H : Type _) :
-  (wzw_primary (su2_wzw k h_pos) j H).h = su2_primary_weight k j
+/-- SU(2)_k WZW model data -/
+structure SU2WZWData (H : Type _) where
+  wzw : WZWModel Unit H
+  level_val : wzw.level > 0
+  group_dim_eq : wzw.group_dim = 3
+  dual_coxeter_eq : wzw.dual_coxeter = 2
+  /-- SU(2) primary weight formula: h_j = j(j+1)/(k+2) -/
+  su2_weight : ∀ (j : ℕ) (hj : 2 * j ≤ wzw.level),
+    (wzw.primary j).h = (j * (j + 1) : ℝ) / (wzw.level + 2)
 
 end ModularPhysics.Core.QFT.CFT.TwoDimensional

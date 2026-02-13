@@ -11,7 +11,7 @@ set_option linter.unusedVariables false
 
 /- ============= OPERATOR PRODUCT EXPANSION (OPE) ============= -/
 
-/-- Structure for OPE theory in 2D CFT
+/-- OPE theory in 2D CFT.
 
     OPE in 2D: φ_i(z,z̄) φ_j(w,w̄) = ∑_k C^k_{ij} (z-w)^{h_k-h_i-h_j} (z̄-w̄)^{h̄_k-h̄_i-h̄_j} φ_k(w,w̄)
     Fundamental structure of 2D CFT!
@@ -39,40 +39,24 @@ structure OPE2DTheory where
     (φ_i φ_j φ_k : Primary2D H)
     (z_i z_j z_k : ℂ), Prop
 
-/-- OPE theory holds -/
-axiom ope2DTheoryD : OPE2DTheory
-
-/-- OPE expansion of two primary fields -/
-axiom ope2D {H : Type _}
-  (φ_i φ_j : Primary2D H)
-  (z w : ℂ) :
-  List (ℂ × Primary2D H)
-
-/-- OPE coefficient (3-point function coefficient) -/
-axiom OPECoeff2D : ℕ → ℕ → ℕ → ℂ
-
 /- ============= STRUCTURE CONSTANTS ============= -/
 
-/-- Structure for structure constants in 2D CFT -/
+/-- Structure constants in 2D CFT -/
 structure StructureConstant2DTheory where
   /-- Structure constant from 3-point function
       ⟨φ_i(z_i,z̄_i) φ_j(z_j,z̄_j) φ_k(z_k,z̄_k)⟩ = C_ijk / |z_i-z_j|^... |z_j-z_k|^... |z_i-z_k|^... -/
   structure_constant_from_3pt : ∀ {H : Type _}
     (φ_i φ_j φ_k : Primary2D H), ℂ
-  /-- Reality condition for unitary CFT -/
+  /-- Reality condition for unitary CFT: C_{ijk}* = C_{ijk} up to phases -/
   structure_constant_reality : ∀ {H : Type _}
     (φ_i φ_j φ_k : Primary2D H)
-    (h_unitary : True), Prop
+    (h_unitary : IsUnitary2D ⟨φ_i.h⟩),  -- unitarity of the theory
+    ∃ (phase : ℂ), ‖phase‖ = 1 ∧
+      starRingEnd ℂ (structure_constant_from_3pt φ_i φ_j φ_k) =
+        phase * structure_constant_from_3pt φ_i φ_j φ_k
   /-- Structure constants satisfy polynomial equations from associativity -/
   structure_constant_polynomial_equations : ∀ {H : Type _}
     (operators : List (Primary2D H)), Prop
-
-/-- Structure constant theory holds -/
-axiom structureConstant2DTheoryD : StructureConstant2DTheory
-
-/-- Structure constant from 3-point function -/
-axiom structure_constant_from_3pt {H : Type _}
-  (φ_i φ_j φ_k : Primary2D H) : ℂ
 
 /- ============= GLOBAL CONFORMAL TRANSFORMATIONS ============= -/
 
@@ -88,7 +72,7 @@ structure MoebiusTransform where
 noncomputable def applyMoebius (m : MoebiusTransform) (z : ℂ) : ℂ :=
   (m.a * z + m.b) / (m.c * z + m.d)
 
-/-- Structure for global conformal transformation theory -/
+/-- Global conformal transformation theory in 2D -/
 structure GlobalConformalTheory2D where
   /-- Primary field transforms under Moebius: φ(z) → (cz+d)^{-2h} φ((az+b)/(cz+d)) -/
   primary_moebius_transform : ∀ {H : Type _}
@@ -101,24 +85,11 @@ structure GlobalConformalTheory2D where
     (operators : Fin n → Primary2D H)
     (points : Fin n → ℂ), Prop
 
-/-- Global conformal theory holds -/
-axiom globalConformalTheory2DD : GlobalConformalTheory2D
-
-/-- Primary field transforms under Moebius -/
-axiom primary_moebius_transform {H : Type _}
-  (φ : Primary2D H)
-  (m : MoebiusTransform)
-  (z : ℂ) : Prop
-
-/-- Global conformal Ward identity -/
-axiom global_conformal_ward {H : Type _}
-  (n : ℕ)
-  (operators : Fin n → Primary2D H)
-  (points : Fin n → ℂ) : Prop
-
 /- ============= OPE FROM STATE-OPERATOR CORRESPONDENCE ============= -/
 
-/-- Structure for state-operator correspondence in 2D CFT -/
+/-- State-operator correspondence in 2D CFT.
+    Every state |ψ⟩ in the Hilbert space corresponds to a local operator O_ψ(0)
+    via |ψ⟩ = O_ψ(0)|0⟩ -/
 structure StateOperatorCorrespondence2D where
   /-- OPE exists as consequence of state-operator correspondence
       φ_i(z) φ_j(w) |0⟩ = |ψ⟩ = ∑_k c_k |k⟩ where |k⟩ are energy eigenstates
@@ -127,25 +98,10 @@ structure StateOperatorCorrespondence2D where
     (φ_i φ_j : Primary2D H)
     (z w : ℂ)
     (vacuum : H),
-    ∃ (decomposition : List (ℂ × H)), True
+    ∃ (decomposition : List (ℂ × H)), decomposition.length > 0
   /-- OPE coefficients determined by inner products of states -/
   ope_coeff_from_inner_product : ∀ {H : Type _}
     (φ_i φ_j φ_k : Primary2D H)
     (inner_product : H → H → ℂ), Prop
-
-/-- State-operator correspondence theory holds -/
-axiom stateOperatorCorrespondence2DD : StateOperatorCorrespondence2D
-
-/-- OPE exists as consequence of state-operator correspondence -/
-axiom ope_from_state_operator {H : Type _}
-  (φ_i φ_j : Primary2D H)
-  (z w : ℂ)
-  (vacuum : H) :
-  ∃ (decomposition : List (ℂ × H)), True
-
-/-- OPE coefficients determined by inner products of states -/
-axiom ope_coeff_from_inner_product {H : Type _}
-  (φ_i φ_j φ_k : Primary2D H)
-  (inner_product : H → H → ℂ) : Prop
 
 end ModularPhysics.Core.QFT.CFT.TwoDimensional

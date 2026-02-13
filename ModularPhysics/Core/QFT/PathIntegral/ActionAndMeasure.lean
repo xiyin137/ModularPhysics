@@ -1,3 +1,11 @@
+-- ModularPhysics/Core/QFT/PathIntegral/ActionAndMeasure.lean
+-- Action functionals and path integral measures
+--
+-- The path integral Z = ∫ Dφ e^{iS[φ]/ℏ} has two ingredients:
+-- 1. The action functional S[φ] : F → ℝ (specifies the theory)
+-- 2. The measure Dφ (formal integration over field space)
+--
+-- Together they define correlation functions ⟨O⟩ = (1/Z) ∫ Dφ O(φ) e^{iS[φ]/ℏ}
 import ModularPhysics.Core.QFT.PathIntegral.FieldConfigurations
 import ModularPhysics.Core.QFT.PathIntegral.Supergeometry
 
@@ -7,80 +15,82 @@ set_option linter.unusedVariables false
 
 /- ============= ACTION FUNCTIONAL ============= -/
 
-/-- Action functional S[φ] on field configurations -/
-structure ActionFunctional (F : Type _) where
+/-- Action functional S[φ] on field configurations.
+    The action is the fundamental quantity that specifies a classical field theory.
+    The classical equations of motion follow from δS/δφ = 0 (stationarity). -/
+structure ActionFunctional (F : Type*) where
+  /-- Evaluation: S[φ] -/
   eval : F → ℝ
-  /-- Action is local -/
-  locality : Prop
-  /-- First variation gives equations of motion -/
-  equations_of_motion : F → F → ℝ
 
-/-- Euclidean action (bounded below, ensures convergence) -/
-structure EuclideanAction (F : Type _) extends ActionFunctional F where
+/-- An action functional is local if it can be written as the integral of a
+    Lagrangian density: S[φ] = ∫ d^d x L(φ, ∂φ, ..., x).
+    Locality is a fundamental principle of relativistic QFT. -/
+structure LocalAction (F : Type*) extends ActionFunctional F where
+  /-- The Lagrangian density as a functional -/
+  lagrangian_density : F → ℝ
+  /-- The action is the integral of the Lagrangian density -/
+  action_from_lagrangian : ∀ (φ : F), eval φ = lagrangian_density φ
+
+/-- Euclidean action S_E (obtained by Wick rotation t → -iτ).
+    The Euclidean action is bounded below, ensuring convergence of the
+    path integral weight e^{-S_E[φ]}. -/
+structure EuclideanAction (F : Type*) extends ActionFunctional F where
+  /-- Euclidean action is bounded below: S_E[φ] ≥ c for some constant c -/
   bounded_below : ∃ (c : ℝ), ∀ φ : F, eval φ ≥ c
 
-/-- Wick rotation: it → τ -/
-axiom wickRotation {F : Type _} :
-  ActionFunctional F → EuclideanAction F
+/-- Wick rotation data: relates Minkowski and Euclidean actions.
+    The Wick rotation t → -iτ transforms:
+    - S_M[φ] → iS_E[φ] (Minkowski to Euclidean)
+    - e^{iS_M/ℏ} → e^{-S_E/ℏ} (oscillatory → damped) -/
+structure WickRotationData (F : Type*) where
+  /-- Minkowski (Lorentzian) action -/
+  minkowski_action : ActionFunctional F
+  /-- Euclidean action -/
+  euclidean_action : EuclideanAction F
+  /-- Wick rotation relation: S_M = iS_E on the appropriate analytic continuation -/
+  wick_relation : ∀ (φ : F),
+    minkowski_action.eval φ = euclidean_action.eval φ -- simplified; actual relation involves i
 
 /- ============= MEASURE ON FIELD SPACE ============= -/
 
-/-- Formal measure Dφ (needs regularization to be well-defined!)
-    This is a formal object that encapsulates the path integral measure -/
-structure FieldMeasureElement (F : Type _) where
-  data : Unit
+/-- Formal measure Dφ on field space.
 
-/-- Abbreviation for field measure type -/
-abbrev FieldMeasure (F : Type _) := FieldMeasureElement F
+    The path integral measure is a fundamental but formally ill-defined concept.
+    Different classes of theories admit different rigorous constructions:
+    - Free theories: Gaussian measure (rigorous via Minlos/Bochner-Minlos)
+    - Lattice theories: finite-dimensional product of Lebesgue measures
+    - Interacting theories: typically defined as limit of regularized measures
 
-/-- Bosonic measure (translation invariant for linear theories) -/
-axiom bosonicMeasure {M V : Type _}
-  [LinearFieldSpace M V] : FieldMeasure (FieldConfig M V)
+    For Core, we capture the defining property: a measure assigns a complex number
+    (the integral) to each observable functional O : F → ℂ. -/
+structure FieldMeasure (F : Type*) where
+  /-- Integration functional: ∫ Dφ f(φ) -/
+  integrate : (F → ℂ) → ℂ
 
-/-- Fermionic measure: uses Berezin integration
-    Key property: sign change under exchange
-    ∫ Dψ Dχ F[ψ,χ] = -∫ Dχ Dψ F[ψ,χ] -/
-structure FermionicMeasure (F : Type _) (G : GrassmannAlgebra) where
-  measure : FieldMeasure F
+/-- Fermionic measure: uses Berezin integration.
+    Key property: sign change under exchange of fermionic variables.
+    ∫ Dψ Dχ F[ψ,χ] = -∫ Dχ Dψ F[ψ,χ]
+
+    This antisymmetry is the mathematical origin of the Pauli exclusion principle:
+    exchanging two identical fermions flips the sign of the amplitude. -/
+structure FermionicMeasure (F : Type*) (G : GrassmannAlgebra) where
+  /-- Underlying integration functional -/
+  integrate : (F → ℂ) → ℂ
+  /-- Berezin integration structure -/
   berezin : BerezinIntegral G
-  /-- Grassmann nature: sign change under exchange -/
-  anticommuting : Prop
 
-/-- Jacobian for change of variables
-    Bosonic: ordinary determinant
-    Fermionic: Berezinian (superdeterminant) -/
-axiom jacobianDeterminant {F₁ F₂ : Type _} (f : F₁ → F₂) : ℂ
+/-- Gaussian measure: the rigorous measure for free field theories.
+    The Gaussian measure μ_C with covariance C satisfies:
+    ∫ exp(iφ(f)) dμ_C(φ) = exp(-½⟨f, Cf⟩)
 
-/- ============= ACTION AND MEASURE THEORY ============= -/
-
-/-- Structure for action functional theory -/
-structure ActionFunctionalTheory where
-  /-- Euclidean action from Wick rotation exists -/
-  wick_rotation_exists : ∀ (F : Type _) (S : ActionFunctional F),
-    ∃ (S_E : EuclideanAction F), True
-  /-- Equations of motion from stationarity -/
-  eom_from_stationarity : ∀ (F : Type _) (S : ActionFunctional F) (φ : F),
-    S.equations_of_motion φ φ = 0 → ∃ (is_on_shell : Prop), True
-  /-- Local action can be written as integral of Lagrangian density -/
-  local_action_lagrangian : ∀ (F : Type _) (S : ActionFunctional F),
-    S.locality → ∃ (lagrangian_density : F → ℝ), True
-
-/-- Action functional theory holds -/
-axiom actionFunctionalTheoryD : ActionFunctionalTheory
-
-/-- Structure for field measure theory -/
-structure FieldMeasureTheory where
-  /-- Bosonic measure exists for linear field spaces -/
-  bosonic_measure_exists : ∀ (M V : Type _) [LinearFieldSpace M V],
-    Nonempty (FieldMeasure (FieldConfig M V))
-  /-- Fermionic measure uses Berezin integration -/
-  fermionic_measure_berezin : ∀ (F : Type _) (G : GrassmannAlgebra),
-    Nonempty (FermionicMeasure F G)
-  /-- Jacobian transforms measure under field redefinition -/
-  jacobian_transforms_measure : ∀ (F₁ F₂ : Type _) (f : F₁ → F₂),
-    ∃ (J : ℂ), True
-
-/-- Field measure theory holds -/
-axiom fieldMeasureTheoryD : FieldMeasureTheory
+    This is the starting point for perturbative QFT: the free theory
+    is exactly solvable, and interactions are treated as perturbations. -/
+structure GaussianMeasure (F : Type*) extends FieldMeasure F where
+  /-- The covariance (two-point function of the free theory) -/
+  covariance : F → F → ℝ
+  /-- Covariance is symmetric: C(f,g) = C(g,f) -/
+  covariance_symmetric : ∀ (f g : F), covariance f g = covariance g f
+  /-- Covariance is positive: C(f,f) ≥ 0 -/
+  covariance_positive : ∀ (f : F), covariance f f ≥ 0
 
 end ModularPhysics.Core.QFT.PathIntegral

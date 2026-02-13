@@ -9,6 +9,7 @@ import Mathlib.Analysis.Complex.HasPrimitives
 import Mathlib.Analysis.Analytic.IsolatedZeros
 import Mathlib.Analysis.Calculus.FDeriv.Prod
 import Mathlib.Analysis.Calculus.FDeriv.Comp
+import Mathlib.MeasureTheory.Integral.Bochner.Basic
 
 /-!
 # Osgood's Lemma and Holomorphic Extension Infrastructure
@@ -70,11 +71,63 @@ theorem differentiableOn_cauchyIntegral_param [CompleteSpace E]
       (Metric.ball z₀ r ×ˢ V) := by
   sorry
 
+/-! ### Osgood's Lemma Infrastructure -/
+
+/-- The z-derivative of f(z,x) at z₀ varies continuously in x, when f is jointly
+    continuous and separately holomorphic in z.
+
+    Proof: By Cauchy integral formula,
+      deriv(z ↦ f(z,x))(z₀) = (2πI)⁻¹ ∮ f(ζ,x)/(ζ-z₀)² dζ
+    The integrand is continuous in x (from joint continuity of f) and uniformly
+    bounded on the circle, so the integral is continuous in x. -/
+lemma continuousAt_deriv_of_continuousOn [CompleteSpace E]
+    {z₀ : ℂ} {ρ : ℝ} (hρ : 0 < ρ)
+    {V : Set E} (hV : IsOpen V)
+    (f : ℂ × E → ℂ)
+    (hf_cont : ContinuousOn f (Metric.closedBall z₀ ρ ×ˢ V))
+    (hf_z : ∀ x ∈ V, DifferentiableOn ℂ (fun z => f (z, x)) (Metric.closedBall z₀ ρ))
+    {x₀ : E} (hx₀ : x₀ ∈ V) :
+    ContinuousAt (fun x => deriv (fun z => f (z, x)) z₀) x₀ := by
+  -- By Cauchy integral formula:
+  -- deriv(z ↦ f(z,x))(z₀) is a Cauchy integral, hence continuous in x
+  -- We express deriv via DifferentiableOn.deriv_eq_smul_circleIntegral
+  -- and show the resulting circle integral is continuous in x
+  sorry
+
+/-- Uniform Taylor remainder bound for a family of holomorphic functions.
+
+    If f is continuous on closedBall z₀ ρ × V and holomorphic in z for each x ∈ V,
+    then the first-order Taylor remainder in z is uniformly O(|h|²):
+      |f(z₀+h, x) - f(z₀, x) - deriv_z f(z₀, x) · h| ≤ C · |h|²
+    for |h| ≤ ρ/2 and x in a neighborhood of x₀.
+
+    Proof: Power series expansion gives remainder = Σ_{n≥2} aₙ(x)hⁿ.
+    Cauchy estimates: |aₙ(x)| ≤ M/ρⁿ where M = sup|f| on the compact set.
+    Geometric series: |remainder| ≤ 2M|h|²/ρ² for |h| ≤ ρ/2. -/
+lemma taylor_remainder_bound [CompleteSpace E]
+    {z₀ : ℂ} {ρ : ℝ} (hρ : 0 < ρ)
+    {V : Set E} (hV : IsOpen V)
+    (f : ℂ × E → ℂ)
+    (hf_cont : ContinuousOn f (Metric.closedBall z₀ ρ ×ˢ V))
+    (hf_z : ∀ x ∈ V, DifferentiableOn ℂ (fun z => f (z, x)) (Metric.closedBall z₀ ρ))
+    {x₀ : E} (hx₀ : x₀ ∈ V) :
+    ∃ (C : ℝ) (δ : ℝ), C ≥ 0 ∧ δ > 0 ∧
+      ∀ (h : ℂ) (x : E), x ∈ V → ‖x - x₀‖ < δ → ‖h‖ < ρ / 2 →
+      ‖f (z₀ + h, x) - f (z₀, x) - deriv (fun z => f (z, x)) z₀ * h‖ ≤ C * ‖h‖ ^ 2 := by
+  sorry
+
 /-! ### Osgood's Lemma -/
 
 /-- **Osgood's Lemma (product form)**: A continuous function f : ℂ × E → ℂ on an
     open product U₁ × U₂ that is holomorphic in each factor separately is jointly
-    holomorphic. -/
+    holomorphic.
+
+    The proof constructs the joint Fréchet derivative L(h,k) = a·h + B(k) where
+    a = ∂f/∂z(z₀,x₀) and B = D_x f(z₀,x₀), then shows the remainder is o(‖(h,k)‖)
+    using three estimates:
+    1. Taylor remainder in z: O(|h|²) uniformly in x (Cauchy estimates)
+    2. Derivative variation: [a(x₀+k) - a(x₀)]·h → 0 (continuity of z-derivative)
+    3. Fréchet remainder in x: o(‖k‖) (from x-holomorphicity) -/
 theorem osgood_lemma_prod [CompleteSpace E]
     {U₁ : Set ℂ} {U₂ : Set E} (hU₁ : IsOpen U₁) (hU₂ : IsOpen U₂)
     (f : ℂ × E → ℂ)
@@ -82,7 +135,122 @@ theorem osgood_lemma_prod [CompleteSpace E]
     (hf_z : ∀ x ∈ U₂, DifferentiableOn ℂ (fun z => f (z, x)) U₁)
     (hf_x : ∀ z ∈ U₁, DifferentiableOn ℂ (fun x => f (z, x)) U₂) :
     DifferentiableOn ℂ f (U₁ ×ˢ U₂) := by
-  sorry
+  intro ⟨z₀, x₀⟩ ⟨hz₀, hx₀⟩
+  -- Step 1: Find neighborhoods inside U₁ and U₂
+  obtain ⟨ρ₀, hρ₀, hball_z⟩ := Metric.isOpen_iff.mp hU₁ z₀ hz₀
+  obtain ⟨r_x, hr_x, hball_x⟩ := Metric.isOpen_iff.mp hU₂ x₀ hx₀
+  set ρ := ρ₀ / 2
+  have hρ : 0 < ρ := by positivity
+  have hρ_lt : ρ < ρ₀ := by change ρ₀ / 2 < ρ₀; linarith
+  have hcball_sub : Metric.closedBall z₀ ρ ⊆ U₁ :=
+    fun w hw => hball_z (lt_of_le_of_lt (Metric.mem_closedBall.mp hw) hρ_lt)
+  -- Step 2: DifferentiableAt in each variable
+  have h_z_at : DifferentiableAt ℂ (fun z => f (z, x₀)) z₀ :=
+    (hf_z x₀ hx₀ z₀ hz₀).differentiableAt (hU₁.mem_nhds hz₀)
+  have h_x_at : DifferentiableAt ℂ (fun x => f (z₀, x)) x₀ :=
+    (hf_x z₀ hz₀ x₀ hx₀).differentiableAt (hU₂.mem_nhds hx₀)
+  -- Step 3: Candidate Fréchet derivative L(h,k) = a·h + B(k)
+  -- a_of x = ∂f/∂z(z₀, x), the z-derivative as a function of x
+  set a_of : E → ℂ := fun x => deriv (fun z => f (z, x)) z₀
+  set B : E →L[ℂ] ℂ := fderiv ℂ (fun x => f (z₀, x)) x₀
+  set L : ℂ × E →L[ℂ] ℂ :=
+    ContinuousLinearMap.coprod (a_of x₀ • ContinuousLinearMap.id ℂ ℂ) B
+  suffices HasFDerivAt f L (z₀, x₀) from this.differentiableAt.differentiableWithinAt
+  rw [hasFDerivAt_iff_isLittleO_nhds_zero]
+  -- Step 4: Infrastructure for helper lemmas
+  have hf_z_ball : ∀ x ∈ U₂, DifferentiableOn ℂ (fun z => f (z, x))
+      (Metric.closedBall z₀ ρ) :=
+    fun x hx => (hf_z x hx).mono hcball_sub
+  have hf_cont_ball : ContinuousOn f (Metric.closedBall z₀ ρ ×ˢ U₂) :=
+    hf_cont.mono (Set.prod_mono hcball_sub Subset.rfl)
+  -- (i) Continuity of z-derivative in x
+  have h_a_cont : ContinuousAt a_of x₀ :=
+    continuousAt_deriv_of_continuousOn hρ hU₂ f hf_cont_ball hf_z_ball hx₀
+  -- (ii) Taylor remainder bound
+  obtain ⟨C_t, δ_t, hCt, hδt, h_taylor⟩ :=
+    taylor_remainder_bound hρ hU₂ f hf_cont_ball hf_z_ball hx₀
+  -- (iii) HasFDerivAt for x-part
+  have h_x_fderiv : HasFDerivAt (fun x => f (z₀, x)) B x₀ := h_x_at.hasFDerivAt
+  -- Step 5: ε-δ proof of isLittleO
+  rw [Asymptotics.isLittleO_iff]
+  intro c hc
+  -- Get δ₂ from continuity of a_of at x₀
+  obtain ⟨δ₂, hδ₂, h_a_near⟩ := Metric.continuousAt_iff.mp h_a_cont (c / 3) (by positivity)
+  -- Get δ₃ from HasFDerivAt of x-part
+  have h_x_fderiv' := h_x_fderiv
+  rw [hasFDerivAt_iff_isLittleO_nhds_zero, Asymptotics.isLittleO_iff] at h_x_fderiv'
+  obtain ⟨δ₃, hδ₃, h_x_bound⟩ :=
+    Metric.eventually_nhds_iff.mp (h_x_fderiv' (show (0 : ℝ) < c / 3 from by positivity))
+  -- Choose overall δ
+  have hCt1 : (0 : ℝ) < C_t + 1 := by linarith
+  refine Metric.eventually_nhds_iff.mpr
+    ⟨min (min (ρ / 2) (c / (3 * (C_t + 1)))) (min (min δ₂ δ₃) (min δ_t r_x)),
+     by positivity, fun p hp => ?_⟩
+  rw [dist_zero_right] at hp
+  -- Extract individual bounds from the nested min
+  simp only [lt_min_iff] at hp
+  obtain ⟨⟨hp_ρ, hp_ct⟩, ⟨hp_δ₂, hp_δ₃⟩, hp_δt, hp_rx⟩ := hp
+  -- Component norm bounds
+  have h_fst : ‖p.1‖ ≤ ‖p‖ := norm_fst_le p
+  have h_snd : ‖p.2‖ ≤ ‖p‖ := norm_snd_le p
+  -- Membership: x₀ + p.2 ∈ U₂
+  have hx_mem : x₀ + p.2 ∈ U₂ :=
+    hball_x (show dist (x₀ + p.2) x₀ < r_x by
+      simp [dist_eq_norm]; exact lt_of_le_of_lt h_snd hp_rx)
+  -- Step 6: Decompose remainder into three terms
+  -- T₁ = Taylor remainder in z, T₂ = derivative variation, T₃ = Fréchet in x
+  set T₁ := f (z₀ + p.1, x₀ + p.2) - f (z₀, x₀ + p.2) - a_of (x₀ + p.2) * p.1
+  set T₂ := (a_of (x₀ + p.2) - a_of x₀) * p.1
+  set T₃ := f (z₀, x₀ + p.2) - f (z₀, x₀) - B p.2
+  -- Show the remainder equals T₁ + T₂ + T₃
+  have h_decomp : f ((z₀, x₀) + p) - f (z₀, x₀) - L p = T₁ + T₂ + T₃ := by
+    -- Unfold L p and use definitional equality (z₀, x₀) + p = (z₀ + p.1, x₀ + p.2)
+    have hLp : L p = a_of x₀ * p.1 + B p.2 := by
+      simp [L, ContinuousLinearMap.coprod_apply, ContinuousLinearMap.smul_apply,
+        ContinuousLinearMap.id_apply, smul_eq_mul]
+    have hfp : f ((z₀, x₀) + p) = f (z₀ + p.1, x₀ + p.2) := rfl
+    rw [hfp, hLp]; simp only [T₁, T₂, T₃]; ring
+  rw [h_decomp]
+  -- Step 7: Bound each term by (c/3) * ‖p‖
+  -- T₁ bound: Taylor remainder ≤ C_t * ‖p.1‖² ≤ (c/3) * ‖p‖
+  have hT₁ : ‖T₁‖ ≤ c / 3 * ‖p‖ := by
+    have h_tay := h_taylor p.1 (x₀ + p.2) hx_mem
+      (show ‖x₀ + p.2 - x₀‖ < δ_t by simp [add_sub_cancel_left]; exact lt_of_le_of_lt h_snd hp_δt)
+      (show ‖p.1‖ < ρ / 2 from lt_of_le_of_lt h_fst hp_ρ)
+    -- h_tay : ‖T₁‖ ≤ C_t * ‖p.1‖ ^ 2
+    have hCt_mul : C_t * ‖p‖ ≤ c / 3 := by
+      have h1 : (C_t + 1) * ‖p‖ < (C_t + 1) * (c / (3 * (C_t + 1))) :=
+        mul_lt_mul_of_pos_left hp_ct hCt1
+      have h2 : (C_t + 1) * (c / (3 * (C_t + 1))) = c / 3 := by field_simp
+      nlinarith [norm_nonneg p]
+    have hsq : ‖p.1‖ ^ 2 ≤ ‖p‖ ^ 2 :=
+      sq_le_sq' (by linarith [norm_nonneg p.1, norm_nonneg p]) h_fst
+    calc ‖T₁‖ ≤ C_t * ‖p.1‖ ^ 2 := h_tay
+      _ ≤ C_t * ‖p‖ ^ 2 := by nlinarith
+      _ = C_t * ‖p‖ * ‖p‖ := by ring
+      _ ≤ c / 3 * ‖p‖ := by nlinarith [norm_nonneg p]
+  -- T₂ bound: derivative variation * h ≤ (c/3) * ‖p‖
+  have hT₂ : ‖T₂‖ ≤ c / 3 * ‖p‖ := by
+    have h_an := h_a_near (show dist (x₀ + p.2) x₀ < δ₂ by
+      simp [dist_eq_norm]; exact lt_of_le_of_lt h_snd hp_δ₂)
+    -- h_an : dist (a_of (x₀ + p.2)) (a_of x₀) < c / 3
+    rw [dist_eq_norm] at h_an
+    calc ‖T₂‖ = ‖(a_of (x₀ + p.2) - a_of x₀) * p.1‖ := rfl
+      _ = ‖a_of (x₀ + p.2) - a_of x₀‖ * ‖p.1‖ := norm_mul _ _
+      _ ≤ ‖a_of (x₀ + p.2) - a_of x₀‖ * ‖p‖ := by nlinarith [norm_nonneg (a_of (x₀ + p.2) - a_of x₀)]
+      _ ≤ c / 3 * ‖p‖ := by nlinarith [norm_nonneg p]
+  -- T₃ bound: Fréchet remainder ≤ (c/3) * ‖p‖
+  have hT₃ : ‖T₃‖ ≤ c / 3 * ‖p‖ := by
+    have h_xb := h_x_bound (show dist p.2 0 < δ₃ by
+      simp [dist_zero_right]; exact lt_of_le_of_lt h_snd hp_δ₃)
+    -- h_xb : ‖f (z₀, x₀ + p.2) - f (z₀, x₀) - B p.2‖ ≤ c / 3 * ‖p.2‖
+    calc ‖T₃‖ ≤ c / 3 * ‖p.2‖ := h_xb
+      _ ≤ c / 3 * ‖p‖ := by nlinarith [norm_nonneg p.2, norm_nonneg p]
+  -- Step 8: Combine via triangle inequality
+  calc ‖T₁ + T₂ + T₃‖ ≤ ‖T₁ + T₂‖ + ‖T₃‖ := norm_add_le _ _
+    _ ≤ (‖T₁‖ + ‖T₂‖) + ‖T₃‖ := by linarith [norm_add_le T₁ T₂]
+    _ ≤ c / 3 * ‖p‖ + c / 3 * ‖p‖ + c / 3 * ‖p‖ := by linarith
+    _ = c * ‖p‖ := by ring
 
 /-- **Osgood's Lemma (Fin m → ℂ version)**: A continuous function on an open
     subset of ℂᵐ that is holomorphic in each coordinate separately (with the

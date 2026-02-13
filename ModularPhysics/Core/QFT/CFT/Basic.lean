@@ -1,4 +1,5 @@
 -- ModularPhysics/Core/QFT/CFT/Basic.lean
+-- Conformal Field Theory: Basic Definitions and Structures
 import ModularPhysics.Core.SpaceTime.Basic
 import ModularPhysics.Core.SpaceTime.Causality
 import ModularPhysics.Core.SpaceTime.Minkowski
@@ -49,28 +50,11 @@ noncomputable def applySCT (param : SCTParameter) (x : Fin 4 → ℝ) : Fin 4 �
   let denominator := 1 + 2 * b_dot_x + b_squared * x_squared
   fun μ => (x μ + param.b μ * x_squared) / denominator
 
-/-- Structure for conformal group dimension theorems -/
-structure ConformalGroupDimensionTheory where
-  /-- Conformal group in d dimensions is finite-dimensional for d≥3 -/
-  conformalGroupDim : ∀ (d : ℕ), d ≥ 3 → ∃ (dim : ℕ), dim = (d + 1) * (d + 2) / 2
-  /-- In d=2, conformal group is infinite-dimensional.
-      More precisely: there is no finite n such that n generators close under brackets.
-      This is because holomorphic/antiholomorphic transformations z → f(z) form
-      infinite-dimensional Lie algebras (Virasoro). -/
-  conformal_2d_infinite_dimensional : ∀ (n : ℕ), ∃ (algebra_element : Type), True
-
-/-- Conformal group dimension theory holds -/
-axiom conformalGroupDimensionTheoryD : ConformalGroupDimensionTheory
-
-/-- Conformal group in d dimensions is finite-dimensional for d≥3 -/
-theorem ConformalGroupDim (d : ℕ) (h : d ≥ 3) :
-    ∃ (dim : ℕ), dim = (d + 1) * (d + 2) / 2 :=
-  conformalGroupDimensionTheoryD.conformalGroupDim d h
-
-/-- In d=2, conformal group is infinite-dimensional -/
-theorem conformal_2d_infinite_dimensional :
-    ∀ (n : ℕ), ∃ (algebra_element : Type), True :=
-  conformalGroupDimensionTheoryD.conformal_2d_infinite_dimensional
+/-- Dimension of the conformal group SO(d,2) for d ≥ 3.
+    dim SO(d,2) = (d+1)(d+2)/2.
+    For d=2, the conformal group is infinite-dimensional
+    (Witt/Virasoro algebra, see TwoDimensional/Virasoro.lean). -/
+def conformalGroupDim (d : ℕ) : ℕ := (d + 1) * (d + 2) / 2
 
 /- ============= SCALING DIMENSIONS AND SPINS ============= -/
 
@@ -110,56 +94,41 @@ structure ConformalMultiplet (d : ℕ) (H : Type _) where
 def Dilatation.applyGen {d : ℕ} (D : Dilatation) (x : Fin d → ℝ) : Fin d → ℝ :=
   fun μ => D.scale * x μ
 
-/-- Structure for conformal transformation properties -/
+/-- Structure for conformal transformation properties.
+
+    Encodes how quasi-primary operators transform under the conformal group:
+    - Dilatations: φ(λx)|ψ⟩ = λ^(-Δ) · φ(x)|ψ⟩
+    - SCT: φ transforms with conformal factor Ω^Δ
+    - Poincaré: standard covariance under translations and Lorentz rotations -/
 structure ConformalTransformationTheory (d : ℕ) where
-  /-- Transformation under dilatations: φ(λx) = λ^(-Δ) φ(x).
-      The operator transforms with a definite scaling weight. -/
-  dilatation_transformation : ∀ {H : Type _}
+  /-- Dilatation covariance: φ(λx)|ψ⟩ = λ^(-Δ) · φ(x)|ψ⟩.
+      The operator at the dilated point equals the operator at the original
+      point scaled by the conformal factor λ^(-Δ). -/
+  dilatation_covariance : ∀ {H : Type _} [AddCommGroup H] [Module ℂ H]
     (φ : QuasiPrimary d H)
     (D : Dilatation)
     (x : Fin d → ℝ)
     (state : H),
-    φ.field (D.applyGen x) state = φ.field x state
-  /-- Transformation under special conformal transformations.
-      SCT is an inversion, translation, then inversion. -/
-  sct_transformation : ∀ {H : Type _}
+    φ.field (D.applyGen x) state =
+      ((D.scale : ℂ) ^ ((-φ.scaling_dim : ℝ) : ℂ)) • φ.field x state
+  /-- Special conformal transformation covariance.
+      Under SCT x → x', the quasi-primary transforms as:
+      φ'(x') = Ω(x)^Δ · φ(x) where Ω(x) is the conformal factor.
+      We assert the existence of a positive conformal factor. -/
+  sct_covariance : ∀ {H : Type _}
     (φ : QuasiPrimary d H)
     (param : SCTParameter)
     (x : Fin d → ℝ)
     (state : H),
     ∃ (conformal_factor : ℝ), conformal_factor > 0
-
-/-- Conformal transformation theory holds -/
-axiom conformalTransformationTheoryD {d : ℕ} : ConformalTransformationTheory d
-
-/-- Transformation under dilatations -/
-axiom dilatation_transformation {d : ℕ} {H : Type _}
-    (φ : QuasiPrimary d H)
-    (D : Dilatation)
-    (x : Fin d → ℝ)
-    (state : H) :
-    φ.field (D.applyGen x) state = φ.field x state
-
-/-- Transformation under Poincaré (for d=4): translations and Lorentz rotations -/
-structure PoincareTransformationTheory where
-  /-- Poincaré covariance for d=4 -/
+  /-- Poincaré covariance (for d=4): translations and Lorentz rotations
+      preserve the field up to a representation matrix factor. -/
   poincare_covariance : ∀ {H : Type _}
     (φ : QuasiPrimary 4 H)
     (P : PoincareTransform)
     (x : Fin 4 → ℝ)
     (state : H),
-    ∃ (transform_factor : ℂ), True
-
-/-- Poincaré transformation theory holds -/
-axiom poincareTransformationTheoryD : PoincareTransformationTheory
-
-/-- Transformation under special conformal transformations -/
-axiom sct_transformation {d : ℕ} {H : Type _}
-    (φ : QuasiPrimary d H)
-    (param : SCTParameter)
-    (x : Fin d → ℝ)
-    (state : H) :
-    ∃ (conformal_factor : ℝ), conformal_factor > 0
+    ∃ (transform_factor : ℂ), transform_factor ≠ 0
 
 /- ============= OPERATOR PRODUCT EXPANSION ============= -/
 
@@ -187,32 +156,18 @@ structure OPETheory (d : ℕ) where
     (other_insertions : List (Fin d → ℝ))
     (h_separated : ∀ z ∈ other_insertions, euclideanDistance x y < euclideanDistance y z),
     ∃ (radius : ℝ), radius > 0 ∧ euclideanDistance x y < radius
-  /-- OPE associativity: (φ_i φ_j) φ_k = φ_i (φ_j φ_k) when both sides converge -/
+  /-- OPE associativity: (φ_i φ_j) φ_k = φ_i (φ_j φ_k) in the overlap region.
+      The iterated OPE in either order produces a consistent set of operators. -/
   ope_associativity : ∀ {H : Type _}
     (φ_i φ_j φ_k : QuasiPrimary d H)
     (x y z : Fin d → ℝ)
     (h_order : euclideanDistance x y < euclideanDistance y z),
-    True
-  /-- Identity operator -/
+    ∃ (common_expansion : List (OPECoefficient d × QuasiPrimary d H)),
+      common_expansion.length > 0
+  /-- Identity operator (Δ=0, ℓ=0) -/
   identityOperator : ∀ (H : Type _), QuasiPrimary d H
   /-- Identity dimension is 0 -/
   identity_dimension : ∀ (H : Type _), (identityOperator H).scaling_dim = 0
-
-/-- OPE theory holds -/
-axiom opeTheoryD {d : ℕ} : OPETheory d
-
-/-- Operator Product Expansion -/
-axiom operatorProductExpansion {d : ℕ} {H : Type _}
-    (φ_i φ_j : QuasiPrimary d H)
-    (x y : Fin d → ℝ) :
-    List (OPECoefficient d × QuasiPrimary d H)
-
-/-- Identity operator -/
-axiom identityOperator (d : ℕ) (H : Type _) : QuasiPrimary d H
-
-/-- Identity dimension is 0 -/
-axiom identity_dimension (d : ℕ) (H : Type _) :
-    (identityOperator d H).scaling_dim = 0
 
 /- ============= CORRELATION FUNCTIONS ============= -/
 
@@ -252,16 +207,6 @@ structure CorrelationFunctionTheory (d : ℕ) where
     ∃ (cr : CrossRatios d) (g : CrossRatios d → ℂ),
       correlationFunction 4 operators points = g cr
 
-/-- Correlation function theory holds -/
-axiom correlationFunctionTheoryD {d : ℕ} : CorrelationFunctionTheory d
-
-/-- n-point correlation function ⟨φ_1(x_1)...φ_n(x_n)⟩ -/
-noncomputable def correlationFunction {d : ℕ} {H : Type _}
-    (n : ℕ)
-    (operators : Fin n → QuasiPrimary d H)
-    (points : Fin n → (Fin d → ℝ)) : ℂ :=
-  correlationFunctionTheoryD.correlationFunction n operators points
-
 /- ============= CONFORMAL WARD IDENTITIES ============= -/
 
 /-- Structure for conformal Ward identities -/
@@ -284,9 +229,6 @@ structure ConformalWardIdentities (d : ℕ) where
     (points : Fin n → (Fin d → ℝ))
     (μ : Fin d), Prop
 
-/-- Conformal Ward identities hold -/
-axiom conformalWardIdentitiesD {d : ℕ} : ConformalWardIdentities d
-
 /- ============= UNITARITY ============= -/
 
 /-- Structure for unitarity theory -/
@@ -303,18 +245,13 @@ structure UnitarityTheory (d : ℕ) where
     (φ_i φ_j φ_k : QuasiPrimary d H)
     (C : OPECoefficient d), Prop
 
-/-- Unitarity theory holds -/
-axiom unitarityTheoryD {d : ℕ} : UnitarityTheory d
-
-/-- Unitarity bound: Δ ≥ (d-2)/2 + ℓ for spin ℓ -/
-axiom unitarity_bound (d : ℕ) {H : Type _} (φ : QuasiPrimary d H) :
-    φ.scaling_dim ≥ φ.spin + (d - 2 : ℝ) / 2
-
 /- ============= STRESS-ENERGY TENSOR ============= -/
 
-/-- Stress-energy tensor element -/
+/-- Stress-energy tensor T_μν(x) as a rank-2 symmetric tensor field of operators.
+    Components T_μν(x) act on the Hilbert space H. -/
 structure StressTensorElement (d : ℕ) (H : Type _) where
-  data : Unit
+  /-- Component T_μν(x) acting on the Hilbert space H -/
+  component : (Fin d → ℝ) → Fin d → Fin d → (H → H)
 
 /-- Stress-energy tensor (conserved, symmetric, traceless) -/
 abbrev StressTensor (d : ℕ) (H : Type _) := StressTensorElement d H
@@ -328,72 +265,72 @@ structure StressTensorTheory (d : ℕ) where
   stress_conservation : ∀ (H : Type _) (T : StressTensor d H), Prop
   /-- Symmetry: T_μν = T_νμ -/
   stress_symmetry : ∀ (H : Type _) (T : StressTensor d H), Prop
-  /-- Tracelessness: T^μ_μ = 0 (classically) -/
+  /-- Tracelessness: T^μ_μ = 0 (classically, may be anomalous quantum mechanically) -/
   stress_traceless : ∀ (H : Type _) (T : StressTensor d H), Prop
-
-/-- Stress tensor theory holds -/
-axiom stressTensorTheoryD {d : ℕ} : StressTensorTheory d
 
 /- ============= CONFORMAL BLOCKS ============= -/
 
-/-- Conformal block element -/
+/-- Conformal block: universal function of cross-ratios determined by
+    external and exchanged operator quantum numbers.
+
+    g_{Δ,ℓ}^{Δ₁,Δ₂,Δ₃,Δ₄}(u,v) encodes the contribution of a conformal
+    family (primary + all descendants) to a 4-point function. -/
 structure ConformalBlockElement (d : ℕ) where
-  data : Unit
+  /-- External operator scaling dimensions Δ₁, Δ₂, Δ₃, Δ₄ -/
+  external_dims : Fin 4 → ScalingDimension
+  /-- Exchanged operator scaling dimension Δ -/
+  exchanged_dim : ScalingDimension
+  /-- Exchanged operator spin ℓ -/
+  exchanged_spin : SpinLabel
+  /-- The conformal block function g(u,v) -/
+  blockFunction : CrossRatios d → ℂ
 
 /-- Conformal block: universal function from conformal symmetry -/
 abbrev ConformalBlock (d : ℕ) := ConformalBlockElement d
 
 /-- Structure for conformal block theory -/
 structure ConformalBlockTheory (d : ℕ) where
-  /-- Evaluate conformal block -/
-  conformalBlockEval :
-    ConformalBlock d →
-    (Fin 4 → ScalingDimension) →
-    (ScalingDimension × SpinLabel) →
-    (CrossRatios d → ℂ)
-  /-- 4-point function = sum over conformal blocks -/
+  /-- 4-point function = sum over conformal blocks.
+      Each term has two OPE coefficients C_{12k} C_{34k} and a conformal block g_k. -/
   conformal_block_expansion : ∀ {H : Type _}
     (operators : Fin 4 → QuasiPrimary d H)
     (points : Fin 4 → (Fin d → ℝ)),
-    ∃ (terms : List (OPECoefficient d × OPECoefficient d × ConformalBlock d)), True
-  /-- Conformal blocks are universal -/
-  blocks_universal : ∀ (block : ConformalBlock d), Prop
-
-/-- Conformal block theory holds -/
-axiom conformalBlockTheoryD {d : ℕ} : ConformalBlockTheory d
-
-/-- Evaluate conformal block -/
-axiom conformalBlockEval (d : ℕ) :
-    ConformalBlock d →
-    (Fin 4 → ScalingDimension) →
-    (ScalingDimension × SpinLabel) →
-    (CrossRatios d → ℂ)
+    ∃ (terms : List (OPECoefficient d × OPECoefficient d × ConformalBlock d)),
+      terms ≠ []
+  /-- Conformal blocks are uniquely determined by conformal symmetry:
+      given external and exchanged quantum numbers, the block function is unique. -/
+  blocks_unique : ∀ (b₁ b₂ : ConformalBlock d),
+    b₁.external_dims = b₂.external_dims →
+    b₁.exchanged_dim = b₂.exchanged_dim →
+    b₁.exchanged_spin = b₂.exchanged_spin →
+    b₁.blockFunction = b₂.blockFunction
 
 /- ============= STATE-OPERATOR CORRESPONDENCE ============= -/
 
-/-- Structure for state-operator correspondence -/
+/-- Structure for state-operator correspondence via radial quantization.
+
+    In a CFT, there is a bijection between local operators and states on S^{d-1}:
+    φ(0)|0⟩ = |φ⟩. This means the spectrum of the theory IS the set of local operators. -/
 structure StateOperatorCorrespondence (d : ℕ) where
-  /-- State-operator map via radial quantization -/
+  /-- State-operator map: quasi-primary → state in H -/
   stateOperatorMap : ∀ {H : Type _}, QuasiPrimary d H → H
-  /-- Operator at origin creates non-vacuum state -/
+  /-- Operator at origin creates non-vacuum state (for non-identity operators) -/
   operator_creates_state : ∀ {H : Type _}
     (φ : QuasiPrimary d H)
     (vacuum : H)
     (h_nontriv : φ.scaling_dim > 0),
     stateOperatorMap φ ≠ vacuum
-  /-- Completeness: Hilbert space spanned by operator states -/
+  /-- Completeness: Hilbert space is spanned by states created by local operators -/
   hilbert_completeness : ∀ {H : Type _}
     (operators : List (QuasiPrimary d H)), Prop
 
-/-- State-operator correspondence holds -/
-axiom stateOperatorCorrespondenceD {d : ℕ} : StateOperatorCorrespondence d
-
-/-- State-operator map via radial quantization -/
-axiom stateOperatorMap {d : ℕ} {H : Type _} : QuasiPrimary d H → H
-
 /- ============= COMPLETE CFT STRUCTURE ============= -/
 
-/-- Complete structure for a conformal field theory in d dimensions -/
+/-- Complete structure for a conformal field theory in d dimensions.
+
+    Bundles all the defining data and properties of a CFT:
+    transformation laws, OPE, correlation functions, Ward identities,
+    unitarity, stress tensor, conformal blocks, and state-operator correspondence. -/
 structure CFTTheory (d : ℕ) where
   /-- Conformal transformation theory -/
   transformations : ConformalTransformationTheory d

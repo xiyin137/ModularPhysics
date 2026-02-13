@@ -63,7 +63,7 @@ structure ConformalBlockDecompositionTheory where
     (φ : QuasiPrimary d H)
     (h_scalar : φ.spin = 0)
     (x₁ x₂ x₃ x₄ : Fin d → ℝ),
-    ∃ (g : CrossRatios → ℂ), True
+    ∃ (g : CrossRatios → ℂ), ∃ (uv : CrossRatios), g uv ≠ 0
   /-- The same 4-point function expanded in different channels:
       s-channel: ∑_p C_{12p} C_{34p} g_p^s(u,v)
       t-channel: ∑_q C_{14q} C_{23q} g_q^t(v,u)
@@ -80,29 +80,6 @@ structure ConformalBlockDecompositionTheory where
   crossingKernel : ∀ (d : ℕ)
     (Δ_ext : ℝ)  -- external operator dimension
     (p_dim p_spin q_dim q_spin : ℝ), ℂ
-
-/-- Conformal block decomposition theory holds -/
-axiom conformalBlockDecompositionTheoryD : ConformalBlockDecompositionTheory
-
-/-- Four-point function decomposition -/
-axiom fourpoint_decomposition {d : ℕ} {H : Type _}
-  (φ : QuasiPrimary d H)
-  (h_scalar : φ.spin = 0)
-  (x₁ x₂ x₃ x₄ : Fin d → ℝ) :
-  ∃ (g : CrossRatios → ℂ), True
-
-/-- Crossing symmetry identity -/
-axiom crossing_symmetry_identity {d : ℕ} {H : Type _}
-  (φ : QuasiPrimary d H)
-  (h_scalar : φ.spin = 0)
-  (u v : ℝ)
-  (h_pos : u > 0 ∧ v > 0) :
-  ∃ (s_sum t_sum : ℂ), s_sum = t_sum
-
-/-- Crossing kernel -/
-axiom crossingKernel (d : ℕ)
-  (Δ_ext : ℝ)
-  (p_dim p_spin q_dim q_spin : ℝ) : ℂ
 
 /- ============= BOOTSTRAP EQUATIONS ============= -/
 
@@ -128,25 +105,6 @@ structure BootstrapEquationTheory where
     (O : QuasiPrimary d H),
     O.scaling_dim ≥ O.spin + (d - 2 : ℝ) / 2
 
-/-- Bootstrap equation theory holds -/
-axiom bootstrapEquationTheoryD : BootstrapEquationTheory
-
-/-- Bootstrap constraint -/
-axiom bootstrap_constraint {d : ℕ} {H : Type _}
-  (φ : QuasiPrimary d H)
-  (h_scalar : φ.spin = 0)
-  (uv : CrossRatios) : Prop
-
-/-- OPE coefficients squared are positive -/
-axiom ope_squared_positive {d : ℕ} {H : Type _}
-  (φ O : QuasiPrimary d H) :
-  ∃ (p : ℝ), p ≥ 0
-
-/-- Unitarity in crossing -/
-axiom unitarity_in_crossing {d : ℕ} {H : Type _}
-  (O : QuasiPrimary d H) :
-  O.scaling_dim ≥ O.spin + (d - 2 : ℝ) / 2
-
 /- ============= CONFORMAL BLOCKS ============= -/
 
 /-- Structure for conformal blocks in bootstrap -/
@@ -158,34 +116,16 @@ structure ConformalBlocksBootstrapTheory where
     (Δ_int : ℝ)  -- internal dimension
     (ℓ : ℕ)      -- spin
     (uv : CrossRatios), ℂ
-  /-- Conformal blocks satisfy differential equations from conformal algebra
-      These come from null states / conservation laws -/
+  /-- Conformal blocks satisfy a second-order differential equation
+      from the Casimir operator of the conformal algebra.
+      This ODE/PDE determines the block function uniquely. -/
   conformal_block_differential_equation : ∀ (d : ℕ)
     (Δ_ext Δ_int : ℝ)
     (ℓ : ℕ)
-    (block : CrossRatios → ℂ),
-    ∃ (differential_constraint : Prop), True
-
-/-- Conformal blocks bootstrap theory holds -/
-axiom conformalBlocksBootstrapTheoryD : ConformalBlocksBootstrapTheory
-
-/-- Conformal blocks are universal -/
-axiom conformalBlocksUniversal (d : ℕ)
-  (Δ_ext : ℝ)  -- external dimension
-  (Δ_int : ℝ)  -- internal dimension
-  (ℓ : ℕ)      -- spin
-  (uv : CrossRatios) : ℂ
-
-/-- Conformal blocks satisfy differential equations -/
-axiom conformal_block_differential_equation (d : ℕ)
-  (Δ_ext Δ_int : ℝ)
-  (ℓ : ℕ)
-  (block : CrossRatios → ℂ) :
-  ∃ (differential_constraint : Prop), True
-
-/-- Identity block: exchanging identity operator gives trivial block
-    g_{0,0}(u,v) = 1 -/
-axiom identity_block_value (d : ℕ) (Δ_ext : ℝ) :
-  conformalBlocksUniversal d Δ_ext 0 0 sorry = 1
+    (block : CrossRatios → ℂ), Prop
+  /-- Identity block: exchanging the identity operator gives trivial block
+      g_{0,0}(u,v) = 1 for all cross-ratios -/
+  identity_block_value : ∀ (d : ℕ) (Δ_ext : ℝ) (uv : CrossRatios),
+    conformalBlocksUniversal d Δ_ext 0 0 uv = 1
 
 end ModularPhysics.Core.QFT.CFT.Bootstrap

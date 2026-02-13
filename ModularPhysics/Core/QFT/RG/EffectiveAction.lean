@@ -378,32 +378,33 @@ structure PolchinskiEquation (F : FieldConfigurationSpace) where
     The Wilsonian action can be expanded in local operators.
     The couplings gᵢ(Λ) run with the scale.
 
-    This connects to the operator basis in RG.Basic. -/
-structure LocalOperatorExpansion (F : FieldConfigurationSpace) (d : ℕ) where
+    This connects to the operator basis in RG.Basic via `RGFramework`. -/
+structure LocalOperatorExpansion (F : FieldConfigurationSpace) {d : ℕ}
+    (rg : RGFramework d) where
   /-- Wilsonian action -/
   W : WilsonianEffectiveAction F
   /-- Running coupling for each local operator at scale Λ -/
-  coupling : LocalOperator d → Cutoff → ℝ
+  coupling : rg.Operator → Cutoff → ℝ
   /-- Beta function for each operator -/
-  beta : LocalOperator d → Cutoff → ℝ
+  beta : rg.Operator → Cutoff → ℝ
 
 /-- Dimensionless coupling at scale Λ -/
-noncomputable def dimensionlessCouplingAt (L : LocalOperatorExpansion F d)
-    (O : LocalOperator d) (Λ : Cutoff) : ℝ :=
-  L.coupling O Λ * Λ.Λ ^ (massDimension O - d)
+noncomputable def dimensionlessCouplingAt {d : ℕ} {rg : RGFramework d}
+    (L : LocalOperatorExpansion F rg) (O : rg.Operator) (Λ : Cutoff) : ℝ :=
+  L.coupling O Λ * Λ.Λ ^ (rg.massDimension O - d)
 
 /-- RG flow of a coupling: g(Λ₂) from g(Λ₁) at one-loop -/
-noncomputable def runCoupling (L : LocalOperatorExpansion F d)
-    (O : LocalOperator d) (Λ₁ Λ₂ : Cutoff) : ℝ :=
+noncomputable def runCoupling {d : ℕ} {rg : RGFramework d}
+    (L : LocalOperatorExpansion F rg) (O : rg.Operator) (Λ₁ Λ₂ : Cutoff) : ℝ :=
   L.coupling O Λ₁ + L.beta O Λ₁ * Real.log (Λ₂.Λ / Λ₁.Λ)
 
-/-- Check if operator is relevant at given scale -/
-noncomputable def isRelevantAtScale {d : ℕ} (O : LocalOperator d) : Bool :=
-  massDimension O < d
+/-- Check if operator is relevant (Δ < d) -/
+def isRelevantOp {d : ℕ} (rg : RGFramework d) (O : rg.Operator) : Prop :=
+  Relevant rg O
 
-/-- Check if operator is marginal -/
-noncomputable def isMarginalAtScale {d : ℕ} (O : LocalOperator d) : Bool :=
-  massDimension O = d
+/-- Check if operator is marginal (Δ = d) -/
+def isMarginalOp {d : ℕ} (rg : RGFramework d) (O : rg.Operator) : Prop :=
+  Marginal rg O
 
 /- ============================================================================
    PART V-B: COMPATIBILITY WITH PATHINTEGRAL MODULE
@@ -432,15 +433,17 @@ structure WilsonianFromPathIntegral (F : Type _) where
   /-- The effective action at scale Λ ≤ uv_cutoff (implicitly defined) -/
   effective_at_scale : UVCutoff → (F → ℝ)
 
-/-- The 1PI effective action from PathIntegral.PathIntegrals
-    (effectiveAction axiom) corresponds to our OnePIEffectiveAction.
+/-- The 1PI effective action from PathIntegral.
+    The effective action Γ[φ_cl] is the Legendre transform of W[J] = -iℏ log Z[J].
 
     The relationship is:
-    - PathIntegral.effectiveAction gives Γ[φ_cl] abstractly
-    - OnePIEffectiveAction provides the Legendre transform structure -/
+    - The generating functional Z[J] = ∫ Dφ e^{iS[φ] + i∫J·φ} defines W[J]
+    - The classical field φ_cl = δW/δJ
+    - Γ[φ_cl] = W[J] - ∫ J·φ_cl
+    - OnePIEffectiveAction provides this Legendre transform structure -/
 noncomputable def onePIFromPathIntegral {F : Type _} (S : ActionFunctional F) (μ : FieldMeasure F) :
-    ActionFunctional F :=
-  effectiveAction S μ
+    ActionFunctional F where
+  eval := fun φ_cl => sorry  -- Legendre transform of connected generating functional
 
 /- Connection to Semiclassical.lean:
 

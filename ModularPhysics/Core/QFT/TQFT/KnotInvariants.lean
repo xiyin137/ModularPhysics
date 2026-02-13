@@ -1,97 +1,69 @@
 import ModularPhysics.Core.QFT.TQFT.ChernSimons
+import ModularPhysics.Core.QFT.TQFT.ModularTensorCategories
 import Mathlib.Data.Complex.Basic
 
 namespace ModularPhysics.Core.QFT.TQFT
 
 set_option linter.unusedVariables false
 
-/-- Polynomial element (formal polynomial over ring R) -/
-structure PolynomialElement (R : Type) where
-  data : Unit
+/- ============= KNOT INVARIANTS AND CATEGORIFICATION ============= -/
 
-/-- Polynomial type -/
-abbrev Polynomial (R : Type) := PolynomialElement R
+/-- Knot polynomial invariant data.
 
-/-- HOMFLY polynomial element (two-variable polynomial) -/
-structure HOMFLYPolyElement where
-  data : Unit
+    Bundles polynomial invariants of knots and links:
+    - Jones polynomial (from Chern-Simons)
+    - HOMFLY polynomial (generalization)
+    - Khovanov homology (categorification)
 
-/-- HOMFLY polynomial type -/
-abbrev HOMFLYPoly := HOMFLYPolyElement
+    Parameterized by ChernSimonsData since Jones polynomial
+    arises from SU(2) Chern-Simons at level k=2.
 
-/-- Graded vector space element -/
-structure GradedVectorSpaceElement where
-  data : Unit
+    The polynomial and graded vector space types are abstract —
+    they represent the algebraic structures without committing
+    to a specific implementation. -/
+structure KnotInvariantData (md : StandaloneManifoldData) (cs : ChernSimonsData md)
+    (mtc : MTCData md cs) where
+  /-- Abstract polynomial type over a ring R -/
+  Polynomial : Type → Type
+  /-- Abstract HOMFLY polynomial type (two-variable Laurent polynomial) -/
+  HOMFLYPoly : Type
+  /-- Abstract graded vector space type (for categorification) -/
+  GradedVectorSpace : Type
 
-/-- Graded vector space type -/
-abbrev GradedVectorSpace := GradedVectorSpaceElement
+  /- === Polynomial invariants === -/
 
-/-- Structure for knot polynomial invariants -/
-structure KnotPolynomialTheory where
-  /-- Jones polynomial (single variable) -/
-  jonesPolynomial : Knot → Polynomial ℂ
-  /-- Knot invariant from TQFT via expectation value -/
-  knotInvariantFromTQFT : TQFTType' 3 → Knot → Polynomial ℂ
-  /-- HOMFLY polynomial (generalizes Jones, has two variables a and z) -/
-  homflyPolynomial : Link → HOMFLYPoly
+  /-- Jones polynomial (single variable, from SU(2)_2 Chern-Simons)
 
-/-- Knot polynomial theory axiom -/
-axiom knotPolynomialTheoryD : KnotPolynomialTheory
+      V_K(t) ∈ ℤ[t^{±1/2}], defined by:
+      - V_{unknot}(t) = 1
+      - Skein relation: t^{-1} V_{L+} - t V_{L-} = (t^{1/2} - t^{-1/2}) V_{L0} -/
+  jonesPolynomial : cs.Knot → Polynomial ℂ
+  /-- Knot invariant from TQFT via Wilson loop expectation value -/
+  knotInvariantFromTQFT : md.TQFTTypeOf 3 → cs.Knot → Polynomial ℂ
+  /-- HOMFLY polynomial (generalizes Jones, has two variables a and z)
 
-/-- Jones polynomial (single variable) -/
-noncomputable def jonesPolynomial : Knot → Polynomial ℂ :=
-  knotPolynomialTheoryD.jonesPolynomial
+      P_K(a,z) satisfies: a P_{L+} - a^{-1} P_{L-} = z P_{L0}
+      Jones polynomial is recovered at a = t^{-1}, z = t^{1/2} - t^{-1/2} -/
+  homflyPolynomial : cs.Link → HOMFLYPoly
 
-/-- Knot invariant from TQFT via expectation value -/
-noncomputable def knotInvariantFromTQFT (Z : TQFTType' 3) (K : Knot) : Polynomial ℂ :=
-  knotPolynomialTheoryD.knotInvariantFromTQFT Z K
+  /- === Categorification === -/
 
-/-- HOMFLY polynomial (generalizes Jones, has two variables a and z) -/
-noncomputable def homflyPolynomial : Link → HOMFLYPoly :=
-  knotPolynomialTheoryD.homflyPolynomial
+  /-- Khovanov homology (categorification of Jones polynomial)
 
-/-- Structure for Khovanov homology and categorification -/
-structure KhovanovTheory where
-  /-- Khovanov homology (categorification of Jones polynomial) -/
-  khovanovHomology : Knot → GradedVectorSpace
-  /-- Euler characteristic -/
+      Kh(K) is a bigraded abelian group whose graded Euler characteristic
+      recovers the Jones polynomial: χ_q(Kh(K)) = V_K(q) -/
+  khovanovHomology : cs.Knot → GradedVectorSpace
+  /-- Graded Euler characteristic of a graded vector space -/
   eulerCharacteristic : GradedVectorSpace → Polynomial ℂ
 
-/-- Khovanov theory axiom -/
-axiom khovanovTheoryD : KhovanovTheory
+  /- === Key theorems === -/
 
-/-- Khovanov homology (categorification of Jones polynomial) -/
-noncomputable def khovanovHomology : Knot → GradedVectorSpace :=
-  khovanovTheoryD.khovanovHomology
-
-/-- Euler characteristic -/
-noncomputable def eulerCharacteristic : GradedVectorSpace → Polynomial ℂ :=
-  khovanovTheoryD.eulerCharacteristic
-
-/-- Structure for knot-TQFT correspondence theorems -/
-structure KnotTQFTCorrespondenceTheory where
   /-- Jones polynomial from SU(2) Chern-Simons at k=2 (Witten 1989) -/
-  jones_from_chernSimons : ∀ (K : Knot),
-    jonesPolynomial K = knotInvariantFromTQFT (chernSimonsTheory SU2 SU2_is_LieGroup 2) K
+  jones_from_chernSimons : ∀ (K : cs.Knot),
+    jonesPolynomial K = knotInvariantFromTQFT
+      (cs.chernSimonsTheory cs.SU2 cs.su2LieGroup 2) K
   /-- Khovanov's theorem: χ(Kh(K)) = Jones(K) (Khovanov 2000) -/
-  khovanov_euler_equals_jones : ∀ (K : Knot),
+  khovanov_euler_equals_jones : ∀ (K : cs.Knot),
     eulerCharacteristic (khovanovHomology K) = jonesPolynomial K
-
-/-- Knot-TQFT correspondence theory axiom -/
-axiom knotTQFTCorrespondenceTheoryD : KnotTQFTCorrespondenceTheory
-
-/-- Jones polynomial from SU(2) Chern-Simons at k=2.
-
-    This is a THEOREM (Witten 1989). -/
-theorem jones_from_chernSimons (K : Knot) :
-  jonesPolynomial K = knotInvariantFromTQFT (chernSimonsTheory SU2 SU2_is_LieGroup 2) K :=
-  knotTQFTCorrespondenceTheoryD.jones_from_chernSimons K
-
-/-- Khovanov's theorem: χ(Kh(K)) = Jones(K).
-
-    This is a THEOREM (Khovanov 2000). -/
-theorem khovanov_euler_equals_jones (K : Knot) :
-  eulerCharacteristic (khovanovHomology K) = jonesPolynomial K :=
-  knotTQFTCorrespondenceTheoryD.khovanov_euler_equals_jones K
 
 end ModularPhysics.Core.QFT.TQFT

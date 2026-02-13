@@ -137,31 +137,18 @@ noncomputable def lambdaQCD (beta : PerturbativeBeta) (g : RunningCoupling)
 
 /- ============= CALLAN-SYMANZIK EQUATION ============= -/
 
-/-- Green's function G^(n)(p₁,...,pₙ; g, μ)
+/-- Anomalous dimension data for the Gell-Mann Low approach.
 
-    The n-point correlation function depends on external momenta,
-    coupling g, and renormalization scale μ. -/
-structure GreenFunctionElement (n : ℕ) where
-  data : Unit
-
-/-- Green's function type -/
-abbrev GreenFunction (n : ℕ) := GreenFunctionElement n
-
-/-- Structure for anomalous dimension theory -/
-structure AnomalousDimensionTheory where
-  /-- Anomalous dimension of a field: γ(g) = μ d(log Z)/dμ -/
+    Bundles field anomalous dimensions and operator mixing matrices,
+    which depend on the coupling constant. -/
+structure AnomalousDimensionData {d : ℕ} (rg : RGFramework d) where
+  /-- Anomalous dimension of a field: γ(g) = μ d(log Z)/dμ
+      where Z is the field renormalization constant. -/
   fieldAnomalousDimension : ℝ → ℝ
-
-/-- Anomalous dimension theory axiom -/
-axiom anomalousDimensionTheoryD : AnomalousDimensionTheory
-
-/-- Anomalous dimension of a field
-
-    γ(g) = μ d(log Z)/dμ
-
-    where Z is the field renormalization constant. -/
-noncomputable def fieldAnomalousDimension : ℝ → ℝ :=
-  anomalousDimensionTheoryD.fieldAnomalousDimension
+  /-- Anomalous dimension matrix for operator mixing.
+      When operators can mix under renormalization (same quantum numbers),
+      the RG equation involves a matrix: μ dO_i/dμ = γ_ij O_j -/
+  mixingMatrix : rg.Operator → rg.Operator → ℝ → ℝ
 
 /-- Callan-Symanzik equation
 
@@ -169,16 +156,22 @@ noncomputable def fieldAnomalousDimension : ℝ → ℝ :=
 
     This expresses that bare Green's functions are μ-independent.
     The renormalized G^(n) has explicit μ-dependence that exactly
-    compensates the implicit dependence through g(μ). -/
-structure CallanSymanzik (n : ℕ) where
-  /-- The Green's function -/
-  green : GreenFunction n
-  /-- Beta function -/
+    compensates the implicit dependence through g(μ).
+
+    The `GreenFunction` type is abstract — it represents the n-point
+    correlation function G^(n)(p₁,...,pₙ; g, μ). -/
+structure CallanSymanzikData {d : ℕ} (rg : RGFramework d) where
+  /-- Abstract type of n-point Green's functions -/
+  GreenFunction : ℕ → Type*
+  /-- Beta function β(g) -/
   beta : ℝ → ℝ
-  /-- Anomalous dimension -/
+  /-- Field anomalous dimension γ(g) -/
   gamma : ℝ → ℝ
-  /-- The CS equation is satisfied -/
-  equation_satisfied : Prop
+  /-- The n-point Green's function depends on coupling and scale -/
+  green_at : (n : ℕ) → ℝ → RenormScale → GreenFunction n
+  /-- The CS equation is satisfied: renormalized Green's functions
+      are invariant under simultaneous change of μ, g, and field rescaling -/
+  cs_equation_satisfied : Prop
 
 /-- RG-improved perturbation theory: replace μ with running scale
 
@@ -200,55 +193,37 @@ structure SchemeTransform where
   /-- Coefficients of the transformation -/
   coefficients : ℕ → ℝ
 
-/-- Structure for scheme independence theory -/
-structure SchemeIndependenceTheory where
-  /-- Beta function coefficient β₀ is scheme-independent -/
-  beta0_scheme_independent : ∀ (beta beta' : PerturbativeBeta)
-    (transform : SchemeTransform), beta.beta0 = beta'.beta0
-  /-- Beta function coefficient β₁ is scheme-independent -/
-  beta1_scheme_independent : ∀ (beta beta' : PerturbativeBeta)
-    (transform : SchemeTransform), beta.beta1 = beta'.beta1
+/-- Scheme independence of the first two beta function coefficients.
 
-/-- Scheme independence theory axiom -/
-axiom schemeIndependenceTheoryD : SchemeIndependenceTheory
-
-/-- Beta function coefficients are scheme-independent at one and two loops -/
-theorem beta0_scheme_independent (beta beta' : PerturbativeBeta)
-    (transform : SchemeTransform) :
-  beta.beta0 = beta'.beta0 :=
-  schemeIndependenceTheoryD.beta0_scheme_independent beta beta' transform
-
-theorem beta1_scheme_independent (beta beta' : PerturbativeBeta)
-    (transform : SchemeTransform) :
-  beta.beta1 = beta'.beta1 :=
-  schemeIndependenceTheoryD.beta1_scheme_independent beta beta' transform
+    β₀ and β₁ are universal (scheme-independent) because they are
+    determined by one- and two-loop diagrams whose finite parts cancel
+    in the scheme transformation. Higher-order coefficients β₂, β₃, ...
+    are scheme-dependent. -/
+structure SchemeIndependence where
+  /-- Beta functions in two different schemes -/
+  beta_scheme1 : PerturbativeBeta
+  beta_scheme2 : PerturbativeBeta
+  /-- The scheme transformation relating them -/
+  transform : SchemeTransform
+  /-- β₀ is the same -/
+  beta0_invariant : beta_scheme1.beta0 = beta_scheme2.beta0
+  /-- β₁ is the same -/
+  beta1_invariant : beta_scheme1.beta1 = beta_scheme2.beta1
 
 /- ============= OPERATOR MIXING ============= -/
 
-/-- Structure for anomalous dimension matrix theory -/
-structure AnomalousDimensionMatrixTheory where
-  /-- Anomalous dimension matrix for operator mixing -/
-  anomalousDimensionMatrix : ∀ {d : ℕ}, LocalOperator d → LocalOperator d → ℝ → ℝ
+/-- Callan-Symanzik for composite operators with mixing
 
-/-- Anomalous dimension matrix theory axiom -/
-axiom anomalousDimensionMatrixTheoryD : AnomalousDimensionMatrixTheory
+    [μ ∂/∂μ + β ∂/∂g + γ_ij] ⟨O_i(x) O_j(0)⟩ = 0
 
-/-- Anomalous dimension matrix for operator mixing
-
-    When operators can mix under renormalization (same quantum numbers),
-    the RG equation involves a matrix of anomalous dimensions:
-
-    μ d O_i/dμ = γ_ij O_j -/
-noncomputable def anomalousDimensionMatrix {d : ℕ} :
-    LocalOperator d → LocalOperator d → ℝ → ℝ :=
-  anomalousDimensionMatrixTheoryD.anomalousDimensionMatrix
-
-/-- Callan-Symanzik for composite operators
-
-    [μ ∂/∂μ + β ∂/∂g + γ_ij] ⟨O_i(x) O_j(0)⟩ = 0 -/
-structure CSOperator {d : ℕ} where
-  operators : List (LocalOperator d)
-  gamma_matrix : LocalOperator d → LocalOperator d → ℝ → ℝ
+    When operators with the same quantum numbers can mix under
+    renormalization, the anomalous dimension becomes a matrix. -/
+structure CSOperatorMixing {d : ℕ} (rg : RGFramework d) where
+  /-- Set of operators that can mix -/
+  operators : List rg.Operator
+  /-- Anomalous dimension matrix γ_ij(g) -/
+  gamma_matrix : rg.Operator → rg.Operator → ℝ → ℝ
+  /-- The CS equation with mixing is satisfied -/
   equation_satisfied : Prop
 
 /- ============= QCD EXAMPLE ============= -/
