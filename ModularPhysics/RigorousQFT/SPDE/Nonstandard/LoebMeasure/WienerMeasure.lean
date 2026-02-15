@@ -219,27 +219,8 @@ equals Wiener measure. We state this for cylinder sets, which form the basis of 
 The full proof requires completing the local CLT infrastructure.
 -/
 
-/-- **Anderson's Theorem (Cylinder Sets)**: For any cylinder constraint, the Loeb probability
-    that a hyperfinite walk satisfies the constraint equals the Wiener probability.
-
-    More precisely: the pre-Loeb probability that the S-continuous hyperfinite walk
-    lies in the cylinder set converges to the Wiener measure of that set.
-
-    This is the key bridge between hyperfinite probability and classical Brownian motion. -/
-theorem anderson_cylinder_convergence (Ω : HyperfinitePathSpace) {n : ℕ}
-    (_c : CylinderConstraint n) :
-    -- The hyperfinite probability of the cylinder set
-    -- converges to the Wiener probability as N → ∞
-    -- (Stated as: for all eps > 0, the difference is eventually < eps)
-    ∀ eps : ℝ, 0 < eps → ∃ _N₀ : ℕ, ∀ (path : ℕ → ℤ),
-      HyperfiniteWalkPath.is_S_continuous Ω path →
-      path 0 = 0 →
-      -- This requires the local CLT to make precise
-      True := by
-  intro _eps _heps
-  use 0
-  intro _ _ _
-  trivial
+-- anderson_cylinder_convergence removed: was vacuously true (proved `True`).
+-- The actual convergence statement is in AndersonTheorem.anderson_theorem_cylinder.
 
 /-! ## Summary and Future Work
 

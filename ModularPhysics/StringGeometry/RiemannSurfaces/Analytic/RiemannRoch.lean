@@ -1,58 +1,58 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.LineBundles
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.HodgeTheory.SerreDuality
-import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.ChartMeromorphic
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.HodgeTheory.DolbeaultCohomology
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.ArgumentPrinciple
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.LinearCombination
 
 /-!
 # Riemann-Roch Theorem (Analytic Approach)
 
 This file develops the Riemann-Roch theorem for compact Riemann surfaces
-using the analytic approach via Hodge theory and Serre duality.
+using the analytic approach via correction term invariance.
 
 ## The Riemann-Roch Theorem
 
-For a compact Riemann surface X of genus g and a divisor D:
+For a compact Riemann surface X of genus g (topological genus) and a divisor D:
 
-  **h⁰(D) - h¹(D) = deg(D) - g + 1**
+  **h⁰(D) - h⁰(K - D) = deg(D) + 1 - g**  (h⁰ duality form)
 
-Or equivalently, using Serre duality h¹(D) = h⁰(K - D):
+where K is the canonical divisor (divisor of any meromorphic 1-form)
+with h⁰(K) = g (Hodge theorem).
 
-  **h⁰(D) - h⁰(K - D) = deg(D) - g + 1**
+By Serre duality h¹(D) = h⁰(K - D), this gives the classical form:
 
-where K is the canonical divisor (divisor of any meromorphic 1-form).
+  **h⁰(D) - h¹(D) = deg(D) + 1 - g**
 
-## Analytic Proof Strategy
+where h¹ is properly defined via Dolbeault cohomology (see DolbeaultCohomology.lean).
 
-### Step 1: Dolbeault Cohomology
-Using our Hodge theory development, we identify:
-- H⁰(X, O(D)) = space of holomorphic sections of the line bundle O(D)
-- H¹(X, O(D)) ≅ H^{0,1}(X, O(D)) by Dolbeault isomorphism
+## Proof Strategy
 
-### Step 2: Serre Duality
-From SerreDuality.lean:
-- H¹(X, O(D)) ≅ H⁰(X, K ⊗ O(-D))^* = H⁰(X, O(K-D))^*
-- So h¹(D) = h⁰(K - D)
+### Level 1: h⁰ duality (this file, fully proven modulo eval_residue_complementarity)
+The correction term f(D) = (h⁰(D) - h⁰(K-D)) - deg(D) is constant:
+- eval_residue_complementarity: h⁰(D+[p]) - h⁰(D) + h⁰(K-D) - h⁰(K-D-[p]) = 1
+- This gives χ(D + [p]) = χ(D) + 1, so f(D + [p]) = f(D)
+- By induction on total variation: f(D) = f(0) = 1 - g
+- The base case uses h⁰(0) = 1 (proven) and h⁰(K) = g (hypothesis from Hodge theory)
 
-### Step 3: Index Computation
-The Riemann-Roch formula computes the index of the ∂̄-operator:
-- index(∂̄_D) = dim ker(∂̄_D) - dim coker(∂̄_D)
-- = h⁰(D) - h¹(D)
-- = deg(D) + 1 - g
+### Level 2: Classical form (requires Serre duality as separate theorem)
+- h¹(D) = dim(Ω^{0,1}(D) / im ∂̄_D) (Dolbeault cohomology — see DolbeaultCohomology.lean)
+- Serre duality: h¹(D) = h⁰(K - D) (theorem, not definition)
+- Combined with Level 1: h⁰(D) - h¹(D) = deg(D) + 1 - g
 
-This last equality requires the Atiyah-Singer index theorem or
-a direct computation via the Hodge Laplacian.
+### Level 3: h⁰(K) = g (Hodge theorem — connects analytic to topological)
+- dim H^{1,0}(X) = g (topological genus): dim_harmonic_10_eq_genus
+- H⁰(K) ≅ H^{1,0}(X) (holomorphic 1-forms): harmonic_10_are_canonical_sections
 
 ## Main Results
 
-* `riemann_roch_theorem` - The main Riemann-Roch formula
-* `riemann_roch_canonical` - deg(K) = 2g - 2
-* `riemann_roch_corollaries` - Standard consequences
+* `riemann_roch_h0_duality` — h⁰(D) - h⁰(K-D) = deg(D) + 1 - g (core)
+* `riemann_roch_classical` — h⁰(D) - h¹(D) = deg(D) + 1 - g (via Serre duality)
+* `h0_canonical_eq_genus` — h⁰(K) = g (Hodge theorem)
 
 ## References
 
 * Griffiths, Harris "Principles of Algebraic Geometry" Ch 2.3
 * Forster "Lectures on Riemann Surfaces" §17
-* Wells "Differential Analysis on Complex Manifolds" Ch V
 -/
 
 namespace RiemannSurfaces.Analytic
@@ -158,27 +158,140 @@ theorem zero_counting_linear_combination (CRS : CompactRiemannSurface)
     apply chartMeromorphic_linear_combination
     intro i p
     exact (basis i).chartMeromorphic p
-  -- g vanishes at the test points (rephrase hypothesis)
+  -- g vanishes at the test points
   have g_vanish : ∀ j, g (pts j) = 0 := heval
-  -- Strategy: if g is not identically 0 at regular points, the argument principle
-  -- gives a contradiction (degree sum ≥ 1 > 0 = deg(div(g))).
-  -- For now, this relies on the argument principle (a separate sorry in ChartMeromorphic.lean).
-  --
-  -- The full argument:
-  -- 1. g is chart-meromorphic (shown above)
-  -- 2. div_chart(g)(p_j) ≥ 1 (g vanishes at p_j, order ≥ 1)
-  -- 3. div_chart(g)(q) ≥ -D(q) for all q (from L(D) condition)
-  -- 4. deg(div_chart(g)) = 0 (argument principle)
-  -- 5. But deg(div_chart(g)) ≥ (deg(D)+1) - deg(D) = 1 > 0
-  -- 6. Contradiction: g must be identically 0 at regular points
-  --
-  -- This reduces zero_counting_linear_combination to the argument principle,
-  -- which is the single remaining deep sorry.
-  intro p hreg
-  -- Apply the compact identity principle: g is holomorphic on all of CRS if poles cancel
-  -- For the full proof via argument principle, see the proof sketch above.
-  -- Currently relies on the argument principle sorry.
-  sorry
+  -- By contradiction: assume ∃ regular p₀ with g(p₀) ≠ 0
+  by_contra h_not
+  push_neg at h_not
+  obtain ⟨p₀, hreg₀, hne₀⟩ := h_not
+  -- Convert hne₀ to use g
+  have hne₀' : g p₀ ≠ 0 := hne₀
+  -- Set up topology and manifold instances
+  letI := CRS.toRiemannSurface.topology
+  letI := CRS.toRiemannSurface.chartedSpace
+  haveI := CRS.toRiemannSurface.isManifold
+  haveI := CRS.toRiemannSurface.t2
+  -- Step 1: chartOrderAt g p₀ = 0 (nonzero continuous function)
+  have hcont₀ := continuousAt_chartRep_of_mdifferentiableAt g p₀ (g_hol p₀ hreg₀)
+  have hord₀ := chartOrderAt_eq_zero_of_continuousAt_ne_zero g_cm p₀ hcont₀ hne₀'
+  -- Step 2: Identity principle — chartOrderAt g q ≠ ⊤ for ALL q
+  have hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) g q ≠ ⊤ :=
+    fun q => chartOrderAt_ne_top_of_ne_top_somewhere g g_cm p₀
+      (hord₀ ▸ WithTop.coe_ne_top) q
+  -- Step 3: chartOrderSupport is finite
+  have hsupp := lcRegularValue_chartOrderSupport_finite CRS basis c
+  -- Step 4: Argument principle — chartOrderSum = 0
+  have harg : chartOrderSum CRS g g_cm hsupp = 0 :=
+    chartMeromorphic_argument_principle CRS g g_cm hsupp ⟨p₀, hne₀'⟩
+  -- Step 5: Lower bound — chartOrderSum ≥ 1
+  -- Key ingredients:
+  --   (a) At test points: g(pts j) = 0, g is ContinuousAt, chartOrderAt g ≠ ⊤
+  --       → chartOrderAt g (pts j) > 0 → (chartOrderAt g (pts j)).getD 0 ≥ 1
+  --   (b) Test points are in chartOrderSupport (order > 0 and ≠ ⊤)
+  --   (c) Test points are distinct (hpts_inj), so they contribute ≥ deg(D)+1
+  --   (d) At all points: chartOrderAt g q ≥ -D.coeff q (from chartOrderAt_lcRegularValue_ge_neg_D)
+  --       Combined with chartOrderAt g q ≠ ⊤: (chartOrderAt g q).getD 0 ≥ -D.coeff q
+  --   (e) Non-test support points contribute ≥ -Σ D.coeff ≥ -deg(D)
+  --   (f) Total: chartOrderSum ≥ (deg(D)+1) + (-deg(D)) = 1
+  have hlower : 0 < chartOrderSum CRS g g_cm hsupp := by
+    -- Test points have positive order (zeros of a non-locally-zero function)
+    have hord_pos : ∀ j, 0 < chartOrderAt (RS := CRS.toRiemannSurface) g (pts j) := fun j =>
+      chartOrderAt_pos_of_zero g_cm (pts j) (g_vanish j)
+        (continuousAt_chartRep_of_mdifferentiableAt g (pts j)
+          (g_hol (pts j) (fun i => hpts_reg j i)))
+    -- Test points are in the support
+    have hpts_supp : ∀ j, pts j ∈ hsupp.toFinset := fun j => by
+      rw [Set.Finite.mem_toFinset]
+      exact ⟨ne_of_gt (hord_pos j), hne_top (pts j)⟩
+    -- getD(ord) ≥ 1 at test points (positive integer order)
+    have hgetD_pos : ∀ j,
+        1 ≤ (chartOrderAt (RS := CRS.toRiemannSurface) g (pts j)).getD 0 := by
+      intro j
+      have h_ne := hne_top (pts j)
+      have h_pos := hord_pos j
+      -- chartOrderAt g (pts j) ≠ ⊤, so it's ↑m; and 0 < ↑m gives m ≥ 1
+      cases h : chartOrderAt (RS := CRS.toRiemannSurface) g (pts j) with
+      | top => exact absurd h h_ne
+      | coe m =>
+        show 1 ≤ m
+        rw [h] at h_pos
+        have : (0 : ℤ) < m := by exact_mod_cast h_pos
+        omega
+    -- getD(ord) + D.coeff ≥ 0 at all points (from L(D) condition)
+    have hadj_nonneg : ∀ p,
+        0 ≤ (chartOrderAt (RS := CRS.toRiemannSurface) g p).getD 0 + D.coeff p := by
+      intro p
+      have h_ge := chartOrderAt_lcRegularValue_ge_neg_D basis c p
+      cases h : chartOrderAt (RS := CRS.toRiemannSurface) g p with
+      | top => exact absurd h (hne_top p)
+      | coe m =>
+        show 0 ≤ m + D.coeff p
+        rw [h] at h_ge
+        have : -D.coeff p ≤ m := by exact_mod_cast h_ge
+        linarith
+    -- Injective image of test points in support
+    have himg_sub : Finset.univ.image pts ⊆ hsupp.toFinset :=
+      Finset.image_subset_iff.mpr fun j _ => hpts_supp j
+    have himg_card : (Finset.univ.image pts).card = D.degree.toNat + 1 :=
+      (Finset.card_image_of_injective _ hpts_inj).trans (Finset.card_fin _)
+    -- Adjusted sum (getD + D.coeff) over test points ≥ deg(D)+1
+    have hsum_test_adj : (D.degree.toNat + 1 : ℤ) ≤
+        (Finset.univ.image pts).sum (fun p =>
+          (chartOrderAt (RS := CRS.toRiemannSurface) g p).getD 0 + D.coeff p) := by
+      calc (D.degree.toNat + 1 : ℤ)
+          = (Finset.univ.image pts).sum (fun _ => (1 : ℤ)) := by
+              simp [himg_card]
+        _ ≤ _ := Finset.sum_le_sum fun p hp => by
+              obtain ⟨j, _, rfl⟩ := Finset.mem_image.mp hp
+              rw [hpts_out j, add_zero]; exact hgetD_pos j
+    -- Adjusted sum over all of S ≥ adjusted sum over test points
+    have hsum_S_adj : (Finset.univ.image pts).sum (fun p =>
+          (chartOrderAt (RS := CRS.toRiemannSurface) g p).getD 0 + D.coeff p) ≤
+        hsupp.toFinset.sum (fun p =>
+          (chartOrderAt (RS := CRS.toRiemannSurface) g p).getD 0 + D.coeff p) :=
+      Finset.sum_le_sum_of_subset_of_nonneg himg_sub fun x _ _ => hadj_nonneg x
+    -- Sum of D.coeff over S ≤ deg(D)
+    -- Argument: for p ∈ supp(D) \ S, D.coeff p > 0 (because ord p = 0 ≥ -D.coeff p
+    -- and D.coeff p ≠ 0), so Σ_{supp(D)\S} D.coeff ≥ 0, hence Σ_S D.coeff ≤ deg(D)
+    have hDcoeff_le : hsupp.toFinset.sum D.coeff ≤ D.degree := by
+      unfold Divisor.degree
+      -- Step 1: D.degree = Σ_{S ∪ D.supp} D.coeff (terms in S \ D.supp have D.coeff = 0)
+      have h_eq : D.finiteSupport.toFinset.sum D.coeff =
+          (hsupp.toFinset ∪ D.finiteSupport.toFinset).sum D.coeff := by
+        apply Finset.sum_subset Finset.subset_union_right
+        intro p _ hp_not
+        simp only [Set.Finite.mem_toFinset, Set.mem_setOf_eq, ne_eq, not_not] at hp_not
+        exact hp_not
+      rw [h_eq]
+      -- Step 2: Σ_S D.coeff ≤ Σ_{S ∪ D.supp} D.coeff (terms in D.supp \ S have D.coeff ≥ 0)
+      apply Finset.sum_le_sum_of_subset_of_nonneg Finset.subset_union_left
+      intro p _ hp_not
+      -- p ∉ S means chartOrderAt g p = 0 (since ⊤ excluded)
+      have h_not_S : p ∉ chartOrderSupport (RS := CRS.toRiemannSurface) g := by
+        rwa [Set.Finite.mem_toFinset] at hp_not
+      simp only [chartOrderSupport, Set.mem_setOf_eq, not_and_or, not_not] at h_not_S
+      have h_ord_zero : chartOrderAt (RS := CRS.toRiemannSurface) g p = 0 := by
+        cases h_not_S with
+        | inl h => exact h
+        | inr h => exact absurd h (hne_top p)
+      -- From chartOrderAt g p ≥ -D.coeff p and chartOrderAt g p = 0: D.coeff p ≥ 0
+      have h_ge := chartOrderAt_lcRegularValue_ge_neg_D basis c p
+      rw [h_ord_zero] at h_ge
+      have : -D.coeff p ≤ 0 := by exact_mod_cast h_ge
+      linarith
+    -- Combine: chartOrderSum = Σ_S (getD + D.coeff) - Σ_S D.coeff
+    simp only [chartOrderSum]
+    have hrewrite : hsupp.toFinset.sum (fun p =>
+          (chartOrderAt (RS := CRS.toRiemannSurface) g p).getD 0) =
+        hsupp.toFinset.sum (fun p =>
+          (chartOrderAt (RS := CRS.toRiemannSurface) g p).getD 0 + D.coeff p) -
+        hsupp.toFinset.sum D.coeff := by
+      rw [← Finset.sum_sub_distrib]; congr 1; ext p; ring
+    rw [hrewrite]
+    have h_deg_nat : (D.degree.toNat : ℤ) = D.degree := Int.toNat_of_nonneg hdeg
+    linarith
+  -- Step 6: Contradiction
+  linarith
 
 /-- L(D) is finite-dimensional on compact Riemann surfaces:
     there exists N such that no family of N+1 elements in L(D) is ℂ-linearly independent.
@@ -335,26 +448,35 @@ whose sections are holomorphic 1-forms.
     The canonical class [K] ∈ Pic(Σ) is well-defined since any two
     meromorphic 1-forms differ by a meromorphic function.
 
-    **Note on h0_eq_genus:**
-    A fully rigorous definition would require K = div(ω) for a meromorphic
-    1-form ω, from which h⁰(K) = g follows via Hodge theory (H⁰(K) ≅ H^{1,0}).
-    Since meromorphic differential form infrastructure is not yet developed,
-    we include h⁰(K) = g as a defining property. This correctly constrains K
-    to the canonical class and is the key property needed for Riemann-Roch. -/
+    **Note on h0(K) = g:**
+    The property h⁰(K) = g is a THEOREM (from Hodge theory: H⁰(K) ≅ H^{1,0}
+    and dim H^{1,0} = g = topological genus), NOT a definition.
+    See `h0_canonical_eq_genus` below. -/
 structure CanonicalDivisor (CRS : CompactRiemannSurface) where
   /-- A representative divisor in the canonical class -/
   representative : Divisor CRS.toRiemannSurface
   /-- The degree equals 2g - 2 -/
   degree_eq : representative.degree = 2 * CRS.genus - 2
-  /-- h⁰(K) = g: sections of the canonical bundle have dimension g -/
-  h0_eq_genus : h0 CRS representative = CRS.genus
+
+/-- h⁰(K) = g: holomorphic 1-forms have dimension equal to the topological genus.
+
+    This is the Hodge theorem connecting analytic and topological data:
+    H⁰(K) ≅ H^{1,0}(X) (holomorphic 1-forms) and dim H^{1,0} = g (topological genus).
+    Here g = CRS.genus is the TOPOLOGICAL genus of the surface.
+
+    **Proof path:**
+    1. H⁰(K) ≅ Harmonic10Forms (via harmonic_10_are_canonical_sections)
+    2. dim Harmonic10Forms = g (via dim_harmonic_10_eq_genus — Hodge theorem) -/
+theorem h0_canonical_eq_genus (CRS : CompactRiemannSurface) (K : CanonicalDivisor CRS) :
+    h0 CRS K.representative = CRS.genus := by
+  sorry
 
 /-- Existence of a canonical divisor on any compact Riemann surface.
     This follows from the existence of non-zero meromorphic 1-forms
     and the Hodge theory identification H⁰(K) ≅ H^{1,0}(X). -/
 theorem canonical_divisor_exists (CRS : CompactRiemannSurface) :
     Nonempty (CanonicalDivisor CRS) := by
-  sorry  -- Requires: existence of meromorphic 1-forms + Hodge theory (dim H^{1,0} = g)
+  sorry  -- Requires: existence of meromorphic 1-forms
 
 /-- The degree of the canonical divisor is 2g - 2 (Riemann-Hurwitz).
     This fundamental formula connects the genus to the canonical bundle. -/
@@ -362,18 +484,6 @@ theorem deg_canonical_eq_2g_minus_2 (CRS : CompactRiemannSurface)
     (K : CanonicalDivisor CRS) :
     K.representative.degree = 2 * CRS.genus - 2 :=
   K.degree_eq
-
-/-- The dimension h¹(D) = dim H¹(X, O(D)).
-
-    By Serre duality, h¹(D) = h⁰(K - D) where K is the canonical divisor.
-
-    **Key properties:**
-    - h¹(0) = g (by Serre duality with h⁰(K) = g)
-    - h¹(D) = 0 if deg(D) > 2g - 2 (by Serre duality) -/
-noncomputable def h1 (CRS : CompactRiemannSurface)
-    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS) : ℕ :=
-  -- By Serre duality: h¹(D) = h⁰(K - D)
-  h0 CRS (K.representative + (-D))
 
 /-!
 ## h⁰(0) = 1: Constant Functions
@@ -537,15 +647,23 @@ theorem h0_trivial (CRS : CompactRiemannSurface) :
 ## Euler Characteristic and Correction Term
 
 The proof of Riemann-Roch uses the "correction term" approach:
-1. Define χ(D) = h⁰(D) - h¹(D) and f(D) = χ(D) - deg(D)
-2. Show f(D + [p]) = f(D) using the cohomological exact sequence
+1. Define χ(D) = h⁰(D) - h⁰(K-D) (using h⁰ of the "dual" divisor K-D)
+2. Show f(D) = χ(D) - deg(D) is invariant under D → D ± [p]
+   via eval_residue_complementarity
 3. By induction on total variation, f(D) = f(0) = 1 - g
+
+Note: χ(D) = h⁰(D) - h⁰(K-D) is the h⁰-only form of the Euler characteristic.
+By Serre duality (a separate theorem), h⁰(K-D) = h¹(D) (Dolbeault cohomology),
+giving the classical χ(D) = h⁰(D) - h¹(D).
 -/
 
-/-- The Euler characteristic χ(D) = h⁰(D) - h¹(D) -/
+/-- The Euler characteristic χ(D) = h⁰(D) - h⁰(K - D).
+
+    This is the h⁰-only form. By Serre duality, h⁰(K-D) = h¹(D),
+    so this equals the classical Euler characteristic h⁰(D) - h¹(D). -/
 noncomputable def chi (CRS : CompactRiemannSurface)
     (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS) : ℤ :=
-  (h0 CRS D : ℤ) - (h1 CRS D K : ℤ)
+  (h0 CRS D : ℤ) - (h0 CRS (K.representative + (-D)) : ℤ)
 
 /-- **Evaluation-residue complementarity.**
 
@@ -590,7 +708,7 @@ theorem eval_residue_complementarity (CRS : CompactRiemannSurface)
 theorem chi_add_point (CRS : CompactRiemannSurface) (K : CanonicalDivisor CRS)
     (D : Divisor CRS.toRiemannSurface) (p : CRS.toRiemannSurface.carrier) :
     chi CRS (D + Divisor.point p) K = chi CRS D K + 1 := by
-  unfold chi h1
+  unfold chi
   have hcomp := eval_residue_complementarity CRS K D p
   omega
 
@@ -760,105 +878,78 @@ theorem correction_eq_zero_correction (CRS : CompactRiemannSurface)
         exact ih _ (by have := tv_desc_sub D p hpos; omega)
 
 /-!
-## The Riemann-Roch Formula
+## The Riemann-Roch Formula (h⁰ duality form)
+
+The core content of Riemann-Roch, stated purely in terms of h⁰:
+
+  h⁰(D) - h⁰(K - D) = deg(D) + 1 - g
+
+This is proven via:
+1. eval_residue_complementarity ⟹ χ(D + [p]) = χ(D) + 1
+2. Correction term f(D) = χ(D) - deg(D) is invariant
+3. Base case: f(0) = h⁰(0) - h⁰(K) - 0 = 1 - g (uses h⁰(K) = g as hypothesis)
 -/
 
-/-- **The Riemann-Roch Theorem**
+/-- **Riemann-Roch Theorem (h⁰ duality form)**
 
-    For a compact Riemann surface X of genus g and a divisor D:
+    For a compact Riemann surface X of genus g, canonical divisor K, and any divisor D:
 
-      h⁰(D) - h¹(D) = deg(D) + 1 - g
+      h⁰(D) - h⁰(K - D) = deg(D) + 1 - g
 
-    This is the fundamental result connecting algebraic and topological
-    invariants of the surface.
+    This is the core identity. Combined with Serre duality h¹(D) = h⁰(K-D),
+    it gives the classical Riemann-Roch formula h⁰(D) - h¹(D) = deg(D) + 1 - g.
+
+    The hypothesis hK : h⁰(K) = g is a consequence of the Hodge theorem
+    (see h0_canonical_eq_genus), which we take as an explicit hypothesis here
+    to cleanly separate the R-R argument from Hodge theory.
 
     **Proof:** The correction term f(D) = χ(D) - deg(D) is constant
     (by chi_add_point and induction on total variation).
     At D = 0: f(0) = h⁰(0) - h⁰(K) - 0 = 1 - g.
     Therefore χ(D) = deg(D) + 1 - g for all D. -/
-theorem riemann_roch_theorem (CRS : CompactRiemannSurface)
-    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS) :
-    (h0 CRS D : ℤ) - (h1 CRS D K : ℤ) = D.degree + 1 - CRS.genus := by
+theorem riemann_roch_h0_duality (CRS : CompactRiemannSurface)
+    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS)
+    (hK : h0 CRS K.representative = CRS.genus) :
+    (h0 CRS D : ℤ) - (h0 CRS (K.representative + (-D)) : ℤ) =
+      D.degree + 1 - CRS.genus := by
   -- f(D) = f(0): the correction term is constant
   have h_corr := correction_eq_zero_correction CRS K D
-  unfold correction chi h1 at h_corr
+  unfold correction chi at h_corr
   -- h_corr : h0(D) - h0(K-D) - deg(D) = h0(0) - h0(K-0) - deg(0)
   -- Base case: h0(0) - h0(K) - 0 = 1 - g
-  -- (uses h0_trivial proved below and h0_canonical which requires Hodge theory)
   have h_base : (h0 CRS (0 : Divisor CRS.toRiemannSurface) : ℤ) -
       (h0 CRS (K.representative + -(0 : Divisor CRS.toRiemannSurface)) : ℤ) -
       (0 : Divisor CRS.toRiemannSurface).degree = 1 - CRS.genus := by
-    rw [neg_zero, add_zero, h0_trivial, K.h0_eq_genus, Divisor.degree_zero]
+    rw [neg_zero, add_zero, h0_trivial, hK, Divisor.degree_zero]
     omega
-  unfold h1
   omega
-
-/-- **Riemann-Roch with explicit Serre Duality**
-
-    h⁰(D) - h⁰(K - D) = deg(D) + 1 - g
-
-    This is the Riemann-Roch formula with h¹(D) = h⁰(K - D) substituted. -/
-theorem riemann_roch_serre (CRS : CompactRiemannSurface)
-    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS) :
-    (h0 CRS D : ℤ) - (h0 CRS (K.representative + (-D)) : ℤ) =
-      D.degree + 1 - CRS.genus := by
-  -- This is immediate from riemann_roch_theorem since h1 CRS D K = h0 CRS (K - D)
-  exact riemann_roch_theorem CRS D K
 
 /-!
 ## Corollaries of Riemann-Roch
 -/
 
-/-- For a divisor of degree > 2g - 2, we have h¹(D) = 0 -/
-theorem h1_vanishes_high_degree (CRS : CompactRiemannSurface)
+/-- For a divisor of degree > 2g - 2, we have h⁰(K - D) = 0 -/
+theorem h0_KminusD_vanishes_high_degree (CRS : CompactRiemannSurface)
     (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS)
     (hdeg : D.degree > 2 * CRS.genus - 2) :
-    h1 CRS D K = 0 := by
-  -- By Serre duality: h¹(D) = h⁰(K - D)
+    h0 CRS (K.representative + (-D)) = 0 := by
   -- deg(K - D) = 2g - 2 - deg(D) < 0
-  unfold h1
-  -- Show deg(K + (-D)) < 0
   have hdeg_neg : (K.representative + (-D)).degree < 0 := by
     rw [Divisor.degree_add, Divisor.degree_neg, K.degree_eq]
     omega
-  -- Apply h0_vanishes_negative_degree
   exact h0_vanishes_negative_degree CRS _ hdeg_neg
 
 /-- For a divisor of degree > 2g - 2, Riemann-Roch simplifies:
     h⁰(D) = deg(D) + 1 - g -/
 theorem riemann_roch_high_degree (CRS : CompactRiemannSurface)
     (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS)
+    (hK : h0 CRS K.representative = CRS.genus)
     (hdeg : D.degree > 2 * CRS.genus - 2) :
     (h0 CRS D : ℤ) = D.degree + 1 - CRS.genus := by
-  have h1_zero := h1_vanishes_high_degree CRS D K hdeg
-  have rr := riemann_roch_theorem CRS D K
-  simp only [h1_zero, CharP.cast_eq_zero, sub_zero] at rr
+  have h0_zero := h0_KminusD_vanishes_high_degree CRS D K hdeg
+  have rr := riemann_roch_h0_duality CRS D K hK
+  simp only [h0_zero, CharP.cast_eq_zero, sub_zero] at rr
   exact rr
-
-/-- For the canonical bundle (D = K), h⁰ = g (from structure) -/
-theorem h0_canonical (CRS : CompactRiemannSurface) (K : CanonicalDivisor CRS) :
-    h0 CRS K.representative = CRS.genus :=
-  K.h0_eq_genus
-
-/-!
-## The Index Theorem Perspective
-
-The Riemann-Roch formula can be understood as an index theorem:
-  index(∂̄_D) = deg(D) + 1 - g
-
-This is a special case of the Atiyah-Singer index theorem.
--/
-
-/-- The index of the ∂̄-operator on sections of O(D) -/
-noncomputable def dbar_index (CRS : CompactRiemannSurface)
-    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS) : ℤ :=
-  (h0 CRS D : ℤ) - (h1 CRS D K : ℤ)
-
-/-- The index formula: index(∂̄_D) = deg(D) + 1 - g -/
-theorem dbar_index_formula (CRS : CompactRiemannSurface)
-    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS) :
-    dbar_index CRS D K = D.degree + 1 - CRS.genus :=
-  riemann_roch_theorem CRS D K
 
 /-!
 ## Connection to Hodge Theory
@@ -866,7 +957,7 @@ theorem dbar_index_formula (CRS : CompactRiemannSurface)
 Our Hodge theory development provides the analytical foundation:
 -/
 
-/-- Dimension of holomorphic 1-forms equals genus -/
+/-- Dimension of holomorphic 1-forms equals topological genus -/
 theorem dim_holomorphic_1forms_eq_genus (CRS : CompactRiemannSurface) :
     ∃ (basis : Fin CRS.genus → Harmonic10Forms CRS.toRiemannSurface),
       Function.Injective basis :=
@@ -886,13 +977,57 @@ theorem harmonic_10_are_canonical_sections (CRS : CompactRiemannSurface)
       Function.Bijective iso := by
   sorry  -- Requires: identification of holomorphic 1-forms with K-sections
 
+/-!
+## Dolbeault Cohomology and Serre Duality
+
+The proper definition of h¹(D) is via Dolbeault cohomology:
+  h¹(D) = dim(Ω^{0,1}(D) / im ∂̄_D)
+
+For the trivial bundle D = 0, this is defined in DolbeaultCohomology.lean.
+For general D, it requires twisted ∂̄-operators on sections of O(D).
+
+Serre duality h¹(D) = h⁰(K - D) is a THEOREM, not a definition.
+Combined with riemann_roch_h0_duality, it gives the classical formula.
+-/
+
+/-- h¹(D) via Dolbeault cohomology with values in O(D).
+
+    For D = 0, this equals h1_dolbeault_trivial (see DolbeaultCohomology.lean).
+    For general D, requires twisted ∂̄-operator on sections of O(D). -/
+noncomputable def h1_dolbeault (CRS : CompactRiemannSurface)
+    (D : Divisor CRS.toRiemannSurface) : ℕ := by
+  sorry -- Full definition requires: twisted Dolbeault complex Ω^{0,q}(O(D))
+
+/-- **Serre duality** (analytic): h¹(D) = h⁰(K - D).
+
+    This is a THEOREM relating Dolbeault cohomology to sections of the dual bundle,
+    NOT a definition. It follows from the residue pairing and Hodge theory. -/
+theorem serre_duality_h1 (CRS : CompactRiemannSurface) (K : CanonicalDivisor CRS)
+    (D : Divisor CRS.toRiemannSurface) :
+    h1_dolbeault CRS D = h0 CRS (K.representative + (-D)) := by
+  sorry -- Requires: twisted Dolbeault cohomology, residue pairing, Hodge theory
+
+/-- **Riemann-Roch Theorem (classical form)**
+
+    h⁰(D) - h¹(D) = deg(D) + 1 - g
+
+    where h¹ is defined via Dolbeault cohomology.
+    This follows from the h⁰-duality form + Serre duality. -/
+theorem riemann_roch_classical (CRS : CompactRiemannSurface)
+    (D : Divisor CRS.toRiemannSurface) (K : CanonicalDivisor CRS)
+    (hK : h0 CRS K.representative = CRS.genus) :
+    (h0 CRS D : ℤ) - (h1_dolbeault CRS D : ℤ) = D.degree + 1 - CRS.genus := by
+  rw [serre_duality_h1 CRS K]
+  exact riemann_roch_h0_duality CRS D K hK
+
 /-- The Euler characteristic χ(O) = 1 - g -/
 theorem euler_characteristic_structure_sheaf (CRS : CompactRiemannSurface)
-    (K : CanonicalDivisor CRS) :
+    (K : CanonicalDivisor CRS)
+    (hK : h0 CRS K.representative = CRS.genus) :
     (h0 CRS (0 : Divisor CRS.toRiemannSurface) : ℤ) -
-    (h1 CRS (0 : Divisor CRS.toRiemannSurface) K : ℤ) = 1 - CRS.genus := by
-  -- This is Riemann-Roch for D = 0: h⁰(0) - h¹(0) = deg(0) + 1 - g = 1 - g
-  have rr := riemann_roch_theorem CRS 0 K
+    (h0 CRS (K.representative + (-(0 : Divisor CRS.toRiemannSurface))) : ℤ) =
+      1 - CRS.genus := by
+  have rr := riemann_roch_h0_duality CRS 0 K hK
   simp only [Divisor.degree_zero] at rr
   exact rr
 

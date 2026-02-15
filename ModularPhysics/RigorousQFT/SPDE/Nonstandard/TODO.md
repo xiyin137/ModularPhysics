@@ -12,6 +12,8 @@ This provides a rigorous foundation where pathwise stochastic calculus is meanin
 
 ## Current State
 
+**Total: 13 sorrys across 6 files** (7 on Anderson critical path, 6 for Itô chain)
+
 Mathlib provides minimal hyperreal infrastructure:
 - `Hyperreal := Germ (hyperfilter ℕ) ℝ` - ultraproduct construction
 - `ofSeq`, `IsSt`, `st`, `Infinitesimal`, `Infinite` - basic operations
@@ -116,7 +118,7 @@ Key results:
 - `levyModulus_implies_S_continuous`: Paths with Lévy modulus are S-continuous
 - `levyModulus_violation_sum_bound`: Sum of violation probs ≤ 2
 
-#### LocalCLT.lean - **4 sorries remaining (substantial infrastructure proven)**
+#### LocalCLT.lean - **2 sorries remaining (substantial infrastructure proven)**
 - `stirling_lower_bound`: **PROVEN** via Mathlib's `Stirling.le_factorial_stirling`
 - `stirling_ratio_tendsto_one`: **PROVEN** via Mathlib's `tendsto_stirlingSeq_sqrt_pi`
 - `stirling_upper_bound_eventual`: **PROVEN** as consequence of ratio → 1
@@ -137,14 +139,50 @@ Key results:
 - `hoeffding_random_walk`: **PROVEN** P(|S_n| > t) ≤ 2·exp(-t²/(2n)) via Chernoff method
 - `stirlingSeq_bounds`: **PROVEN** √π ≤ stirlingSeq(n) ≤ stirlingSeq(1)
 - `factorial_ratio_stirling_bounds`: **PROVEN** n!/(k!(n-k)!) bounded by Stirling expressions
-- `exponential_factor_approx`: sorry (Taylor expansion on exponential factor)
 - `local_clt_error_bound`: sorry (needs detailed Stirling application to binomial)
-- `local_clt_central_region`: **PARTIAL** - index bounds proven, main inequality sorries
-  - Requires `exponential_factor_approx` for the core calculation
-  - The ratio binomProb/gaussApprox ≈ 1/√2 ∈ [1/2, 2] (documented in proof)
-- `cylinder_prob_convergence`: sorry (main bridge theorem, needs local CLT)
+- `local_clt_central_region`: **PROVEN** (both upper and lower bounds)
+  - Upper bound uses `stirling_ratio_decomp`, `exp_factor_le_one`, `s1_prefactor_le_two` from LocalCLTHelpers.lean
+  - Lower bound uses `pinsker_excess_crude` from LocalCLTHelpers.lean
+- `cylinder_prob_convergence`: sorry (main bridge theorem, needs CylinderConvergenceHelpers)
 
-#### AndersonTheorem.lean - **WIP (7 theorems proven, 3 sorries)**
+#### CylinderConvergenceHelpers.lean - **WIP (15 proven, 3 sorries)**
+Infrastructure for `cylinder_prob_convergence`:
+- `gaussianDensitySigma_continuous`: **PROVEN**
+- `gaussianDensitySigma_nonneg`: **PROVEN**
+- `gaussianDensitySigma_le_peak`: **PROVEN**
+- `floor_ratio_tendsto`: **PROVEN** ⌊tN⌋/N → t
+- `floor_eventually_large`: **PROVEN**
+- `partialSumFin_depends_on_prefix`: **PROVEN**
+- `countTruesBelow`: **DEFINED** (count of true flips in first k positions)
+- `card_filter_lt`: **PROVEN** (#{i : Fin N | i < k} = k, via `Finset.card_bij'` + `Fin.castLE`)
+- `partialSumFin_eq_countTrues`: **PROVEN** (S_k = 2·#true - k, partition into true/false)
+- `card_bool_trues_eq_choose`: **PROVEN** (#{g : Fin k → Bool | j trues} = C(k,j), via bijection with `powersetCard`)
+- `card_prefix_suffix_product`: **PROVEN** (#{f | countTrue = j} = C(k,j)·2^{N-k}, prefix/suffix decomposition)
+- `scaledProb_eq_walkIntervalProb`: sorry (card(filter)/2^N = walkIntervalProb, fiber decomposition by ctb value)
+- `binomProb_ratio_near_one`: sorry (C(k,j)/2^k ≈ gaussian·Δx, quantitative local CLT ratio)
+- `gaussDensity_Riemann_sum_converges`: sorry (Riemann sum → integral, uses continuity of Gaussian density)
+- **Chernoff bound chain - ALL PROVEN:**
+  - `weighted_exp_markov`: exponential Markov inequality
+  - `binomial_mgf`: Σ C(k,j)/2^k exp(λ(2j-k)) = cosh(λ)^k
+  - `binomial_chernoff_upper`: Chernoff for positive tail
+  - `binomial_chernoff_lower`: Chernoff for negative tail (by symmetry)
+  - `binomial_tail_small`: P(|S_k| > C√k) ≤ 2exp(-C²/2)
+
+#### LocalCLTHelpers.lean - **1 sorry remaining**
+- Helper lemmas for factor-2 bounds in `local_clt_central_region`:
+  - `log_diff_ge_two_v`, `binary_pinsker`: Binary Pinsker inequality infrastructure
+  - `exp_factor_le_one`: Pinsker-based bound on exponential factor
+  - `e_fourth_lt_sixteen_pi_sq`, `eighty_one_e4_lt_512_pi_sq`: Numerical bounds
+  - `e4n2_le_64pi2_kink`: e⁴n² ≤ 64π²k(n-k) for central region
+  - `s1_sq_pi_ratio_sq_le_four`: (s₁²/π)² × n²/(4k(n-k)) ≤ 4
+  - `s1_prefactor_le_two`: (s₁²/π) × √(n²/(4k(n-k))) ≤ 2
+  - `stirling_ratio_decomp`: central/2^n = √(n/(2πk(nk))) × exp_factor
+  - `sqrt_prefactor_factoring`: √(n/(2πk(nk))) = √(n²/(4k(nk))) × √(2/(πn))
+  - `central_region_s_bound`, `central_region_e4_bound`: Central region bounds
+  - `pinsker_excess_crude`: sorry (derivative nonnegativity for entropy excess bound)
+    - Note: This is used by `local_clt_central_region` lower bound, so it's on the critical path
+
+#### AndersonTheorem.lean - **WIP (10 theorems proven, 1 sorry on critical path)**
 - `LoebPathSpace`: Hyperfinite path space with Loeb probability structure
 - `preLoebMeasure`: Standard part of hyperfinite probability
 - `preLoebMeasure_nonneg`: **PROVEN** via `st_le_of_le`
@@ -152,16 +190,16 @@ Key results:
 - `levyModulusEvent`: **UPDATED** to use variance bound `C√(h/n)` instead of Lévy log formula
   - **Design note**: Anderson's 1976 paper only requires S-continuity (no specific modulus formula)
   - The variance bound is sufficient for S-continuity and avoids degeneracy issues
-- `levyModulusEvent_fraction_bound`: sorry (proof outline documented, needs modulusSatisfied connection)
-- `sContinuous_loebMeasure_bound`: **PROVEN** (modulo helper lemma above)
+- `levyModulusEvent_fraction_bound`: **PROVEN** via Doob L² maximal inequality
+- `sContinuous_loebMeasure_bound`: **PROVEN**
 - `sContinuous_loebMeasure_three_quarters`: **PROVEN** (corollary)
 - `sContinuous_loebMeasureOne`: **PROVEN** (uses sContinuous_loebMeasure_bound)
 - `WienerMeasureSpec`: Cylinder set probabilities for Wiener measure
-- `wienerCylinderProb`: sorry (multi-time probability)
+- `wienerCylinderProb`: defined (multi-time Wiener probability)
 - `standardPartMap'_startsAtZero`: **PROVEN** (calls `standardPartMap_startsAtZero`)
-- `anderson_theorem_cylinder`: sorry (Loeb → Wiener cylinder convergence)
+- `anderson_theorem_cylinder`: sorry (Loeb → Wiener cylinder convergence, needs cylinder_prob_convergence)
 - `cylinder_hyperfinite_iff_standard`: **PROVEN** (calls `standardPartPath_isSt`)
-- `anderson_theorem`: sorry (full statement)
+- `anderson_theorem`: **PROVEN** (calls `anderson_theorem_cylinder`)
 - `brownian_paths_continuous_as`: **PROVEN** (calls `sContinuous_loebMeasureOne`)
 - `brownian_increments_gaussian`: **PROVEN** by `rfl`
 
@@ -195,7 +233,7 @@ Key results:
 - `solution_integral_form`: **PROVEN** by induction (drift + stochastic decomposition)
 - Special cases: `geometricBrownianMotion`, `ornsteinUhlenbeck`, `squareRootProcess`
 
-#### SDESolution.lean - **WIP (19 theorems proven, 5 sorries)**
+#### SDESolution.lean - **COMPLETE (all theorems proven, 0 sorries)**
 - `WellPosedSDE`: Classical SDE well-posedness (Lipschitz, growth bounds)
 - `SDE_is_S_continuous`: S-continuity modulus definition for SDE solutions
 - `SDE_is_S_continuous_levelN`: Level-n S-continuity for solutionAtHypernat
@@ -209,11 +247,7 @@ Key results:
 - `standardPartSolution`: Standard part gives C([0,T], ℝ) solution
 - `standardPartSolution_zero`: **PROVEN** using stepIndex and solutionAtHypernat_zero
 - `sde_solution_chaining_bound`: **PROVEN** (|X_n(k) - X_n(0)| ≤ (k/w + 1)*B by strong induction)
-- `standardPartSolution_continuous`: **MOSTLY PROVEN** (main structure complete)
-  - 5 technical sorries remaining:
-    - Floor difference bound for delta < 1 (requires filter reasoning for hyperfloor)
-    - 4 chaining bound sorries for hXs_fin/hXt_fin finiteness
-      (require matching S-continuity `let` binding structure)
+- `standardPartSolution_continuous`: **PROVEN**
 - `drift_integral_correspondence`: **PROVEN** (level-n drift sums bounded by M*t via hyperreal bound extraction)
 - `stochastic_integral_correspondence`: **PROVEN** (finite sum of infinitesimals is infinitesimal)
 - `standardPart_satisfies_sde`: **PROVEN** (foldl decomposition by induction - key main theorem)
@@ -301,10 +335,36 @@ What's proven:
    - ✅ `hoeffding_random_walk` - **PROVEN** via Chernoff method (exp Markov + cosh bound)
    - ✅ `central_binomial_asymptotic` - **PROVEN** C(2n,n) ≤ 4^n/√(πn/2) via Stirling
    - ✅ `factorial_ratio_stirling_bounds` - **PROVEN** n!/(k!(n-k)!) Stirling bounds
-   - Remaining CLT sorries (3 total, all in LocalCLT.lean):
-     - `local_clt_error_bound` - Apply Stirling to binomial (proof strategy documented)
-     - `local_clt_central_region` - Follows from error bound
-     - `cylinder_prob_convergence` - Main bridge theorem (needs local CLT)
+   - ✅ `stirlingSeq_triple_ratio_near_one` in Arithmetic.lean - **PROVEN**
+   - ✅ Chernoff bound chain in CylinderConvergenceHelpers.lean - **ALL PROVEN**
+     - `weighted_exp_markov`, `binomial_mgf`, `binomial_chernoff_upper/lower`, `binomial_tail_small`
+   - Remaining sorrys on critical path to `anderson_theorem_cylinder` (7 total):
+     - `local_clt_error_bound` (LocalCLT.lean:185) - Apply Stirling to binomial
+     - `pinsker_excess_crude` (LocalCLTHelpers.lean:723) - Derivative nonneg for entropy excess
+     - `scaledProb_eq_walkIntervalProb` (CylinderConvergenceHelpers.lean:319) - fiber decomposition
+     - `binomProb_ratio_near_one` (CylinderConvergenceHelpers.lean:352) - local CLT ratio
+     - `gaussDensity_Riemann_sum_converges` (CylinderConvergenceHelpers.lean:371) - Riemann sum
+     - `cylinder_prob_convergence` (LocalCLT.lean:1144) - main bridge (uses above)
+     - `anderson_theorem_cylinder` (AndersonTheorem.lean:516) - uses cylinder_prob_convergence
+   - Non-critical sorrys (6 total, for Itô chain):
+     - `ito_correspondence` (ItoCorrespondence.lean:202)
+     - `ito_isometry_standard` (ItoCorrespondence.lean:229)
+     - `ito_lemma_hyperfinite` (ItoCorrespondence.lean:373)
+     - `ito_formula` (ItoCorrespondence.lean:406)
+     - `gbm_explicit_solution` (ExplicitSolutions.lean:81)
+     - `ou_explicit_solution` (ExplicitSolutions.lean:112)
+   - **Critical path dependency chain:**
+     ```
+     anderson_theorem (PROVEN, calls anderson_theorem_cylinder)
+       └── anderson_theorem_cylinder (SORRY)
+             └── cylinder_prob_convergence (SORRY)
+                   ├── scaledProb_eq_walkIntervalProb (SORRY, combinatorial)
+                   ├── binomProb_ratio_near_one (SORRY, analytical)
+                   │     └── local_clt_central_region (PROVEN)
+                   │           └── pinsker_excess_crude (SORRY)
+                   ├── gaussDensity_Riemann_sum_converges (SORRY)
+                   └── local_clt_error_bound (SORRY, may not be needed)
+     ```
 
 ### Phase 3: Standard Part and Path Space
 8. ✅ Define standard part function f(t) = st(W(⌊t·N⌋)) for S-continuous paths
@@ -338,7 +398,7 @@ What's proven:
    - `increment_sq`, `solution_exists`, `solution_integral_form` proven
    - Special cases: GBM, OU, CIR, simple BM
 15. ⏳ Standard part gives classical SDE solution
-   - SDESolution.lean (16 theorems proven, 3 sorries)
+   - SDESolution.lean (16 theorems proven, 0 sorries)
    - `standardPartSolution` defined
    - `solution_finite_at_standard` proven by induction
    - `standardPartSolution_zero` proven
@@ -346,8 +406,8 @@ What's proven:
    - `standardPart_satisfies_sde` **PROVEN** (main result - foldl decomposition)
    - `drift_integral_correspondence` **PROVEN** (hyperreal bound extraction)
    - `stochastic_integral_correspondence` **PROVEN** (infinitesimal sums)
-   - Remaining sorries in `standardPartSolution_continuous`: floor bound (delta<1), finiteness (2)
-     `gbm_explicit_solution` (Itô lemma), `ou_explicit_solution` (integrating factor)
+   - `standardPartSolution_continuous` **PROVEN** (0 sorries)
+   - `gbm_explicit_solution` and `ou_explicit_solution` in ExplicitSolutions.lean (need Itô lemma)
 16. ✅ Existence and uniqueness via Picard iteration (hyperfinitely)
    - `solution_exists` proven (trivial from recursive definition)
    - `uniqueness_hyperfinite` proven
@@ -366,10 +426,12 @@ Nonstandard/
 │   ├── RandomWalkMoments.lean   [COMPLETE] E[S_k²]=k, Chebyshev (0 sorries)
 │   ├── MaximalInequality.lean   [COMPLETE] P(max |S_i| > M) bound (0 sorries)
 │   ├── SContinuity.lean         [COMPLETE] Increment variance, modulus (0 sorries)
-│   ├── SContinuityAS.lean       [WIP] Borel-Cantelli, Lévy modulus (2 sorries)
-│   ├── LocalCLT.lean            [WIP] Stirling, binomial → Gaussian (3 sorries)
-│   ├── AndersonTheorem.lean     [WIP] st_* μ_L = μ_W (3 sorries)
-│   ├── ItoCorrespondence.lean   [WIP] st(Σ H·dW) = ∫ H dW (4 sorries, stepIndex_mono proven)
+│   ├── SContinuityAS.lean       [COMPLETE] Borel-Cantelli, Lévy modulus (0 sorries)
+│   ├── LocalCLT.lean            [WIP] Stirling, binomial → Gaussian (2 sorries)
+│   ├── LocalCLTHelpers.lean     [WIP] Factor-2 bound helpers (1 sorry: pinsker_excess_crude)
+│   ├── CylinderConvergenceHelpers.lean [WIP] Combinatorial/analytical helpers (3 sorries)
+│   ├── AndersonTheorem.lean     [WIP] st_* μ_L = μ_W (1 sorry: anderson_theorem_cylinder)
+│   ├── ItoCorrespondence.lean   [WIP] st(Σ H·dW) = ∫ H dW (4 sorries)
 │   ├── HyperfiniteSDE.lean      [COMPLETE] dX = a·dt + b·dW (0 sorries)
 │   ├── SDESolution.lean         [COMPLETE] Standard part → SDE solution (0 sorries)
 │   └── ExplicitSolutions.lean   [WIP] GBM/OU explicit formulas (2 sorries, need Itô)
@@ -380,8 +442,8 @@ Nonstandard/
 │   ├── CylinderSets.lean        [COMPLETE]
 │   ├── CoinFlipSpace.lean       [COMPLETE]
 │   ├── PathContinuity.lean      [COMPLETE] standardPartPath, continuity proven
-│   ├── WienerMeasure.lean       [WIP] Wiener measure, Anderson's theorem
-│   └── MathlibBridge.lean       [WIP] Carathéodory extension
+│   ├── WienerMeasure.lean       [WIP] Wiener measure (wienerCylinderProb n≥2 placeholder)
+│   └── MathlibBridge.lean       [COMPLETE] Carathéodory extension (0 sorries)
 ├── Anderson.lean                [module file] - imports all Anderson/ files
 ├── HyperfiniteRandomWalk.lean   [COMPLETE] stepIndex_mono added
 ├── HyperfiniteWhiteNoise.lean   [COMPLETE]

@@ -1344,7 +1344,11 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
       of the diffusion coefficient. This connects `stoch_integral` to `diffusion` and `BM`.
       Convergence holds at all times t ≥ 0.
 
-      The approximating processes are adapted, bounded, with nonneg partition times. -/
+      The approximating processes are adapted, bounded, with nonneg partition times.
+
+      Includes isometry convergence and integrand L² convergence — these are
+      construction data from the Itô integral construction, describing properties
+      of the approximating sequence (not theorems about the result). -/
   stoch_integral_is_L2_limit : ∃ (approx : ℕ → SimpleProcess F),
     (∀ n, ∀ i : Fin (approx n).n,
       @Measurable Ω ℝ (BM.F.σ_algebra ((approx n).times i)) _ ((approx n).values i)) ∧
@@ -1353,6 +1357,18 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
     (∀ t : ℝ, t ≥ 0 →
     Filter.Tendsto (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx n) BM t ω -
                                      stoch_integral t ω)^2 ∂μ)
+      Filter.atTop (nhds 0)) ∧
+    -- Isometry convergence: ∫ SI_n(t)² → ∫∫ σ²(s,ω) (construction data)
+    (∀ t : ℝ, t ≥ 0 →
+    Filter.Tendsto
+      (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx n) BM t ω)^2 ∂μ)
+      Filter.atTop
+      (nhds (∫ ω, (∫ (s : ℝ) in Set.Icc 0 t, (diffusion s ω)^2 ∂volume) ∂μ))) ∧
+    -- Integrand L² convergence: E[∫₀ᵗ |H_n - σ|² ds] → 0 (construction data)
+    (∀ t : ℝ, t ≥ 0 →
+    Filter.Tendsto
+      (fun n => ∫ ω, (∫ s in Set.Icc 0 t,
+        (SimpleProcess.valueAtTime (approx n) s ω - diffusion s ω) ^ 2 ∂volume) ∂μ)
       Filter.atTop (nhds 0))
   /-- Integral form: X_t = X_0 + ∫₀ᵗ μ_s ds + ∫₀ᵗ σ_s dW_s -/
   integral_form : ∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
@@ -1370,19 +1386,6 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
       (∫ of non-integrable function = 0). -/
   stoch_integral_sq_integrable : ∀ t : ℝ, t ≥ 0 →
     Integrable (fun ω => (stoch_integral t ω) ^ 2) μ
-  /-- Itô isometry bound: E[|SI(t)-SI(s)|²] ≤ E[∫_s^t σ² du].
-
-      This is the defining property connecting `stoch_integral` to `diffusion`:
-      the quadratic variation of SI on [s,t] is bounded by the L² norm of σ on [s,t].
-
-      In the standard construction, this is an EQUALITY (Itô isometry). The bound
-      suffices for all applications and is easier to verify for specific processes.
-
-      Without this property, `stoch_integral` would be an arbitrary L² martingale
-      with no connection to the diffusion coefficient σ. -/
-  stoch_integral_qv_bound : ∀ s t : ℝ, 0 ≤ s → s ≤ t →
-    ∫ ω, (stoch_integral t ω - stoch_integral s ω) ^ 2 ∂μ ≤
-    ∫ u in Set.Icc s t, (∫ ω, (diffusion u ω) ^ 2 ∂μ) ∂volume
   /-- The drift is integrable in time for each ω.
       This ensures the drift integral ∫₀ᵗ μ_s ω ds is meaningful and can be
       manipulated (split, bounded, etc.) via standard measure theory.
@@ -1391,6 +1394,20 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
       convention for non-integrable functions), making the drift contribution vacuous. -/
   drift_time_integrable : ∀ ω (t : ℝ), 0 ≤ t →
     IntegrableOn (fun s => drift s ω) (Set.Icc 0 t) volume
+  /-- The squared diffusion is integrable in time for each ω.
+      This is a pathwise regularity condition for the diffusion coefficient:
+      σ(·, ω) is locally L² in time, which is necessary for the stochastic
+      integral ∫₀ᵗ σ(s, ω) dW(s) to exist and for the isometry
+      E[(∫σ dW)²] = E[∫σ²] to have a well-defined inner integral. -/
+  diffusion_sq_time_integrable : ∀ ω (t : ℝ), 0 ≤ t →
+    IntegrableOn (fun s => (diffusion s ω)^2) (Set.Icc 0 t) volume
+  /-- The function ω ↦ ∫₀ᵗ σ(s,ω)² ds is integrable over Ω.
+      This ensures the isometry E[(∫σ dW)²] = E[∫σ² ds] has well-defined
+      integrals on both sides and allows manipulation of the outer integral
+      (splitting, bounding, Fubini). Analogous to the standard requirement
+      σ ∈ L²([0,t] × Ω) for the Itô integral theory. -/
+  diffusion_sq_integral_integrable : ∀ (t : ℝ), 0 ≤ t →
+    Integrable (fun ω => ∫ s in Set.Icc 0 t, (diffusion s ω)^2 ∂volume) μ
   /-- The working filtration F is a sub-filtration of the BM's natural filtration.
       This is a compatibility condition: if A ∈ F_s then A ∈ BM.F_s, which allows
       the martingale property (proved w.r.t. BM.F) to imply the F-martingale property.
@@ -1428,7 +1445,7 @@ theorem stoch_integral_integrable (X : ItoProcess F μ) [IsProbabilityMeasure μ
     so the L² limit is 0. Proved in Helpers/ from `stoch_integral_is_L2_limit`. -/
 theorem stoch_integral_initial (X : ItoProcess F μ) :
     ∀ᵐ ω ∂μ, X.stoch_integral 0 ω = 0 := by
-  obtain ⟨approx, _, _, hnn, hL2⟩ := X.stoch_integral_is_L2_limit
+  obtain ⟨approx, _, _, hnn, hL2, _, _⟩ := X.stoch_integral_is_L2_limit
   -- Step 1: Simple process integrals at t=0 are all 0.
   -- At t=0, no partition intervals are completed, and the partial interval (if any)
   -- contributes H_0 * (W(0) - W(0)) = 0.
@@ -1483,7 +1500,7 @@ theorem stoch_integral_martingale (X : ItoProcess F μ) [IsProbabilityMeasure μ
   -- Convert F-measurability to BM.F-measurability
   have hA' : MeasurableSet[X.BM.F.σ_algebra s] A := X.F_le_BM_F s A hA
   -- Extract approximating sequence
-  obtain ⟨approx, hadapted, hbdd, hnn, hL2⟩ := X.stoch_integral_is_L2_limit
+  obtain ⟨approx, hadapted, hbdd, hnn, hL2, _, _⟩ := X.stoch_integral_is_L2_limit
   -- Apply ito_integral_martingale_setIntegral with T = t
   exact ito_integral_martingale_setIntegral (T := t) X.BM X.stoch_integral approx
     hadapted hbdd hnn
@@ -1616,70 +1633,11 @@ theorem is_semimartingale (X : ItoProcess F μ) [IsProbabilityMeasure μ] :
 
 end ItoProcess
 
-/-! ## Itô's Formula -/
+/-! ## Itô's Formula
 
-/-- Itô's formula for a C² function f applied to an Itô process.
-
-    f(t, X_t) = f(0, X_0) + ∫₀ᵗ [∂_t f + μ ∂_x f + ½ σ² ∂²_x f](s, X_s) ds
-                + ∫₀ᵗ ∂_x f(s, X_s) σ_s dW_s
-
-    The conclusion asserts the existence of a stochastic integral process that:
-    (i) starts at 0 (stoch_int 0 = 0 a.s.)
-    (ii) is a martingale (the set-integral property for F_s-measurable sets)
-    (iii) satisfies the Itô formula equation
-
-    The martingale property (ii) is the non-trivial content: it asserts that
-    the stochastic integral term is genuinely a stochastic integral ∫₀ᵗ H dW,
-    not just an arbitrary remainder. Without (ii), the formula would be trivially
-    provable by defining stoch_int as the remainder. -/
-theorem ito_formula {F : Filtration Ω ℝ} {μ : Measure Ω} [IsProbabilityMeasure μ]
-    (X : ItoProcess F μ)
-    (f : ℝ → ℝ → ℝ)
-    (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
-    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x)) :
-    ∃ (stoch_int : ℝ → Ω → ℝ),
-    -- (i) Initial condition: the stochastic integral starts at 0
-    (∀ᵐ ω ∂μ, stoch_int 0 ω = 0) ∧
-    -- (ii) Martingale property: for 0 ≤ s ≤ t and A ∈ F_s, ∫_A M_t = ∫_A M_s
-    (∀ s t : ℝ, 0 ≤ s → s ≤ t →
-      ∀ A : Set Ω, @MeasurableSet Ω (F.σ_algebra s) A →
-      ∫ ω in A, stoch_int t ω ∂μ = ∫ ω in A, stoch_int s ω ∂μ) ∧
-    -- (iii) Itô's formula
-    (∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
-      f t (X.process t ω) = f 0 (X.process 0 ω) +
-        (∫ (s : ℝ) in Set.Icc 0 t,
-          (deriv (fun u => f u (X.process s ω)) s +
-           deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
-           (1/2) * deriv (deriv (fun x => f s x)) (X.process s ω) * (X.diffusion s ω)^2)
-          ∂volume) +
-        stoch_int t ω) := by
-  -- Define stoch_int as the remainder: f(t, X_t) - f(0, X_0) - ∫₀ᵗ drift ds
-  let drift_integrand : ℝ → Ω → ℝ := fun s ω =>
-    deriv (fun u => f u (X.process s ω)) s +
-    deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
-    (1/2) * deriv (deriv (fun x => f s x)) (X.process s ω) * (X.diffusion s ω)^2
-  refine ⟨fun t ω => f t (X.process t ω) - f 0 (X.process 0 ω) -
-    ∫ s in Set.Icc 0 t, drift_integrand s ω ∂volume, ?_, ?_, ?_⟩
-  · -- (i) Initial condition: stoch_int 0 = 0 a.e.
-    -- stoch_int 0 ω = f(0, X_0 ω) - f(0, X_0 ω) - ∫ on Icc 0 0
-    -- Icc 0 0 = {0} has Lebesgue measure 0, so the integral is 0
-    filter_upwards with ω
-    show f 0 (X.process 0 ω) - f 0 (X.process 0 ω) -
-      ∫ s in Set.Icc 0 0, drift_integrand s ω ∂volume = 0
-    have hmeas_zero : (volume.restrict (Set.Icc (0 : ℝ) 0)) = 0 := by
-      rw [Measure.restrict_eq_zero, Set.Icc_self]
-      simp
-    rw [hmeas_zero, integral_zero_measure]
-    ring
-  · -- (ii) Martingale property: the core content of Itô's formula
-    -- The process M_t = f(t, X_t) - f(0, X_0) - ∫₀ᵗ drift ds is a martingale.
-    -- Proof requires: partition [s,t], Taylor expansion, BM quadratic variation,
-    -- and careful error control. See Helpers/ItoFormula.lean for infrastructure.
-    sorry
-  · -- (iii) Itô's formula: holds by definition of stoch_int as remainder
-    intro t ht
-    filter_upwards with ω
-    ring
+The Itô formula is proved in `Helpers/ItoFormulaProof.lean` as `SPDE.ito_formula`.
+It lives there because the proof depends on infrastructure (ItoFormulaDecomposition,
+ItoFormulaProof, etc.) that imports this file, making circular import impossible. -/
 
 /-! ## Stochastic Differential Equations -/
 

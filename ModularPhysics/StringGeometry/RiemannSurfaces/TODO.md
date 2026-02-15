@@ -418,17 +418,20 @@ Chart-local meromorphic framework using Mathlib's MeromorphicAt.
 - PoissonIntegral.lean: `mvp_eq_poissonIntegral` ✅ PROVEN
 - ThetaHelpers.lean: `theta_quasi_periodic`, `odd_theta_null_vanishes` ✅ PROVEN
 
-### Current Sorry Counts (Analytic Folder, 2026-02-10, updated)
+### Current Sorry Counts (Analytic Folder, 2026-02-14, updated)
 
 | File | Sorrys | Notes |
 |------|--------|-------|
 | **Helpers/RRHelpers.lean** | **0** | Fully proven |
 | **Helpers/AnalyticBridge.lean** | **0** | Fully proven |
-| Helpers/LinearCombination.lean | 2 | chart order inductive step + finite support |
-| Helpers/ChartMeromorphic.lean | 1 | argument principle |
-| Helpers/ConnectedComplement.lean | 1 | preconnected complement (ORPHANED) |
-| Helpers/EvaluationMap.lean | 1 | h0_add_point_upper (ORPHANED) |
-| **RiemannRoch.lean** | **4** | zero_counting, canonical_exists, eval_residue, harmonic_10 |
+| **Helpers/LinearCombination.lean** | **0** | ✅ Fully proven (was 2) |
+| **Helpers/ChartMeromorphic.lean** | **0** | ✅ Fully proven (was 1, arg principle moved) |
+| **Helpers/ChartTransition.lean** | **0** | ✅ NEW — chart independence, isolated zeros |
+| **Helpers/AnalyticKthRoot.lean** | **0** | ✅ NEW — k-th root extraction |
+| **Helpers/ConnectedComplement.lean** | **0** | ✅ Fully proven (was 1) |
+| Helpers/ArgumentPrinciple.lean | 2 | fiberMultiplicity_constant + totalZeroOrder_eq_totalPoleOrder |
+| Helpers/EvaluationMap.lean | 1 | h0_add_point_upper |
+| **RiemannRoch.lean** | **3** | canonical_exists, eval_residue, harmonic_10 (was 4) |
 | MeromorphicFunction.lean | 1 | analyticArgumentPrinciple |
 | HodgeDecomposition.lean | 7 | Hodge theory |
 | SerreDuality.lean | 4 | Integration theory |
@@ -441,7 +444,10 @@ Chart-local meromorphic framework using Mathlib's MeromorphicAt.
 | GreenFunction.lean | 5 | Green's function |
 | QuasiconformalMaps.lean | 2 | Quasiconformal |
 
-**Total: 44 sorrys** across 16 files (2 helper files fully proven with 0 sorrys)
+**Total: 41 sorrys** across 14 files (8 helper files fully proven with 0 sorrys)
+
+**Recent reductions**: LinearCombination 2→0, ChartMeromorphic 1→0, ConnectedComplement 1→0,
+RiemannRoch 4→3, ArgumentPrinciple created with 5→2 sorrys. Net: -8 sorrys from 2026-02-10.
 
 ---
 
@@ -643,33 +649,38 @@ GAGA proves that algebraic and analytic coherent sheaf categories are equivalent
 | `Basic.lean` | `period_matrix_exists` | sorry | Needs integration theory |
 | `Basic.lean` | `toCompactAlgebraicCurve.argumentPrinciple` | sorry | Needs argument principle |
 
-### Analytic/ (~41 sorrys total)
+### Analytic/ (41 sorrys total, updated 2026-02-14)
 
-#### Helper Infrastructure (NEW, 2026-02-10)
+#### Helper Infrastructure (8 files fully proven)
 
 | File | Sorrys | Notes |
 |------|--------|-------|
 | `Helpers/RRHelpers.lean` | **0** | ✅ Fully proven |
 | `Helpers/AnalyticBridge.lean` | **0** | ✅ Fully proven |
-| `Helpers/LinearCombination.lean` | **0** | ✅ Fully proven |
-| `Helpers/ChartMeromorphic.lean` | 1 | `chartMeromorphic_argument_principle` |
-| `Helpers/ConnectedComplement.lean` | 1 | `rs_compl_finite_isConnected` |
+| `Helpers/LinearCombination.lean` | **0** | ✅ Fully proven (was 2) |
+| `Helpers/ChartMeromorphic.lean` | **0** | ✅ Fully proven (was 1) |
+| `Helpers/ChartTransition.lean` | **0** | ✅ NEW — chart independence |
+| `Helpers/AnalyticKthRoot.lean` | **0** | ✅ NEW — k-th root extraction |
+| `Helpers/ConnectedComplement.lean` | **0** | ✅ Fully proven (was 1) |
+| `Helpers/ArgumentPrinciple.lean` | 2 | `totalZeroOrder_eq_totalPoleOrder`, `fiberMultiplicity_constant` |
 | `Helpers/EvaluationMap.lean` | 1 | `h0_add_point_upper` |
 
 #### Core Files
 
 | File | Definition/Theorem | Type | Priority |
 |------|-------------------|------|----------|
-| `RiemannRoch.lean` | `zero_counting_linear_combination` | sorry | HIGH (argument principle) |
 | `RiemannRoch.lean` | `canonical_divisor_exists` | sorry | MEDIUM (Hodge theory) |
 | `RiemannRoch.lean` | `eval_residue_complementarity` | sorry | HIGH (Serre duality) |
 | `RiemannRoch.lean` | `harmonic_10_are_canonical_sections` | sorry | LOW (corollary) |
-| `MeromorphicFunction.lean` | `analyticArgumentPrinciple` | sorry | HIGH (critical) |
-| `LineBundles.lean` | Various | sorry | Medium |
-| `AbelJacobi.lean` | Various | sorry | Low |
-| `GreenFunction.lean` | Various | sorry | Low |
-| `Harmonic.lean` | Various | sorry | Low |
-| `ThetaFunctions.lean` | Various | sorry | Low |
+| `MeromorphicFunction.lean` | `analyticArgumentPrinciple` | sorry | MEDIUM |
+| `AbelJacobi.lean` | Various (7) | sorry | Low |
+| `GreenFunction.lean` | Various (5) | sorry | Low |
+| `Harmonic.lean` | Various (2) | sorry | Low |
+| `ThetaFunctions.lean` | Various (4) | sorry | Low |
+
+**Completed since 2026-02-10**: `zero_counting_linear_combination` ✅, `chartMeromorphic_argument_principle` ✅,
+`local_mapping_theorem` ✅, `fiber_finite` ✅, `rs_compl_finite_isConnected` ✅,
+`chartOrderAt_lcRegularValue_ge_neg_D` ✅, `lcRegularValue_chartOrderSupport_finite` ✅
 
 ---
 

@@ -685,6 +685,106 @@ private lemma si_at_term_diff {F : Filtration Ω ℝ}
       rw [not_lt]; exact le_trans (min_le_right _ _)
         (le_trans (le_of_lt h_ti_le_t) (le_max_left _ _)))]
 
+/-- Disjoint ordered subintervals of [lo, hi] have total length ≤ hi - lo.
+    Used to bound the total clipped time in the quartic bound proof. -/
+private lemma ordered_interval_sum_le :
+    ∀ (n : ℕ) {a b : Fin n → ℝ} {lo hi : ℝ},
+    lo ≤ hi →
+    (∀ i, lo ≤ a i) → (∀ i, b i ≤ hi) →
+    (∀ i, a i ≤ b i) →
+    (∀ i j : Fin n, i < j → b i ≤ a j) →
+    ∑ i : Fin n, (b i - a i) ≤ hi - lo := by
+  intro n
+  induction n with
+  | zero => intros; simp; linarith
+  | succ n ih =>
+    intro a b lo hi hlo_hi h_lo h_hi h_pos h_ordered
+    rw [Fin.sum_univ_castSucc]
+    -- Apply IH to first n intervals with upper bound = a (Fin.last n)
+    have hpre := ih (a := fun i => a (Fin.castSucc i)) (b := fun i => b (Fin.castSucc i))
+      (lo := lo) (hi := a (Fin.last n))
+      (h_lo (Fin.last n))
+      (fun i => h_lo _)
+      (fun i => h_ordered _ _ (Fin.castSucc_lt_last i))
+      (fun i => h_pos _)
+      (fun i j hij => h_ordered _ _ (show Fin.castSucc i < Fin.castSucc j by
+        simp only [Fin.lt_def, Fin.val_castSucc]; exact hij))
+    linarith [h_pos (Fin.last n), h_hi (Fin.last n)]
+
+/-- Total clipped time for a SimpleProcess partition intersecting [s, t] is ≤ t - s.
+    The clipped intervals [max(t_i, s), min(t_{i+1}, t)] are disjoint subintervals of [s, t]. -/
+private lemma clipped_time_total_le {F : Filtration Ω ℝ}
+    (H : SimpleProcess F) (s t : ℝ) (hst : s ≤ t) :
+    ∑ i : Fin H.n, (if h : (i : ℕ) + 1 < H.n then
+        if max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, h⟩) t then
+          min (H.times ⟨(i : ℕ) + 1, h⟩) t - max (H.times i) s
+        else 0
+      else 0) ≤ t - s := by
+  -- Use ordered_interval_sum_le with a'(i) = min(max(t_i, s), t)
+  set δ : Fin H.n → ℝ := fun i => if h : (i : ℕ) + 1 < H.n then
+      if max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, h⟩) t then
+        min (H.times ⟨(i : ℕ) + 1, h⟩) t - max (H.times i) s
+      else 0
+    else 0
+  set a' : Fin H.n → ℝ := fun i => min (max (H.times i) s) t
+  -- δ(i) ≥ 0
+  have hδ_nn : ∀ i, 0 ≤ δ i := by
+    intro i; simp only [δ]
+    by_cases hi : (i : ℕ) + 1 < H.n
+    · simp only [dif_pos hi]
+      by_cases hact : max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, hi⟩) t
+      · simp only [if_pos hact]; linarith
+      · simp only [if_neg hact]; exact le_refl 0
+    · simp only [dif_neg hi]; exact le_refl 0
+  -- Convert sum to (a' + δ) - a' form
+  have hconv : (∑ i : Fin H.n, δ i) = ∑ i : Fin H.n, ((a' i + δ i) - a' i) :=
+    Finset.sum_congr rfl (fun i _ => by ring)
+  rw [hconv]
+  apply ordered_interval_sum_le H.n hst
+  · -- s ≤ a'(i)
+    exact fun i => le_min (le_max_right _ _) hst
+  · -- a'(i) + δ(i) ≤ t
+    intro i; simp only [a', δ]
+    by_cases hi : (i : ℕ) + 1 < H.n
+    · simp only [dif_pos hi]
+      by_cases hact : max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, hi⟩) t
+      · simp only [if_pos hact]
+        have : min (max (H.times i) s) t = max (H.times i) s :=
+          min_eq_left (le_of_lt (lt_of_lt_of_le hact (min_le_right _ _)))
+        rw [this]; linarith [min_le_right (H.times ⟨(i : ℕ) + 1, hi⟩) t]
+      · simp only [if_neg hact, add_zero]; exact min_le_right _ _
+    · simp only [dif_neg hi, add_zero]; exact min_le_right _ _
+  · -- a'(i) ≤ a'(i) + δ(i)
+    exact fun i => le_add_of_nonneg_right (hδ_nn i)
+  · -- Ordering: a'(i) + δ(i) ≤ a'(j) for i < j
+    intro i j hij
+    simp only [a', δ]
+    by_cases hi : (i : ℕ) + 1 < H.n
+    · simp only [dif_pos hi]
+      by_cases hact : max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, hi⟩) t
+      · simp only [if_pos hact]
+        -- LHS = min(max(t_i, s), t) + (min(t_{i+1}, t) - max(t_i, s)) = min(t_{i+1}, t)
+        have ha_eq : min (max (H.times i) s) t = max (H.times i) s :=
+          min_eq_left (le_of_lt (lt_of_lt_of_le hact (min_le_right _ _)))
+        rw [ha_eq]
+        -- Need: max(t_i,s) + (min(t_{i+1},t) - max(t_i,s)) ≤ min(max(t_j,s), t)
+        -- i.e., min(t_{i+1},t) ≤ min(max(t_j,s), t)
+        have h_i1_le_j : H.times ⟨(i : ℕ) + 1, hi⟩ ≤ H.times j := by
+          have h_le : (i : ℕ) + 1 ≤ (j : ℕ) := Nat.succ_le_of_lt (Fin.lt_def.mp hij)
+          rcases Nat.eq_or_lt_of_le h_le with heq | hgt
+          · exact le_of_eq (congrArg H.times (Fin.ext heq))
+          · exact le_of_lt (H.increasing _ _ (Fin.mk_lt_mk.mpr hgt))
+        calc max (H.times i) s + (min (H.times ⟨(i : ℕ) + 1, hi⟩) t - max (H.times i) s)
+            = min (H.times ⟨(i : ℕ) + 1, hi⟩) t := by ring
+          _ ≤ min (max (H.times j) s) t :=
+            min_le_min_right t (le_trans h_i1_le_j (le_max_left _ _))
+      · simp only [if_neg hact, add_zero]
+        exact min_le_min_right t (max_le_max_right s
+          (le_of_lt (H.increasing i j hij)))
+    · simp only [dif_neg hi, add_zero]
+      exact min_le_min_right t (max_le_max_right s
+        (le_of_lt (H.increasing i j hij)))
+
 /-! ## Transfer infrastructure -/
 
 /-- For bounded diffusion, the stochastic integral has approximating simple processes
@@ -731,7 +831,181 @@ theorem simple_integral_increment_quartic_bound
       H.stochasticIntegral_at W s ω)^4) μ ∧
     ∫ ω, (H.stochasticIntegral_at W t ω -
       H.stochasticIntegral_at W s ω)^4 ∂μ ≤ 3 * M^4 * (t - s)^2 := by
-  sorry
+  -- Define clipped contribution and clipped time at each partition index
+  set contrib : Fin H.n → Ω → ℝ := fun i ω =>
+    if h : (i : ℕ) + 1 < H.n then
+      if max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, h⟩) t then
+        H.values i ω * (W.process (min (H.times ⟨(i : ℕ) + 1, h⟩) t) ω -
+                         W.process (max (H.times i) s) ω)
+      else 0
+    else 0 with hcontrib_def
+  set δt : Fin H.n → ℝ := fun i =>
+    if h : (i : ℕ) + 1 < H.n then
+      if max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, h⟩) t then
+        min (H.times ⟨(i : ℕ) + 1, h⟩) t - max (H.times i) s
+      else 0
+    else 0 with hδt_def
+  -- SI(t) - SI(s) = Σ contrib
+  have hdiff : ∀ ω, H.stochasticIntegral_at W t ω - H.stochasticIntegral_at W s ω =
+      ∑ i : Fin H.n, contrib i ω := by
+    intro ω; simp only [SimpleProcess.stochasticIntegral_at, ← Finset.sum_sub_distrib]
+    congr 1; ext i; simp only [contrib]
+    by_cases hi : (i : ℕ) + 1 < H.n
+    · simp only [dif_pos hi]
+      rw [si_at_term_eq H W i hi t ω, si_at_term_eq H W i hi s ω]
+      exact si_at_term_diff H W i hi s t hst ω
+    · simp only [dif_neg hi, sub_self]
+  -- Total time bound
+  have htotal : ∑ i : Fin H.n, δt i ≤ t - s := clipped_time_total_le H s t hst
+  -- δt ≥ 0
+  have hδt_nn : ∀ i, 0 ≤ δt i := by
+    intro i; simp only [δt]
+    by_cases hi : (i : ℕ) + 1 < H.n
+    · simp only [dif_pos hi]
+      by_cases hact : max (H.times i) s < min (H.times ⟨(i : ℕ) + 1, hi⟩) t
+      · simp only [if_pos hact]; linarith
+      · simp only [if_neg hact]; exact le_refl 0
+    · simp only [dif_neg hi]; exact le_refl 0
+  -- Main induction: for j ≤ H.n, the partial clipped sum D_j satisfies quartic bound
+  suffices hind : ∀ (j : ℕ) (hj : j ≤ H.n),
+      Integrable (fun ω => (∑ i : Fin j, contrib ⟨i, by omega⟩ ω) ^ 2) μ ∧
+      Integrable (fun ω => (∑ i : Fin j, contrib ⟨i, by omega⟩ ω) ^ 4) μ ∧
+      (∫ ω, (∑ i : Fin j, contrib ⟨i, by omega⟩ ω) ^ 2 ∂μ ≤
+        M ^ 2 * ∑ i : Fin j, δt ⟨i, by omega⟩) ∧
+      (∫ ω, (∑ i : Fin j, contrib ⟨i, by omega⟩ ω) ^ 4 ∂μ ≤
+        3 * M ^ 4 * (∑ i : Fin j, δt ⟨i, by omega⟩) ^ 2) by
+    -- Extract at j = H.n and combine with total time bound
+    obtain ⟨_, h4_int, _, h4_bound⟩ := hind H.n le_rfl
+    constructor
+    · exact h4_int.congr (ae_of_all _ fun ω => congr_arg (· ^ 4) (hdiff ω).symm)
+    · calc ∫ ω, (H.stochasticIntegral_at W t ω - H.stochasticIntegral_at W s ω) ^ 4 ∂μ
+          = ∫ ω, (∑ i : Fin H.n, contrib ⟨(i : ℕ), by omega⟩ ω) ^ 4 ∂μ := by
+            congr 1; ext ω; exact congr_arg (· ^ 4) (hdiff ω)
+        _ ≤ 3 * M ^ 4 * (∑ i : Fin H.n, δt ⟨(i : ℕ), by omega⟩) ^ 2 := h4_bound
+        _ ≤ 3 * M ^ 4 * (t - s) ^ 2 := by
+            apply mul_le_mul_of_nonneg_left _ (by positivity)
+            exact pow_le_pow_left₀ (Finset.sum_nonneg fun i _ => hδt_nn _) htotal 2
+  -- Induction on j
+  intro j; induction j with
+  | zero =>
+    intro _
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · exact (integrable_const (0 : ℝ)).congr (ae_of_all _ fun ω => by simp)
+    · exact (integrable_const (0 : ℝ)).congr (ae_of_all _ fun ω => by simp)
+    · simp
+    · simp
+  | succ j ih =>
+    intro hj
+    obtain ⟨ih_s2, ih_s4, ih2, ih4⟩ := ih (by omega)
+    -- Split: D_{j+1} = D_j + contrib(j), T_{j+1} = T_j + δt(j)
+    have hD_split : ∀ ω, (∑ i : Fin (j + 1), contrib ⟨(i : ℕ), by omega⟩ ω) =
+        (∑ i : Fin j, contrib ⟨(i : ℕ), by omega⟩ ω) + contrib ⟨j, by omega⟩ ω := by
+      intro ω; rw [Fin.sum_univ_castSucc]; rfl
+    have hT_split : (∑ i : Fin (j + 1), δt ⟨(i : ℕ), by omega⟩) =
+        (∑ i : Fin j, δt ⟨(i : ℕ), by omega⟩) + δt ⟨j, by omega⟩ := by
+      rw [Fin.sum_univ_castSucc]; rfl
+    -- Check if index j is active
+    by_cases hjn : (j : ℕ) + 1 < H.n
+    · by_cases hact : max (H.times ⟨j, by omega⟩) s <
+          min (H.times ⟨j + 1, hjn⟩) t
+      · -- ACTIVE CASE: apply quartic_step
+        -- Abbreviations
+        set a_j := max (H.times ⟨j, by omega⟩) s
+        set b_j := min (H.times ⟨j + 1, hjn⟩) t
+        -- contrib(j) = H_j * ΔW
+        have hc_eq : ∀ ω, contrib ⟨j, by omega⟩ ω =
+            H.values ⟨j, by omega⟩ ω *
+              (W.toAdapted.process b_j ω - W.toAdapted.process a_j ω) := by
+          intro ω; show (if h : j + 1 < H.n then _ else _) = _
+          rw [dif_pos hjn]; exact if_pos hact
+        have hδ_eq : δt ⟨j, by omega⟩ = b_j - a_j := by
+          show (if h : j + 1 < H.n then _ else _) = _
+          rw [dif_pos hjn]; exact if_pos hact
+        -- D_prev measurability w.r.t. F_{a_j}
+        have hD_meas : @Measurable Ω ℝ (W.F.σ_algebra a_j) _
+            (fun ω => ∑ i : Fin j, contrib ⟨(i : ℕ), by omega⟩ ω) := by
+          apply Finset.measurable_sum; intro i _
+          by_cases hi_n : ((i : ℕ) : ℕ) + 1 < H.n
+          · by_cases hi_a : max (H.times ⟨(i : ℕ), by omega⟩) s <
+                min (H.times ⟨(i : ℕ) + 1, hi_n⟩) t
+            · have hc_i : contrib ⟨(i : ℕ), by omega⟩ = fun ω =>
+                  H.values ⟨(i : ℕ), by omega⟩ ω *
+                    (W.process (min (H.times ⟨(i : ℕ) + 1, hi_n⟩) t) ω -
+                     W.process (max (H.times ⟨(i : ℕ), by omega⟩) s) ω) := by
+                ext ω; show (if h : _ then _ else _) = _
+                rw [dif_pos hi_n]; exact if_pos hi_a
+              rw [hc_i]
+              have hti_le : H.times ⟨(i : ℕ), by omega⟩ ≤ H.times ⟨j, by omega⟩ :=
+                le_of_lt (H.increasing ⟨(i : ℕ), by omega⟩ ⟨j, by omega⟩
+                  (Fin.mk_lt_mk.mpr i.isLt))
+              have hbi_le : min (H.times ⟨(i : ℕ) + 1, hi_n⟩) t ≤ a_j := by
+                rcases Nat.eq_or_lt_of_le (Nat.succ_le_of_lt i.isLt) with heq | hgt
+                · exact (min_le_left _ _).trans ((le_of_eq (congrArg H.times (Fin.ext heq))).trans
+                    (le_max_left _ _))
+                · exact (min_le_left _ _).trans ((le_of_lt (H.increasing _ _
+                    (Fin.mk_lt_mk.mpr hgt))).trans (le_max_left _ _))
+              exact ((hH_adapted ⟨(i : ℕ), by omega⟩).mono
+                (W.F.mono _ _ (hti_le.trans (le_max_left _ _))) le_rfl).mul
+                (((W.toAdapted.adapted _).mono (W.F.mono _ _ hbi_le) le_rfl).sub
+                 ((W.toAdapted.adapted _).mono
+                   (W.F.mono _ _ (max_le_max_right s hti_le)) le_rfl))
+            · have : contrib ⟨(i : ℕ), by omega⟩ = fun _ => (0 : ℝ) := by
+                ext ω; show (if h : _ then _ else _) = _
+                rw [dif_pos hi_n]; exact if_neg hi_a
+              rw [this]; exact measurable_const
+          · have : contrib ⟨(i : ℕ), by omega⟩ = fun _ => (0 : ℝ) := by
+              ext ω; show (if h : _ then _ else _) = _; exact dif_neg hi_n
+            rw [this]; exact measurable_const
+        -- Function equalities (sum over j+1 = sum over j + contrib(j))
+        have hfn2 : (fun ω => (∑ i : Fin (j + 1), contrib ⟨(i : ℕ), by omega⟩ ω) ^ 2) =
+            (fun ω => ((∑ i : Fin j, contrib ⟨(i : ℕ), by omega⟩ ω) +
+              H.values ⟨j, by omega⟩ ω *
+                (W.toAdapted.process b_j ω - W.toAdapted.process a_j ω)) ^ 2) :=
+          funext fun ω => by rw [hD_split, hc_eq]
+        have hfn4 : (fun ω => (∑ i : Fin (j + 1), contrib ⟨(i : ℕ), by omega⟩ ω) ^ 4) =
+            (fun ω => ((∑ i : Fin j, contrib ⟨(i : ℕ), by omega⟩ ω) +
+              H.values ⟨j, by omega⟩ ω *
+                (W.toAdapted.process b_j ω - W.toAdapted.process a_j ω)) ^ 4) :=
+          funext fun ω => by rw [hD_split, hc_eq]
+        -- Apply quartic_step
+        have hstep := quartic_step W
+          (fun ω => ∑ i : Fin j, contrib ⟨(i : ℕ), by omega⟩ ω)
+          (H.values ⟨j, by omega⟩) a_j b_j
+          (le_max_of_le_right hs) (le_of_lt hact) hD_meas
+          ((hH_adapted ⟨j, by omega⟩).mono (W.F.mono _ _ (le_max_left _ _)) le_rfl)
+          hM (hH_bdd ⟨j, by omega⟩)
+          (∑ i : Fin j, δt ⟨(i : ℕ), by omega⟩)
+          (Finset.sum_nonneg fun i _ => hδt_nn ⟨(i : ℕ), by omega⟩)
+          ih_s2 ih_s4 ih2 ih4
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · rw [hfn2]; exact hstep.1
+        · rw [hfn4]; exact hstep.2.1
+        · rw [hfn2, hT_split, hδ_eq]; exact hstep.2.2.1
+        · rw [hfn4, hT_split, hδ_eq]; exact hstep.2.2.2
+      · -- INACTIVE (j+1 < H.n but interval doesn't cross [s,t])
+        have hc0 : ∀ ω, contrib ⟨j, by omega⟩ ω = 0 := by
+          intro ω; simp only [contrib, dif_pos hjn, if_neg hact]
+        have hδ0 : δt ⟨j, by omega⟩ = 0 := by simp only [δt, dif_pos hjn, if_neg hact]
+        rw [show (fun ω => (∑ i : Fin (j+1), contrib ⟨(i:ℕ), by omega⟩ ω) ^ 2) =
+            (fun ω => (∑ i : Fin j, contrib ⟨(i:ℕ), by omega⟩ ω) ^ 2) from
+            funext (fun ω => by rw [hD_split, hc0, add_zero]),
+          show (fun ω => (∑ i : Fin (j+1), contrib ⟨(i:ℕ), by omega⟩ ω) ^ 4) =
+            (fun ω => (∑ i : Fin j, contrib ⟨(i:ℕ), by omega⟩ ω) ^ 4) from
+            funext (fun ω => by rw [hD_split, hc0, add_zero]),
+          hT_split, hδ0, add_zero]
+        exact ⟨ih_s2, ih_s4, ih2, ih4⟩
+    · -- LAST INDEX (j+1 ≥ H.n)
+      have hc0 : ∀ ω, contrib ⟨j, by omega⟩ ω = 0 := by
+        intro ω; simp only [contrib, dif_neg hjn]
+      have hδ0 : δt ⟨j, by omega⟩ = 0 := by simp only [δt, dif_neg hjn]
+      rw [show (fun ω => (∑ i : Fin (j+1), contrib ⟨(i:ℕ), by omega⟩ ω) ^ 2) =
+          (fun ω => (∑ i : Fin j, contrib ⟨(i:ℕ), by omega⟩ ω) ^ 2) from
+          funext (fun ω => by rw [hD_split, hc0, add_zero]),
+        show (fun ω => (∑ i : Fin (j+1), contrib ⟨(i:ℕ), by omega⟩ ω) ^ 4) =
+          (fun ω => (∑ i : Fin j, contrib ⟨(i:ℕ), by omega⟩ ω) ^ 4) from
+          funext (fun ω => by rw [hD_split, hc0, add_zero]),
+        hT_split, hδ0, add_zero]
+      exact ⟨ih_s2, ih_s4, ih2, ih4⟩
 
 /-- Transfer of L⁴ bounds through L² convergence (Fatou transfer).
 

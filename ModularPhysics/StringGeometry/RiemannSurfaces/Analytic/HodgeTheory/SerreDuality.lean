@@ -277,16 +277,29 @@ where η is represented by a meromorphic function f.
     **Properties:**
     - Res_p(ω) = (1/2πi) ∮_γ ω where γ is a small loop around p
     - Residue is independent of local coordinate choice
-    - For holomorphic ω, all residues are 0 -/
-structure ResidueData (RS : RiemannSurface) (p : RS.carrier) where
-  /-- The 1-form (may be meromorphic) -/
-  form : Form_10 RS
-  /-- The residue value -/
-  value : ℂ
-  /-- The point p is a pole of the form (only poles have nonzero residues) -/
-  is_pole : True  -- TODO: Replace with proper pole condition when infrastructure available
+    - For holomorphic ω, all residues are 0
 
-/-- The residue of a (1,0)-form at a point, given residue data.
+    **Note:** We use the local coefficient function (not Form_10, which
+    requires smoothness) since meromorphic forms may have poles. -/
+structure ResidueData (RS : RiemannSurface) (p : RS.carrier) where
+  /-- The local coefficient function of the meromorphic 1-form -/
+  localCoeff : RS.carrier → ℂ
+  /-- The residue value (a_{-1} coefficient in Laurent expansion at p) -/
+  value : ℂ
+  /-- The local coefficient is meromorphic at p in chart coordinates -/
+  meromorphicAt : letI := RS.topology
+    letI := RS.chartedSpace
+    haveI := RS.isManifold
+    MeromorphicAt (localCoeff ∘ (extChartAt (I := 𝓘(ℂ, ℂ)) p).symm)
+      (extChartAt (I := 𝓘(ℂ, ℂ)) p p)
+  /-- The local coefficient has a pole at p (negative meromorphic order) -/
+  has_pole : letI := RS.topology
+    letI := RS.chartedSpace
+    haveI := RS.isManifold
+    meromorphicOrderAt (localCoeff ∘ (extChartAt (I := 𝓘(ℂ, ℂ)) p).symm)
+      (extChartAt (I := 𝓘(ℂ, ℂ)) p p) < 0
+
+/-- The residue of a meromorphic 1-form at a point, given residue data.
 
     For rigorous computation, this requires:
     1. Laurent series expansion in local coordinates

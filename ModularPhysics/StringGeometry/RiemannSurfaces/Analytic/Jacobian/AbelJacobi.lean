@@ -73,8 +73,8 @@ structure Holomorphic1Form (RS : RiemannSurfaces.RiemannSurface) where
 structure HolomorphicBasis (CRS : RiemannSurfaces.CompactRiemannSurface) where
   /-- The g forms ω₁, ..., ω_g -/
   forms : Fin CRS.genus → Holomorphic1Form CRS.toRiemannSurface
-  /-- The forms are distinct (weak independence condition) -/
-  distinct : ∀ i j, i ≠ j → forms i ≠ forms j
+  /-- The forms are linearly independent as sections (in the function space RS.carrier → ℂ) -/
+  linearIndependent : LinearIndependent ℂ (fun i => (forms i).localForm)
 
 /-- Dimension of H⁰(Σ, Ω¹) is g.
 
@@ -109,18 +109,24 @@ attribute [instance] FirstHomology.addCommGroup
     The intersection pairing on H₁ is a symplectic form. A symplectic basis
     is one where aᵢ · aⱼ = 0, bᵢ · bⱼ = 0, and aᵢ · bⱼ = δᵢⱼ.
 
-    **Data representation:** We store indices rather than actual cycles.
-    The intersection properties are encoded as constraints. -/
+    **Data representation:** We store indices for cycles along with the
+    intersection form. The symplectic conditions are proper constraints. -/
 structure SymplecticBasis (CRS : RiemannSurfaces.CompactRiemannSurface) where
   /-- Index set for a-cycles (size g) -/
   aCycleIndices : Fin CRS.genus → ℕ
   /-- Index set for b-cycles (size g) -/
   bCycleIndices : Fin CRS.genus → ℕ
-  /-- All indices are distinct -/
-  indices_distinct : ∀ i j, i ≠ j →
-    aCycleIndices i ≠ aCycleIndices j ∧ bCycleIndices i ≠ bCycleIndices j
-  /-- a and b indices are disjoint -/
-  ab_disjoint : ∀ i j, aCycleIndices i ≠ bCycleIndices j
+  /-- The intersection form on homology cycles -/
+  intersectionForm : ℕ → ℕ → ℤ
+  /-- Antisymmetry of the intersection form: γ₁ · γ₂ = -(γ₂ · γ₁) -/
+  antisymm : ∀ x y, intersectionForm x y = -intersectionForm y x
+  /-- a-cycles have zero mutual intersection: aᵢ · aⱼ = 0 -/
+  a_a_zero : ∀ i j, intersectionForm (aCycleIndices i) (aCycleIndices j) = 0
+  /-- b-cycles have zero mutual intersection: bᵢ · bⱼ = 0 -/
+  b_b_zero : ∀ i j, intersectionForm (bCycleIndices i) (bCycleIndices j) = 0
+  /-- Cross-intersection: aᵢ · bⱼ = δᵢⱼ (canonical symplectic pairing) -/
+  a_b_delta : ∀ i j, intersectionForm (aCycleIndices i) (bCycleIndices j) =
+    if i = j then 1 else 0
 
 /-- Result of integrating a 1-form over a cycle.
 
@@ -144,14 +150,19 @@ structure IntegrationResult {RS : RiemannSurfaces.RiemannSurface} where
     requiring full integration infrastructure. The periods are provided
     as input and must satisfy the Riemann bilinear relations. -/
 structure PeriodData (CRS : RiemannSurfaces.CompactRiemannSurface) where
-  /-- A-periods: ∫_{a_j} ω_i, stored as matrix (should be identity for normalized basis) -/
+  /-- A-periods: ∫_{a_j} ω_i -/
   aPeriods : Matrix (Fin CRS.genus) (Fin CRS.genus) ℂ
   /-- B-periods: ∫_{b_j} ω_i, this is the period matrix Ω -/
   bPeriods : Matrix (Fin CRS.genus) (Fin CRS.genus) ℂ
-  /-- Normalization: a-periods form identity matrix -/
-  a_normalized : aPeriods = 1
   /-- Riemann bilinear relations: Ω is symmetric -/
   b_symmetric : bPeriods.transpose = bPeriods
+
+/-- Period data is normalized when the a-periods form the identity matrix.
+    This can always be achieved by an appropriate GL(g,ℂ) change of basis
+    of holomorphic 1-forms. -/
+def PeriodData.IsNormalized {CRS : RiemannSurfaces.CompactRiemannSurface}
+    (pd : PeriodData CRS) : Prop :=
+  pd.aPeriods = 1
 
 /-- The period of a 1-form over a cycle, given period data.
 
@@ -222,6 +233,12 @@ structure PeriodLattice (CRS : RiemannSurfaces.CompactRiemannSurface) where
 J(Σ) = ℂ^g / Λ is a g-dimensional complex torus.
 -/
 
+/-- Lattice equivalence: two vectors in ℂ^g are equivalent if their
+    difference lies in the period lattice. -/
+def latticeEquiv {CRS : RiemannSurfaces.CompactRiemannSurface}
+    (Λ : PeriodLattice CRS) (v w : Fin CRS.genus → ℂ) : Prop :=
+  Λ.mem (fun i => v i - w i)
+
 /-- The Jacobian variety of a compact Riemann surface.
 
     J(Σ) = ℂ^g / Λ where Λ is the period lattice. It is a g-dimensional
@@ -235,8 +252,6 @@ structure Jacobian' (CRS : RiemannSurfaces.CompactRiemannSurface) where
   [addCommGroup : AddCommGroup points]
   /-- Projection from ℂ^g to the quotient -/
   proj : (Fin CRS.genus → ℂ) → points
-  /-- Projection is surjective -/
-  proj_surj : Function.Surjective proj
 
 attribute [instance] Jacobian'.addCommGroup
 

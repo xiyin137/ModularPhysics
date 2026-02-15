@@ -7,6 +7,8 @@ import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaInfrastructure
 import ModularPhysics.RigorousQFT.SPDE.Helpers.QuarticBound
 import ModularPhysics.RigorousQFT.SPDE.Helpers.QuadraticVariation
+import ModularPhysics.RigorousQFT.SPDE.Helpers.QVConvergence
+import ModularPhysics.RigorousQFT.SPDE.Helpers.IsometryTheorems
 import Mathlib.Analysis.Calculus.Taylor
 import Mathlib.MeasureTheory.Function.ConditionalExpectation.PullOut
 
@@ -263,33 +265,31 @@ theorem stoch_integral_increment_L2_bound {F : Filtration Ω ℝ}
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
     ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω)^2 ∂μ ≤
     Mσ^2 * (t - s) := by
-  -- Step 1: Apply the Itô isometry bound from ItoProcess
-  have hqv := X.stoch_integral_qv_bound s t hs hst
-  -- Step 2: Bound E[σ(u)²] ≤ Mσ² for each u
-  have hσ_sq_bdd : ∀ u, ∫ ω, (X.diffusion u ω) ^ 2 ∂μ ≤ Mσ ^ 2 := by
-    intro u
-    have h1 : ∫ ω, (X.diffusion u ω) ^ 2 ∂μ ≤ ∫ ω, Mσ ^ 2 ∂μ := by
-      apply integral_mono_of_nonneg
-      · exact ae_of_all _ fun ω => sq_nonneg _
-      · exact integrable_const _
-      · exact ae_of_all _ fun ω =>
-          sq_le_sq' (abs_le.mp (hMσ u ω)).1 (abs_le.mp (hMσ u ω)).2
-    simp only [integral_const, Measure.real, measure_univ, ENNReal.toReal_one, one_smul] at h1
-    exact h1
-  -- Step 3: Bound ∫_[s,t] E[σ²] du ≤ Mσ² · (t - s)
-  -- Use integral_mono_of_nonneg on restricted measure (doesn't need f measurable)
+  -- Step 1: Apply the Itô isometry (now a proved theorem)
+  have hiso := X.stoch_integral_isometry s t hs hst
+  -- Step 2: Bound ∫_Ω ∫_{[s,t]} σ² ≤ Mσ²·(t-s) using pointwise bounds
   calc ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 ∂μ
-      ≤ ∫ u in Set.Icc s t, (∫ ω, (X.diffusion u ω) ^ 2 ∂μ) ∂volume := hqv
-    _ ≤ ∫ u in Set.Icc s t, Mσ ^ 2 ∂volume := by
+      = ∫ ω, (∫ u in Set.Icc s t, (X.diffusion u ω) ^ 2 ∂volume) ∂μ := hiso
+    _ ≤ ∫ ω, (Mσ ^ 2 * (t - s)) ∂μ := by
         apply integral_mono_of_nonneg
-        · exact ae_of_all _ fun u => integral_nonneg (fun ω => sq_nonneg _)
-        · exact integrableOn_const (by rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top)
-        · exact ae_of_all _ fun u => hσ_sq_bdd u
+        · exact ae_of_all _ fun ω => integral_nonneg (fun u => sq_nonneg _)
+        · exact integrable_const _
+        · exact ae_of_all _ fun ω => by
+            calc ∫ u in Set.Icc s t, (X.diffusion u ω) ^ 2 ∂volume
+                ≤ ∫ u in Set.Icc s t, Mσ ^ 2 ∂volume := by
+                  apply setIntegral_mono_on
+                    (X.diffusion_sq_time_integrable ω t (le_trans hs hst) |>.mono_set
+                      (Set.Icc_subset_Icc_left hs))
+                    (integrableOn_const (by rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top))
+                    measurableSet_Icc
+                    (fun u _ => sq_le_sq' (abs_le.mp (hMσ u ω)).1 (abs_le.mp (hMσ u ω)).2)
+              _ = Mσ ^ 2 * (t - s) := by
+                  rw [setIntegral_const]
+                  simp only [Measure.real, Real.volume_Icc,
+                    ENNReal.toReal_ofReal (sub_nonneg.mpr hst), smul_eq_mul]
+                  ring
     _ = Mσ ^ 2 * (t - s) := by
-        rw [setIntegral_const]
-        simp only [Measure.real, Real.volume_Icc,
-          ENNReal.toReal_ofReal (sub_nonneg.mpr hst), smul_eq_mul]
-        ring
+        simp [integral_const, Measure.real, measure_univ, ENNReal.toReal_one]
 
 /-! ## Process increment moment bounds -/
 
@@ -939,22 +939,305 @@ private lemma taylor_C2_bound_partition_term
     _ = 3 / 2 * Mf'' * Δx ^ 2 := by ring
     _ ≤ 2 * Mf'' * Δx ^ 2 := by nlinarith [sq_nonneg Δx]
 
-set_option maxHeartbeats 400000 in
+/-! ## Abstract Fatou squeeze helper for L² convergence
+
+Abstracts the Fatou squeeze argument used in taylor_remainder_L2_convergence
+to avoid repeating the enormous Taylor/QV expressions. -/
+
+/-- **Abstract Fatou squeeze for dominated L² convergence**.
+
+    Given: fₖ ≥ 0 with fₖ ≤ Cf · Sₖ², fₖ → 0 a.e., Sₖ → QV a.e.,
+    ∫(Sₖ - QV)² → 0, and integrability conditions,
+    concludes ∫fₖ → 0.
+
+    Proof: Fatou squeeze with gₖ = 2Cf(Sₖ-QV)² + 2Cf·QV² → G = 2Cf·QV². -/
+private theorem abstract_fatou_squeeze_L2 [IsProbabilityMeasure μ]
+    {fk Sk : ℕ → Ω → ℝ} {QV : Ω → ℝ} {Cf : ℝ} (hCf : 0 ≤ Cf)
+    (hfk_nn : ∀ k ω, 0 ≤ fk k ω)
+    (hfk_dom : ∀ k ω, fk k ω ≤ Cf * (Sk k ω) ^ 2)
+    (hfk_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun k => fk k ω) atTop (nhds 0))
+    (hSk_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun k => Sk k ω) atTop (nhds (QV ω)))
+    (hSk_L2 : Filter.Tendsto (fun k => ∫ ω, (Sk k ω - QV ω) ^ 2 ∂μ) atTop (nhds 0))
+    (hfk_int : ∀ k, Integrable (fk k) μ)
+    (hSk_diff_int : ∀ k, Integrable (fun ω => (Sk k ω - QV ω) ^ 2) μ)
+    (hQV_sq_int : Integrable (fun ω => QV ω ^ 2) μ) :
+    Filter.Tendsto (fun k => ∫ ω, fk k ω ∂μ) atTop (nhds 0) := by
+  apply fatou_squeeze_tendsto_zero
+    (g := fun k ω => 2 * Cf * (Sk k ω - QV ω) ^ 2 + 2 * Cf * QV ω ^ 2)
+    (G := fun ω => 2 * Cf * QV ω ^ 2)
+  -- hf_nn
+  · exact hfk_nn
+  -- hfg: f_k ≤ g_k
+  · intro k ω
+    have h1 := hfk_dom k ω
+    have h2 : (Sk k ω) ^ 2 ≤ 2 * (Sk k ω - QV ω) ^ 2 + 2 * QV ω ^ 2 := by
+      nlinarith [sq_nonneg (Sk k ω - 2 * QV ω)]
+    calc fk k ω ≤ Cf * (Sk k ω) ^ 2 := h1
+      _ ≤ Cf * (2 * (Sk k ω - QV ω) ^ 2 + 2 * QV ω ^ 2) :=
+          mul_le_mul_of_nonneg_left h2 hCf
+      _ = 2 * Cf * (Sk k ω - QV ω) ^ 2 + 2 * Cf * QV ω ^ 2 := by ring
+  -- hf_ae
+  · exact hfk_ae
+  -- hg_ae: g_k → G a.e.
+  · filter_upwards [hSk_ae] with ω hω
+    have h1 : Filter.Tendsto (fun k => (Sk k ω - QV ω) ^ 2) atTop (nhds 0) := by
+      have hc : Filter.Tendsto (fun _ : ℕ => QV ω) atTop (nhds (QV ω)) :=
+        tendsto_const_nhds
+      have h := (hω.sub hc).pow 2
+      simp only [sub_self, zero_pow (by norm_num : 2 ≠ 0)] at h; exact h
+    have h2 := h1.const_mul (2 * Cf)
+    rw [mul_zero] at h2
+    convert h2.add tendsto_const_nhds using 1 <;> ring_nf
+  -- hf_int
+  · exact hfk_int
+  -- hg_int
+  · intro k
+    exact ((hSk_diff_int k).const_mul (2 * Cf)).add (hQV_sq_int.const_mul (2 * Cf))
+  -- hG_int
+  · exact hQV_sq_int.const_mul (2 * Cf)
+  -- hg_tend: ∫g_k → ∫G
+  · have h_first := hSk_L2.const_mul (2 * Cf)
+    rw [mul_zero] at h_first
+    have h_tend : Filter.Tendsto
+        (fun k => 2 * Cf * ∫ ω, (Sk k ω - QV ω) ^ 2 ∂μ + ∫ ω, 2 * Cf * QV ω ^ 2 ∂μ)
+        atTop (nhds (0 + ∫ ω, 2 * Cf * QV ω ^ 2 ∂μ)) :=
+      h_first.add tendsto_const_nhds
+    rw [zero_add] at h_tend
+    refine h_tend.congr (fun k => ?_)
+    rw [← integral_const_mul, ← integral_add
+      ((hSk_diff_int k).const_mul _) (hQV_sq_int.const_mul _)]
+
+/-! ## Integrability infrastructure for Fatou squeeze
+
+Helper lemmas providing integrability of discrete QV sums squared, QV², etc.
+Needed for the abstract Fatou squeeze in `taylor_remainder_L2_convergence`. -/
+
+/-- Process values are AEStronglyMeasurable (from adapted + sub-σ-algebra). -/
+private lemma process_aesm {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) (t : ℝ) :
+    AEStronglyMeasurable (X.process t) μ :=
+  ((X.process_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
+
+/-- SI values are AEStronglyMeasurable. -/
+private lemma si_aesm {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) (t : ℝ) :
+    AEStronglyMeasurable (X.stoch_integral t) μ :=
+  ((X.stoch_integral_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
+
+/-- (X(t) - X(s))⁴ is integrable for bounded-coefficient Itô processes.
+    Proof: decompose ΔX = D + S a.e., then (D+S)⁴ ≤ 8(D⁴ + S⁴) where
+    D⁴ is bounded and S⁴ is integrable from quartic bound. -/
+private lemma process_increment_fourth_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    Integrable (fun ω => (X.process t ω - X.process s ω) ^ 4) μ := by
+  set D : Ω → ℝ := fun ω =>
+    ∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+    ∫ u in Set.Icc 0 s, X.drift u ω ∂volume
+  set S : Ω → ℝ := fun ω => X.stoch_integral t ω - X.stoch_integral s ω
+  -- ΔX = D + S a.e.
+  have hdecomp : ∀ᵐ ω ∂μ, X.process t ω - X.process s ω = D ω + S ω := by
+    filter_upwards [X.integral_form t (le_trans hs hst), X.integral_form s hs] with ω hωt hωs
+    simp only [D, S]; linarith
+  -- D bounded: |D| ≤ Mμ·(t-s)
+  have hD_bdd : ∀ ω, |D ω| ≤ Mμ * (t - s) := by
+    intro ω
+    have hint_t : IntegrableOn (fun u => X.drift u ω) (Set.Icc 0 t) volume :=
+      X.drift_time_integrable ω t (le_trans hs hst)
+    have hD_eq : D ω = ∫ u in Set.Icc 0 t \ Set.Icc 0 s, X.drift u ω ∂volume :=
+      (integral_diff measurableSet_Icc hint_t (Set.Icc_subset_Icc_right hst)).symm
+    rw [hD_eq]
+    have hvol_ne_top : volume (Set.Icc 0 t \ Set.Icc 0 s) ≠ ⊤ :=
+      ne_top_of_le_ne_top (by rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top)
+        (measure_mono Set.diff_subset)
+    have hbnd := norm_setIntegral_le_of_norm_le_const (lt_top_iff_ne_top.mpr hvol_ne_top)
+      (fun u _ => Real.norm_eq_abs _ ▸ hMμ u ω)
+    rw [Real.norm_eq_abs] at hbnd
+    have h_fin_s : volume (Set.Icc 0 s) ≠ ⊤ := by
+      rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top
+    have hvol_eq : volume.real (Set.Icc 0 t \ Set.Icc 0 s) = t - s := by
+      show (volume (Set.Icc 0 t \ Set.Icc 0 s)).toReal = t - s
+      rw [measure_diff (Set.Icc_subset_Icc_right hst) measurableSet_Icc.nullMeasurableSet h_fin_s]
+      rw [Real.volume_Icc, Real.volume_Icc, sub_zero, sub_zero]
+      rw [ENNReal.toReal_sub_of_le (ENNReal.ofReal_le_ofReal hst) ENNReal.ofReal_ne_top]
+      rw [ENNReal.toReal_ofReal (le_trans hs hst), ENNReal.toReal_ofReal hs]
+    rw [hvol_eq] at hbnd; linarith
+  -- D⁴ bounded
+  have hD_fourth_bdd : ∀ ω, D ω ^ 4 ≤ (Mμ * (t - s)) ^ 4 := fun ω => by
+    calc D ω ^ 4 = (D ω ^ 2) ^ 2 := by ring
+      _ ≤ ((Mμ * (t - s)) ^ 2) ^ 2 := by
+          apply sq_le_sq'
+          · have := (abs_le.mp (hD_bdd ω)).1
+            nlinarith [sq_nonneg (D ω), sq_nonneg (Mμ * (t - s))]
+          · exact sq_le_sq' (abs_le.mp (hD_bdd ω)).1 (abs_le.mp (hD_bdd ω)).2
+      _ = (Mμ * (t - s)) ^ 4 := by ring
+  -- D AEStronglyMeasurable
+  have hD_asm : AEStronglyMeasurable D μ :=
+    ((process_aesm X t).sub (process_aesm X s)).sub
+      ((si_aesm X t).sub (si_aesm X s)) |>.congr
+      (hdecomp.mono fun ω hω => by simp only [D, S, Pi.sub_apply] at hω ⊢; linarith)
+  -- D⁴ integrable (bounded)
+  have hD_fourth_int : Integrable (fun ω => D ω ^ 4) μ :=
+    (integrable_const ((Mμ * (t - s)) ^ 4)).mono' (hD_asm.pow 4)
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (by positivity)]
+        exact hD_fourth_bdd ω)
+  -- S⁴ integrable
+  have hS_fourth_int : Integrable (fun ω => S ω ^ 4) μ :=
+    stoch_integral_increment_L4_integrable X hMσ s t hs hst
+  -- ΔX⁴ AEStronglyMeasurable
+  have hΔX_asm : AEStronglyMeasurable (fun ω => (X.process t ω - X.process s ω) ^ 4) μ :=
+    ((process_aesm X t).sub (process_aesm X s)).pow 4
+  -- (D+S)⁴ ≤ 8(D⁴+S⁴)
+  have h_split : ∀ ω, (D ω + S ω) ^ 4 ≤ 8 * (D ω ^ 4 + S ω ^ 4) := fun ω => by
+    have h1 : (D ω + S ω) ^ 2 ≤ 2 * D ω ^ 2 + 2 * S ω ^ 2 := by
+      nlinarith [sq_nonneg (D ω - S ω)]
+    have h2 : (2 * D ω ^ 2 + 2 * S ω ^ 2) ^ 2 ≤ 8 * (D ω ^ 4 + S ω ^ 4) := by
+      nlinarith [sq_nonneg (D ω ^ 2 - S ω ^ 2)]
+    calc (D ω + S ω) ^ 4 = ((D ω + S ω) ^ 2) ^ 2 := by ring
+      _ ≤ (2 * D ω ^ 2 + 2 * S ω ^ 2) ^ 2 := by
+          apply sq_le_sq'
+          · linarith [sq_nonneg (D ω), sq_nonneg (S ω), sq_nonneg (D ω + S ω)]
+          · exact h1
+      _ ≤ 8 * (D ω ^ 4 + S ω ^ 4) := h2
+  -- Combine
+  apply ((hD_fourth_int.add hS_fourth_int).const_mul 8).mono' hΔX_asm
+  filter_upwards [hdecomp] with ω hω
+  rw [Real.norm_eq_abs, abs_of_nonneg (by positivity), hω]
+  calc (D ω + S ω) ^ 4 ≤ 8 * (D ω ^ 4 + S ω ^ 4) := h_split ω
+    _ = 8 * ((fun ω => D ω ^ 4 + S ω ^ 4) ω) := by ring_nf
+
+/-- Discrete QV sum is AEStronglyMeasurable. -/
+private lemma discrete_qv_aesm {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) (t : ℝ) (n : ℕ) :
+    AEStronglyMeasurable (fun ω =>
+      ∑ i : Fin (n + 1),
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2) μ := by
+  have h := aestronglyMeasurable_sum (μ := μ) Finset.univ
+    (f := fun (i : Fin (n + 1)) (ω : Ω) =>
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2)
+    (fun i _ => ((process_aesm X _).sub (process_aesm X _)).pow 2)
+  exact h.congr (ae_of_all _ fun ω => Finset.sum_apply ω Finset.univ _)
+
+/-- QV is AEStronglyMeasurable (from integrability of diffusion_sq_integral). -/
+private lemma qv_aesm {F : Filtration Ω ℝ} [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (t : ℝ) (ht : 0 ≤ t) :
+    AEStronglyMeasurable (fun ω => X.quadraticVariation t ω) μ :=
+  (X.diffusion_sq_integral_integrable t ht).aestronglyMeasurable
+
+/-- QV² is integrable when diffusion is bounded (bounded + AEStronglyMeasurable on prob space). -/
+private lemma qv_sq_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (t : ℝ) (ht : 0 ≤ t) :
+    Integrable (fun ω => (X.quadraticVariation t ω) ^ 2) μ := by
+  have hQV_bdd : ∀ ω, ‖(X.quadraticVariation t ω) ^ 2‖ ≤ (Mσ ^ 2 * t) ^ 2 := by
+    intro ω
+    rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+    exact sq_le_sq' (by linarith [X.quadraticVariation_nonneg t ω,
+      X.quadraticVariation_le hMσ t ht ω])
+      (X.quadraticVariation_le hMσ t ht ω)
+  exact (integrable_const _).mono' ((qv_aesm X t ht).pow 2) (ae_of_all _ hQV_bdd)
+
+/-- Discrete QV sum squared is integrable: (∑(ΔXᵢ)²)² ∈ L¹.
+    Proof: Cauchy-Schwarz gives (∑aᵢ)² ≤ (n+1)·∑aᵢ², then each (ΔXᵢ)⁴ is
+    integrable from quartic bounds. -/
+private lemma discrete_qv_sq_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (t : ℝ) (ht : 0 < t) (n : ℕ) :
+    Integrable (fun ω =>
+      (∑ i : Fin (n + 1),
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2) ^ 2) μ := by
+  -- Cauchy-Schwarz: (∑aᵢ)² ≤ (n+1)·∑aᵢ²
+  have hCS : ∀ ω, (∑ i : Fin (n + 1),
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2) ^ 2 ≤
+      ↑(n + 1) * ∑ i : Fin (n + 1),
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 4 := by
+    intro ω
+    have h := @sq_sum_le_card_mul_sum_sq _ ℝ _ _ _ _ Finset.univ
+      (fun i : Fin (n + 1) =>
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2)
+    simp only [Finset.card_univ, Fintype.card_fin] at h
+    calc (∑ i, (X.process _ ω - X.process _ ω) ^ 2) ^ 2
+        ≤ ↑(n + 1) * ∑ i,
+          ((X.process _ ω - X.process _ ω) ^ 2) ^ 2 := h
+      _ = ↑(n + 1) * ∑ i,
+          (X.process _ ω - X.process _ ω) ^ 4 := by
+          congr 1; exact Finset.sum_congr rfl fun i _ => by ring
+  -- Each (ΔXᵢ)⁴ is integrable
+  have hΔX4_int : ∀ i : Fin (n + 1),
+      Integrable (fun ω => (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+        X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 4) μ := by
+    intro i
+    have hi_lt := i.isLt
+    have hn_pos : (0 : ℝ) < ↑(n + 1) := by positivity
+    exact process_increment_fourth_integrable X hMμ hMσ _ _
+      (by positivity)
+      (by apply div_le_div_of_nonneg_right _ hn_pos.le; linarith)
+  -- Sum of integrable is integrable
+  have hsum_int : Integrable (fun ω => ∑ i : Fin (n + 1),
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 4) μ :=
+    integrable_finset_sum _ fun i _ => hΔX4_int i
+  -- Dominate: (∑aᵢ)² ≤ (n+1)·∑aᵢ² ≤ integrable
+  exact (hsum_int.const_mul _).mono' ((discrete_qv_aesm X t n).pow 2)
+    (ae_of_all _ fun ω => by
+      rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+      exact hCS ω)
+
+/-- (discrete_QV - QV)² is integrable.
+    Proof: (S-Q)² ≤ 2S² + 2Q², both integrable. -/
+private lemma qv_diff_sq_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (t : ℝ) (ht : 0 < t) (n : ℕ) :
+    Integrable (fun ω =>
+      (∑ i : Fin (n + 1),
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 -
+       X.quadraticVariation t ω) ^ 2) μ := by
+  have h_dom : ∀ ω, (∑ i : Fin (n + 1),
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 -
+     X.quadraticVariation t ω) ^ 2 ≤
+    2 * (∑ i : Fin (n + 1),
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2) ^ 2 +
+    2 * (X.quadraticVariation t ω) ^ 2 := by
+    intro ω; nlinarith [sq_nonneg
+      (∑ i : Fin (n + 1), (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 +
+       X.quadraticVariation t ω)]
+  exact ((discrete_qv_sq_integrable X hMμ hMσ t ht n).const_mul 2 |>.add
+    ((qv_sq_integrable X hMσ t ht.le).const_mul 2)).mono'
+    (((discrete_qv_aesm X t n).sub (qv_aesm X t ht.le)).pow 2)
+    (ae_of_all _ fun ω => by
+      simp only [Real.norm_eq_abs, Pi.add_apply]
+      rw [abs_of_nonneg (sq_nonneg _)]
+      exact h_dom ω)
+
+set_option maxHeartbeats 1600000 in
 /-- Taylor remainder L² convergence summed over partition intervals.
 
     With C² regularity and bounded second derivative, the sum of Taylor remainders
     Σ R_i → 0 in L², where R_i = f(x + ΔX) - f(x) - f'(x)ΔX - (1/2)f''(x)(ΔX)².
 
-    **Proof strategy** (Fatou + modulus of continuity):
-    The crude bound (∑ R_i)² ≤ M²·(∑(ΔX_i)²)² does NOT vanish, since
-    ∑(ΔX_i)² → [X]_t ≠ 0. Instead, use the refined bound with modulus of
-    continuity of f'': as max_i|ΔX_i| → 0 a.s. (path continuity),
-    ω_{f''}(max|ΔX_i|) → 0, making the Taylor remainders vanish.
-
-    The Fatou approach: let fₙ = (∑ R_i)², gₙ = M²(∑(ΔX_i)²)².
-    Extract subsequence where gₙ → g a.s. (from QV L² convergence).
-    Along this subsequence, fₙ → 0 a.s. and gₙ → g a.s.
-    Fatou on gₙ - fₙ ≥ 0 gives limsup E[fₙ] ≤ 0. -/
+    **Proof**: tendsto_of_subseq_tendsto + abstract Fatou squeeze. -/
 theorem taylor_remainder_L2_convergence {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
@@ -963,6 +1246,7 @@ theorem taylor_remainder_L2_convergence {F : Filtration Ω ℝ}
     {Mμ : ℝ} (_hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
     {Mσ : ℝ} (_hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
     {Mf'' : ℝ} (hMf'' : ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ Mf'')
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
     (t : ℝ) (ht : 0 < t) :
     Filter.Tendsto
       (fun n => ∫ ω,
@@ -981,32 +1265,271 @@ theorem taylor_remainder_L2_convergence {F : Filtration Ω ℝ}
              (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
               X.process (↑(i : ℕ) * t / ↑(n + 1)) ω)^2))^2 ∂μ)
       atTop (nhds 0) := by
-  -- === Proof via tendsto_of_subseq_tendsto + Fatou squeeze ===
-  -- For any subsequence ns: extract a.e.-convergent sub-subseq ms (from QV L²→measure→a.e.),
-  -- show Taylor remainders → 0 a.e. (modulus of continuity), apply Fatou squeeze.
-  -- Use tendsto_of_subseq_tendsto to lift to full sequence.
-
-  -- Nonneg Mf''
-  have hMf''_nn : 0 ≤ Mf'' := by
-    have := hMf'' 0 0; linarith [abs_nonneg (deriv (deriv (fun x => f 0 x)) 0)]
-
-  -- Step 1: Use tendsto_of_subseq_tendsto (subsequence principle)
-  -- For any subsequence ns: extract a.e.-convergent sub-subseq ms from QV L² convergence,
-  -- then Taylor remainders → 0 a.e. (modulus of continuity), then Fatou squeeze.
   have hMf''_nn : 0 ≤ Mf'' := by
     have := hMf'' 0 0; linarith [abs_nonneg (deriv (deriv (fun x => f 0 x)) 0)]
   apply tendsto_of_subseq_tendsto
   intro ns hns
-  -- === Proof that ∃ ms, ∫(∑Rᵢ(ns(ms k)))² → 0 ===
-  -- Key ingredients:
-  -- A. Crude bound: (∑ Rᵢ)² ≤ (2Mf'')²·(∑(ΔXᵢ)²)² (from taylor_C2_bound_partition_term)
-  -- B. QV L² convergence along ns → TendstoInMeasure → a.e. subseq ms
-  --    (ito_process_discrete_qv_L2_convergence + TendstoInMeasure.exists_seq_tendsto_ae)
-  -- C. Along ns∘ms: Taylor remainders → 0 a.e. (path continuity + modulus of continuity)
-  -- D. Along ns∘ms: gₙ = (2Mf'')²(∑(ΔXᵢ)²)² → G = (2Mf'')²[X]_t² a.e.
-  -- E. ∫gₙ → ∫G (from QV L² → L¹ convergence of squares)
-  -- F. Fatou on gₙ - fₙ ≥ 0: ∫G ≤ liminf ∫(gₙ-fₙ) = ∫G - limsup ∫fₙ
-  --    Hence limsup ∫fₙ ≤ 0, combined with ∫fₙ ≥ 0: ∫fₙ → 0
-  sorry
+  -- Step A: QV L² convergence along ns, then extract a.e. subseq
+  have h_qv_L2_ns := (ito_process_discrete_qv_L2_convergence X _hMμ _hMσ t ht).comp hns
+  -- Step B: L² → a.e. subseq (Chebyshev + TendstoInMeasure)
+  have h_ae_subseq : ∃ (ms : ℕ → ℕ), StrictMono ms ∧
+      ∀ᵐ ω ∂μ, Filter.Tendsto (fun k =>
+        ∑ i : Fin (ns (ms k) + 1),
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(ns (ms k) + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(ns (ms k) + 1)) ω) ^ 2)
+        atTop (nhds (X.quadraticVariation t ω)) := by
+    -- Define f_n := Sk(ns n) as a function ℕ → Ω → ℝ
+    set f_ns : ℕ → Ω → ℝ := fun n ω =>
+      ∑ i : Fin (ns n + 1),
+        (X.process ((↑(i : ℕ) + 1) * t / ↑(ns n + 1)) ω -
+         X.process (↑(i : ℕ) * t / ↑(ns n + 1)) ω) ^ 2
+    set QV_fn := fun ω => X.quadraticVariation t ω
+    -- Prove TendstoInMeasure for f_ns → QV
+    suffices h_tim : TendstoInMeasure μ f_ns atTop QV_fn by
+      obtain ⟨ms, hms, hms_ae⟩ := h_tim.exists_seq_tendsto_ae
+      exact ⟨ms, hms, hms_ae⟩
+    rw [tendstoInMeasure_iff_norm]
+    intro ε hε
+    have hε_sq_pos : (0 : ℝ) < ε ^ 2 := by positivity
+    -- Abbreviations for the discrete QV and QV
+    set Sk := fun n (ω : Ω) => ∑ i : Fin (n + 1),
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2
+    set QV := fun ω => X.quadraticVariation t ω
+    -- L² integrability
+    have hL2_int : ∀ n, Integrable (fun ω => (Sk (ns n) ω - QV ω) ^ 2) μ :=
+      fun n => qv_diff_sq_integrable X _hMμ _hMσ t ht (ns n)
+    -- AEStronglyMeasurable
+    have hSk_asm : ∀ n, AEStronglyMeasurable (Sk (ns n)) μ :=
+      fun n => discrete_qv_aesm X t (ns n)
+    have hQV_asm : AEStronglyMeasurable QV μ := qv_aesm X t ht.le
+    -- Step A: lintegral of (Sk - QV)² → 0 in ENNReal
+    have h_lint_eq : ∀ n, ∫⁻ ω, ENNReal.ofReal ((Sk (ns n) ω - QV ω) ^ 2) ∂μ =
+        ENNReal.ofReal (∫ ω, (Sk (ns n) ω - QV ω) ^ 2 ∂μ) :=
+      fun n => (ofReal_integral_eq_lintegral_ofReal (hL2_int n)
+        (ae_of_all _ fun ω => by positivity)).symm
+    have h_tend_lint : Filter.Tendsto
+        (fun n => ∫⁻ ω, ENNReal.ofReal ((Sk (ns n) ω - QV ω) ^ 2) ∂μ)
+        atTop (nhds 0) := by
+      simp_rw [h_lint_eq]
+      have : Filter.Tendsto (fun n => ENNReal.ofReal (∫ ω, (Sk (ns n) ω - QV ω) ^ 2 ∂μ))
+          atTop (nhds (ENNReal.ofReal 0)) :=
+        (ENNReal.continuous_ofReal.tendsto 0).comp h_qv_L2_ns
+      rwa [ENNReal.ofReal_zero] at this
+    -- Step B: dividing by ofReal(ε²)
+    have hε2_pos : ENNReal.ofReal (ε ^ 2) ≠ 0 := by positivity
+    have hε2_top : ENNReal.ofReal (ε ^ 2) ≠ ⊤ := ENNReal.ofReal_ne_top
+    have h_div_tend : Filter.Tendsto
+        (fun n => (∫⁻ ω, ENNReal.ofReal ((Sk (ns n) ω - QV ω) ^ 2) ∂μ) /
+          ENNReal.ofReal (ε ^ 2)) atTop (nhds 0) := by
+      have h := ENNReal.Tendsto.div_const h_tend_lint (Or.inr hε2_pos)
+      rwa [ENNReal.zero_div] at h
+    -- Step C: bound μ {ε ≤ ‖Sk - QV‖} by the ratio via Chebyshev
+    apply tendsto_of_tendsto_of_tendsto_of_le_of_le tendsto_const_nhds h_div_tend
+    · intro n; exact zero_le _
+    · intro n
+      have h_subset : {ω | (ε : ℝ) ≤ ‖Sk (ns n) ω - QV ω‖} ⊆
+          {ω | ε ^ 2 ≤ (Sk (ns n) ω - QV ω) ^ 2} := by
+        intro ω (hω : ε ≤ ‖Sk (ns n) ω - QV ω‖)
+        show ε ^ 2 ≤ (Sk (ns n) ω - QV ω) ^ 2
+        rw [Real.norm_eq_abs] at hω
+        nlinarith [abs_nonneg (Sk (ns n) ω - QV ω), sq_abs (Sk (ns n) ω - QV ω)]
+      have h_aem : AEMeasurable (fun ω => ENNReal.ofReal ((Sk (ns n) ω - QV ω) ^ 2)) μ :=
+        ENNReal.measurable_ofReal.comp_aemeasurable
+          ((continuous_pow 2).measurable.comp_aemeasurable
+            ((hSk_asm n).sub hQV_asm).aemeasurable)
+      have h_cheb := mul_meas_ge_le_lintegral₀ h_aem (ENNReal.ofReal (ε ^ 2))
+      have h_set_eq : {ω | ENNReal.ofReal (ε ^ 2) ≤ ENNReal.ofReal ((Sk (ns n) ω - QV ω) ^ 2)} =
+          {ω | ε ^ 2 ≤ (Sk (ns n) ω - QV ω) ^ 2} := by
+        ext ω; simp only [Set.mem_setOf_eq]
+        exact ENNReal.ofReal_le_ofReal_iff (by positivity)
+      rw [h_set_eq] at h_cheb
+      calc μ {ω | (ε : ℝ) ≤ ‖Sk (ns n) ω - QV ω‖}
+          ≤ μ {ω | ε ^ 2 ≤ (Sk (ns n) ω - QV ω) ^ 2} := measure_mono h_subset
+        _ ≤ (∫⁻ ω, ENNReal.ofReal ((Sk (ns n) ω - QV ω) ^ 2) ∂μ) / ENNReal.ofReal (ε ^ 2) :=
+            ENNReal.le_div_iff_mul_le (Or.inl hε2_pos) (Or.inl hε2_top) |>.mpr <| by
+              rw [mul_comm]; exact h_cheb
+  obtain ⟨ms, hms, h_qv_ae⟩ := h_ae_subseq
+  -- Step C: Taylor remainders → 0 a.e. along ns ∘ ms
+  have h_taylor_ae := taylor_remainders_ae_tendsto_zero X f hf_x hMf'' hf''_cont t ht
+    (fun k => ns (ms k)) (hns.comp hms.tendsto_atTop) h_qv_ae
+  -- Step D: L² convergence along ns ∘ ms
+  have h_qv_L2_nsms := h_qv_L2_ns.comp hms.tendsto_atTop
+  -- Step E: Apply abstract Fatou squeeze
+  refine ⟨ms, abstract_fatou_squeeze_L2 (sq_nonneg (2 * Mf''))
+    (fun k ω => sq_nonneg _)  -- fk ≥ 0
+    (fun k ω => ?_)            -- fk ≤ Cf · Sk²
+    h_taylor_ae                -- fk → 0 a.e.
+    h_qv_ae                    -- Sk → QV a.e.
+    h_qv_L2_nsms               -- ∫(Sk-QV)² → 0
+    ?_ ?_ ?_⟩                  -- integrability
+  · -- fk ≤ Cf · Sk²: (∑ R_i)² ≤ (2Mf'')² · (∑(ΔX_i)²)²
+    set N := ns (ms k)
+    -- Each |R_i| ≤ 2Mf'' · (ΔX_i)²
+    have h_single : ∀ i : Fin (N + 1),
+        |f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+         f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2| ≤
+        2 * Mf'' * (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+          X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2 :=
+      fun i => taylor_C2_bound_partition_term X f hf_x hMf''_nn hMf'' t N i ω
+    -- |∑ R_i| ≤ ∑|R_i| ≤ 2Mf'' · ∑(ΔX_i)²
+    have h_tri := Finset.abs_sum_le_sum_abs
+      (fun (i : Fin (N + 1)) =>
+        f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+        f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+        deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+          (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+        (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+          (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2)
+      Finset.univ
+    have h_sum_bound : |∑ i : Fin (N + 1),
+        (f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+         f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2)| ≤
+        2 * Mf'' * ∑ i : Fin (N + 1),
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2 := by
+      calc _ ≤ _ := h_tri
+        _ ≤ ∑ i : Fin (N + 1), (2 * Mf'' *
+            (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+             X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2) :=
+          Finset.sum_le_sum fun i _ => h_single i
+        _ = _ := by rw [← Finset.mul_sum]
+    -- (∑ R_i)² ≤ (|∑ R_i|)² ≤ (2Mf'' · ∑(ΔX_i)²)² = (2Mf'')² · (∑(ΔX_i)²)²
+    have h1 : (∑ i : Fin (N + 1),
+        (f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+         f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2))^2 ≤
+        (2 * Mf'' * ∑ i : Fin (N + 1),
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2) ^ 2 := by
+      rw [← sq_abs (∑ i : Fin (N + 1), _)]
+      exact pow_le_pow_left₀ (abs_nonneg _) h_sum_bound 2
+    calc _ ≤ (2 * Mf'' * ∑ i : Fin (N + 1),
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2) ^ 2 := h1
+      _ = (2 * Mf'') ^ 2 * (∑ i : Fin (N + 1),
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2) ^ 2 := by ring
+  · -- fk integrable: dominated by (2Mf'')² · (discrete QV)², both integrable
+    intro k
+    set N := ns (ms k)
+    -- The Taylor remainder sum squared is ≤ (2Mf'')² · (discrete QV)²
+    have h_dom_k : ∀ ω, (∑ i : Fin (N + 1),
+        (f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+         f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2))^2 ≤
+        (2 * Mf'') ^ 2 * (∑ i : Fin (N + 1),
+          (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+           X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2) ^ 2 := by
+      intro ω
+      have h_single := fun i => taylor_C2_bound_partition_term X f hf_x hMf''_nn hMf'' t N i ω
+      have h_tri := Finset.abs_sum_le_sum_abs
+        (fun (i : Fin (N + 1)) =>
+          f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+          f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+          deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+            (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+            (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+             X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+          (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+            (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+            (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+             X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2)
+        Finset.univ
+      have h_sum_bound := le_trans h_tri
+        (le_trans (Finset.sum_le_sum fun i _ => h_single i)
+          (by rw [← Finset.mul_sum]))
+      rw [← sq_abs (∑ i : Fin (N + 1), _)]
+      have h_sq := pow_le_pow_left₀ (abs_nonneg _) h_sum_bound 2
+      rw [mul_pow] at h_sq; exact h_sq
+    -- AEStronglyMeasurable for the Taylor remainder sum squared
+    have h_asm : AEStronglyMeasurable (fun ω => (∑ i : Fin (N + 1),
+        (f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+         f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+         (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+           (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2))^2) μ := by
+      apply AEStronglyMeasurable.pow
+      -- Each summand is a composition of continuous functions with AEStronglyMeasurable process
+      have h_summand_asm : ∀ i : Fin (N + 1), AEStronglyMeasurable (fun ω =>
+          f (↑(i : ℕ) * t / ↑(N + 1)) (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω) -
+          f (↑(i : ℕ) * t / ↑(N + 1)) (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+          deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x)
+            (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+            (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+             X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) -
+          (1 : ℝ) / 2 * deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(N + 1)) x))
+            (X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) *
+            (X.process ((↑(i : ℕ) + 1) * t / ↑(N + 1)) ω -
+             X.process (↑(i : ℕ) * t / ↑(N + 1)) ω) ^ 2) μ := by
+        intro i
+        set ti := ↑(i : ℕ) * t / ↑(N + 1)
+        -- f(ti, ·) is continuous, hence comp with process_aesm gives AEStronglyMeasurable
+        have hf_asm1 := (hf_x ti).continuous.comp_aestronglyMeasurable
+          (process_aesm X ((↑(i : ℕ) + 1) * t / ↑(N + 1)))
+        have hf_asm2 := (hf_x ti).continuous.comp_aestronglyMeasurable (process_aesm X ti)
+        -- deriv (f ti) is continuous
+        have hf'_cont : Continuous (deriv (fun x => f ti x)) :=
+          (hf_x ti).continuous_deriv (by norm_num : (1 : WithTop ℕ∞) ≤ 2)
+        have hf'_asm := hf'_cont.comp_aestronglyMeasurable (process_aesm X ti)
+        -- deriv (deriv (f ti)) is continuous
+        have hf_cd1 : ContDiff ℝ 1 (deriv (fun x => f ti x)) :=
+          ((contDiff_succ_iff_deriv.mp (hf_x ti)).2.2)
+        have hf''_cont : Continuous (deriv (deriv (fun x => f ti x))) :=
+          hf_cd1.continuous_deriv le_rfl
+        have hf''_asm := hf''_cont.comp_aestronglyMeasurable (process_aesm X ti)
+        have hΔX_asm := (process_aesm X ((↑(i : ℕ) + 1) * t / ↑(N + 1))).sub
+          (process_aesm X ti)
+        exact ((hf_asm1.sub hf_asm2).sub (hf'_asm.mul hΔX_asm)).sub
+          ((hf''_asm.const_mul _).mul (hΔX_asm.pow 2))
+      exact (aestronglyMeasurable_sum Finset.univ fun i _ => h_summand_asm i).congr
+        (ae_of_all _ fun ω => Finset.sum_apply ω Finset.univ _)
+    exact ((discrete_qv_sq_integrable X _hMμ _hMσ t ht N).const_mul _).mono' h_asm
+      (ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        exact h_dom_k ω)
+  · -- (Sk - QV)² integrable
+    intro k; exact qv_diff_sq_integrable X _hMμ _hMσ t ht (ns (ms k))
+  · -- QV² integrable
+    exact qv_sq_integrable X _hMσ t ht.le
 
 end SPDE

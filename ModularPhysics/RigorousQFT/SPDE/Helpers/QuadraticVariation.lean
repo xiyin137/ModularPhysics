@@ -6,6 +6,8 @@ Authors: ModularPhysics Contributors
 import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaInfrastructure
 import ModularPhysics.RigorousQFT.SPDE.Helpers.QuarticBound
+import ModularPhysics.RigorousQFT.SPDE.Helpers.TaylorRemainder
+import Mathlib.MeasureTheory.Integral.Prod
 
 /-!
 # Quadratic Variation Infrastructure for Itô Processes
@@ -91,6 +93,7 @@ theorem ItoProcess.quadraticVariation_le {F : Filtration Ω ℝ}
 theorem ItoProcess.quadraticVariation_sq_integrable {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ) {Mσ : ℝ} (_hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (hdiff_jm : Measurable (Function.uncurry X.diffusion))
     (t : ℝ) (_ht : 0 ≤ t) :
     Integrable (fun ω => (X.quadraticVariation t ω) ^ 2) μ := by
   -- QV(t,ω) ≤ Mσ²·t for all ω (from quadraticVariation_le), so QV² ≤ (Mσ²·t)²
@@ -101,37 +104,24 @@ theorem ItoProcess.quadraticVariation_sq_integrable {F : Filtration Ω ℝ}
     exact sq_le_sq' (by linarith [X.quadraticVariation_nonneg t ω,
       X.quadraticVariation_le _hMσ t _ht ω])
       (X.quadraticVariation_le _hMσ t _ht ω)
-  -- AEStronglyMeasurable: sorry (requires joint measurability of diffusion in (s,ω))
+  -- AEStronglyMeasurable: QV(t,ω) = ∫₀ᵗ σ²(s,ω)ds is strongly measurable via joint measurability
   have h_asm : AEStronglyMeasurable (fun ω => (X.quadraticVariation t ω) ^ 2) μ := by
-    sorry
+    -- (s,ω) ↦ σ(s,ω)² is jointly strongly measurable
+    have h_sm_sq : StronglyMeasurable (Function.uncurry (fun s (ω : Ω) =>
+        (X.diffusion s ω) ^ 2)) :=
+      (hdiff_jm.pow_const 2).stronglyMeasurable
+    -- ω ↦ ∫₀ᵗ σ²(s,ω)ds is strongly measurable via Fubini
+    have h_sm : StronglyMeasurable (fun ω => ∫ s in Set.Icc 0 t,
+        (X.diffusion s ω) ^ 2 ∂MeasureTheory.volume) :=
+      StronglyMeasurable.integral_prod_left
+        (μ := MeasureTheory.volume.restrict (Set.Icc 0 t)) h_sm_sq
+    exact (h_sm.measurable.pow_const 2).aestronglyMeasurable
   exact (integrable_const ((Mσ ^ 2 * t) ^ 2)).mono' h_asm (ae_of_all _ h_bdd)
 
-/-! ## Discrete QV L² convergence -/
+/-! ## Discrete QV L² convergence
 
-/-- Discrete quadratic variation converges to [X]_t in L².
-
-    ∑ᵢ (X_{tᵢ₊₁} - X_{tᵢ})² → [X]_t = ∫₀ᵗ σ² ds  in L²(μ)
-
-    **Proof strategy**: Decompose ΔXᵢ = drift_i + SI_i and bound each term.
-    - drift² terms: O(t/n) in L²
-    - cross terms: O(1/√n) in L² by CS + Itô isometry
-    - SI² terms: reduce to BM QV via weighted QV convergence
-
-    This is a key ingredient of the C² Itô formula proof. -/
-theorem ito_process_discrete_qv_L2_convergence {F : Filtration Ω ℝ}
-    [IsProbabilityMeasure μ]
-    (X : ItoProcess F μ)
-    {Mμ : ℝ} (_hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
-    {Mσ : ℝ} (_hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
-    (t : ℝ) (_ht : 0 < t) :
-    Filter.Tendsto
-      (fun n => ∫ ω,
-        (∑ i : Fin (n + 1),
-          (X.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
-           X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 -
-         X.quadraticVariation t ω) ^ 2 ∂μ)
-      atTop (nhds 0) := by
-  sorry -- Requires decomposition into drift/SI terms + BM QV convergence
+The theorem `ito_process_discrete_qv_L2_convergence` is proved in
+`Helpers/QVConvergence.lean` to avoid a circular import. -/
 
 /-! ## Max partition increment -/
 
@@ -316,8 +306,9 @@ theorem taylor_remainders_ae_tendsto_zero {F : Filtration Ω ℝ}
     (f : ℝ → ℝ → ℝ)
     (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
     {Mf'' : ℝ} (_hMf'' : ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ Mf'')
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
     (t : ℝ) (_ht : 0 < t)
-    (ns : ℕ → ℕ) (_hns : StrictMono ns)
+    (ns : ℕ → ℕ) (_hns : Filter.Tendsto ns Filter.atTop Filter.atTop)
     (_h_qv_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun k =>
       ∑ i : Fin (ns k + 1),
         (X.process ((↑(i : ℕ) + 1) * t / ↑(ns k + 1)) ω -
@@ -339,6 +330,235 @@ theorem taylor_remainders_ae_tendsto_zero {F : Filtration Ω ℝ}
            (X.process ((↑(i : ℕ) + 1) * t / ↑(ns k + 1)) ω -
             X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) ^ 2)) ^ 2)
       atTop (nhds 0) := by
-  sorry -- Integral form of C² Taylor remainder + modulus of continuity of f''
+  filter_upwards [X.process_continuous, _h_qv_ae] with ω hω_cont hω_qv
+  -- Step A: Reduce (∑ Rᵢ)² → 0 to ∑ Rᵢ → 0
+  suffices hsuff : Filter.Tendsto (fun k =>
+      ∑ i : Fin (ns k + 1),
+        (f (↑(i : ℕ) * t / ↑(ns k + 1))
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(ns k + 1)) ω) -
+         f (↑(i : ℕ) * t / ↑(ns k + 1))
+           (X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑(ns k + 1)) x)
+           (X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(ns k + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) -
+         (1 : ℝ) / 2 *
+           deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(ns k + 1)) x))
+             (X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑(ns k + 1)) ω -
+            X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) ^ 2))
+      atTop (nhds 0) by
+    have h2 := hsuff.pow 2
+    simp only [zero_pow (by norm_num : 2 ≠ 0)] at h2
+    exact h2
+  -- Step B: ∑ Rᵢ → 0 via Metric.tendsto_atTop (ε-δ argument)
+  rw [Metric.tendsto_atTop]
+  intro ε hε
+  -- Path continuous on [0,t] ⟹ uniformly continuous
+  have hXω_uc : UniformContinuousOn (fun s => X.process s ω) (Set.Icc 0 t) :=
+    isCompact_Icc.uniformContinuousOn_of_continuous hω_cont.continuousOn
+  -- Path continuous on [0,t]
+  have hXω_cont_on : ContinuousOn (fun s => X.process s ω) (Set.Icc 0 t) :=
+    hω_cont.continuousOn
+  -- Path range bounded
+  have hXω_bdd : ∃ R : ℝ, 0 < R ∧ ∀ s ∈ Set.Icc (0 : ℝ) t, |X.process s ω| ≤ R := by
+    have himg := isCompact_Icc.image_of_continuousOn hXω_cont_on
+    obtain ⟨R₀, hR₀⟩ := himg.isBounded.subset_closedBall 0
+    refine ⟨max R₀ 1, by positivity, fun s hs => ?_⟩
+    have := hR₀ ⟨s, hs, rfl⟩
+    rw [Metric.mem_closedBall, dist_zero_right] at this
+    exact (Real.norm_eq_abs _ ▸ this).trans (le_max_left _ _)
+  obtain ⟨R, hR_pos, hR⟩ := hXω_bdd
+  -- QV convergence ⟹ ∑(ΔXᵢ)² eventually bounded
+  obtain ⟨N₁, hN₁⟩ := (Metric.tendsto_atTop.mp hω_qv) 1 one_pos
+  set QV_ω := X.quadraticVariation t ω with hQV_def
+  have hQV_nn := X.quadraticVariation_nonneg t ω
+  have hS_bdd : ∀ k ≥ N₁, ∑ i : Fin (ns k + 1),
+      (X.process ((↑(i : ℕ) + 1) * t / ↑(ns k + 1)) ω -
+       X.process (↑(i : ℕ) * t / ↑(ns k + 1)) ω) ^ 2 ≤ QV_ω + 1 := by
+    intro k hk
+    have h := hN₁ k hk
+    rw [Real.dist_eq] at h
+    have hab := abs_lt.mp h
+    linarith
+  -- f'' uniformly continuous on compact [0,t] × closedBall 0 (R+1)
+  set K := Set.Icc (0 : ℝ) t ×ˢ Metric.closedBall (0 : ℝ) (R + 1) with hK_def
+  have hK_compact : IsCompact K := isCompact_Icc.prod (isCompact_closedBall 0 (R + 1))
+  have hf''_uc : UniformContinuousOn
+      (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2) K :=
+    hK_compact.uniformContinuousOn_of_continuous hf''_cont.continuousOn
+  -- Get δ_f from UC of f'' for tolerance η = ε / (QV_ω + 2)
+  set η := ε / (QV_ω + 2) with hη_def
+  have hη_pos : 0 < η := div_pos hε (by linarith)
+  obtain ⟨δ_f, hδ_f_pos, hδ_f⟩ := (Metric.uniformContinuousOn_iff.mp hf''_uc) η hη_pos
+  -- Get δ_X from path UC for tolerance min(δ_f, 1)
+  set δ := min δ_f 1 with hδ_def
+  have hδ_pos : 0 < δ := lt_min hδ_f_pos one_pos
+  obtain ⟨δ_X, hδ_X_pos, hδ_X⟩ := (Metric.uniformContinuousOn_iff.mp hXω_uc) δ hδ_pos
+  -- Get N₂ from mesh(ns k) < δ_X (need ns k + 1 > t/δ_X)
+  obtain ⟨N₂, hN₂⟩ := exists_nat_gt (t / δ_X)
+  -- From Tendsto ns atTop atTop: eventually ns k ≥ N₁ and ns k ≥ N₂
+  have hns_large := Filter.tendsto_atTop_atTop.mp _hns
+  obtain ⟨K₁, hK₁⟩ := hns_large N₁
+  obtain ⟨K₂, hK₂⟩ := hns_large N₂
+  -- Main bound: for k ≥ max(N₁, max(K₁, K₂))
+  refine ⟨max N₁ (max K₁ K₂), fun k hk => ?_⟩
+  have hk_N₁ : N₁ ≤ k := le_of_max_le_left hk
+  have hk_K₁ : K₁ ≤ k := le_trans (le_max_left _ _) (le_of_max_le_right hk)
+  have hk_K₂ : K₂ ≤ k := le_trans (le_max_right _ _) (le_of_max_le_right hk)
+  rw [Real.dist_eq, sub_zero]
+  -- Abbreviate per-partition quantities
+  set nk := ns k + 1 with hnk_def
+  have hnk_pos : (0 : ℝ) < ↑nk := by positivity
+  -- Mesh = t/nk < δ_X (from ns k ≥ N₂ ⟹ nk > t/δ_X)
+  have hmesh : t / ↑nk < δ_X := by
+    rw [div_lt_iff₀ hnk_pos]
+    have : N₂ ≤ ns k := hK₂ k hk_K₂
+    have hN₂_lt : t / δ_X < ↑N₂ := hN₂
+    have hnk_ge : (↑N₂ : ℝ) ≤ ↑nk := by exact_mod_cast Nat.le_succ_of_le this
+    have := (div_lt_iff₀ (by positivity : (0 : ℝ) < δ_X)).mp hN₂_lt
+    linarith [mul_le_mul_of_nonneg_right hnk_ge (le_of_lt hδ_X_pos)]
+  -- All partition increments |ΔXᵢ| < δ
+  have h_incr_small : ∀ i : Fin nk,
+      |X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω - X.process (↑(i : ℕ) * t / ↑nk) ω| < δ := by
+    intro i
+    -- Both time points are in [0, t], and their distance = t/nk < δ_X
+    have hi_lt : (i : ℕ) < nk := i.isLt
+    -- tᵢ ∈ [0, t]
+    have htᵢ : ↑(i : ℕ) * t / ↑nk ∈ Set.Icc (0 : ℝ) t := by
+      constructor
+      · positivity
+      · rw [div_le_iff₀ hnk_pos]
+        have : (↑(i : ℕ) : ℝ) ≤ ↑nk := by exact_mod_cast le_of_lt hi_lt
+        linarith [mul_le_mul_of_nonneg_right this (le_of_lt _ht)]
+    -- t_{i+1} ∈ [0, t]
+    have hti1 : (↑(i : ℕ) + 1) * t / ↑nk ∈ Set.Icc (0 : ℝ) t := by
+      constructor
+      · positivity
+      · rw [div_le_iff₀ hnk_pos]
+        have : (↑(i : ℕ) + 1 : ℝ) ≤ ↑nk := by norm_cast
+        nlinarith
+    -- dist(t_i, t_{i+1}) = t/nk < δ_X
+    have hdist : dist (↑(i : ℕ) * t / ↑nk) ((↑(i : ℕ) + 1) * t / ↑nk) < δ_X := by
+      rw [Real.dist_eq, show ↑(i : ℕ) * t / ↑nk - (↑(i : ℕ) + 1) * t / ↑nk =
+        -(t / ↑nk) from by ring, abs_neg, abs_of_nonneg (div_nonneg (le_of_lt _ht)
+        (le_of_lt hnk_pos))]
+      exact hmesh
+    -- By path UC: |X(t_i) - X(t_{i+1})| < δ
+    have := hδ_X (↑(i : ℕ) * t / ↑nk) htᵢ ((↑(i : ℕ) + 1) * t / ↑nk) hti1 hdist
+    rw [Real.dist_eq] at this
+    rwa [abs_sub_comm] at this
+  -- Per-term Taylor bound: |Rᵢ| ≤ η * (ΔXᵢ)²
+  -- Using c2_taylor_remainder_bound with oscillation of f'' bounded by η
+  have h_per_term : ∀ i : Fin nk,
+      |f (↑(i : ℕ) * t / ↑nk)
+         (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω) -
+       f (↑(i : ℕ) * t / ↑nk)
+         (X.process (↑(i : ℕ) * t / ↑nk) ω) -
+       deriv (fun x => f (↑(i : ℕ) * t / ↑nk) x)
+         (X.process (↑(i : ℕ) * t / ↑nk) ω) *
+         (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+          X.process (↑(i : ℕ) * t / ↑nk) ω) -
+       (1 : ℝ) / 2 *
+         deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑nk) x))
+           (X.process (↑(i : ℕ) * t / ↑nk) ω) *
+         (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+          X.process (↑(i : ℕ) * t / ↑nk) ω) ^ 2|
+      ≤ η * (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+             X.process (↑(i : ℕ) * t / ↑nk) ω) ^ 2 := by
+    intro i
+    set tᵢ := ↑(i : ℕ) * t / ↑nk
+    set xᵢ := X.process tᵢ ω
+    set hᵢ := X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω - xᵢ
+    -- g(x) = f(tᵢ, x) is C²
+    have hg : ContDiff ℝ 2 (fun x => f tᵢ x) := hf_x tᵢ
+    -- Apply c2_taylor_remainder_bound: need |g''(y) - g''(xᵢ)| ≤ η for y near xᵢ
+    -- First show the function value matches
+    have hform : f tᵢ (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω) = (fun x => f tᵢ x) (xᵢ + hᵢ) := by
+      simp [hᵢ, xᵢ]
+    rw [hform]
+    -- Now apply c2_taylor_remainder_bound
+    apply le_trans (c2_taylor_remainder_bound hg xᵢ hᵢ (le_of_lt hη_pos) ?_)
+    · exact le_rfl
+    -- Bound oscillation of g'' = f''(tᵢ, ·) by η on uIcc(xᵢ, xᵢ + hᵢ)
+    intro y hy
+    -- y ∈ uIcc(xᵢ, xᵢ + hᵢ) ⟹ |y - xᵢ| ≤ |hᵢ|
+    have hy_near := abs_sub_le_of_mem_uIcc hy
+    -- |hᵢ| < δ ≤ δ_f (from h_incr_small)
+    have hhi_small := h_incr_small i
+    -- |y - xᵢ| < δ ≤ 1
+    have hy_dist : |y - xᵢ| < δ := lt_of_le_of_lt hy_near hhi_small
+    -- tᵢ ∈ [0, t]
+    have htᵢ_mem : tᵢ ∈ Set.Icc (0 : ℝ) t := by
+      constructor
+      · positivity
+      · rw [div_le_iff₀ hnk_pos]
+        have : (↑(i : ℕ) : ℝ) ≤ ↑nk := by exact_mod_cast le_of_lt i.isLt
+        linarith [mul_le_mul_of_nonneg_right this (le_of_lt _ht)]
+    -- xᵢ ∈ closedBall 0 R (path value in [0,t])
+    have hxᵢ_bdd : |xᵢ| ≤ R := hR tᵢ htᵢ_mem
+    -- y ∈ closedBall 0 (R+1) (since |y - xᵢ| < 1 and |xᵢ| ≤ R)
+    have hy_bdd : |y| ≤ R + 1 := by
+      have h1 : |y| ≤ |y - xᵢ| + |xᵢ| := by
+        calc |y| = |(y - xᵢ) + xᵢ| := by ring_nf
+          _ ≤ |y - xᵢ| + |xᵢ| := abs_add_le _ _
+      linarith [min_le_right δ_f 1]
+    -- Both (tᵢ, xᵢ) and (tᵢ, y) are in K
+    have hxᵢ_in_K : (tᵢ, xᵢ) ∈ K := by
+      refine ⟨htᵢ_mem, Metric.mem_closedBall.mpr ?_⟩
+      rw [dist_zero_right, Real.norm_eq_abs]; exact le_trans hxᵢ_bdd (by linarith)
+    have hy_in_K : (tᵢ, y) ∈ K := by
+      refine ⟨htᵢ_mem, Metric.mem_closedBall.mpr ?_⟩
+      rw [dist_zero_right, Real.norm_eq_abs]; exact hy_bdd
+    -- dist((tᵢ,y), (tᵢ,xᵢ)) = |y - xᵢ| < δ ≤ δ_f
+    have hdist_pair : dist (tᵢ, y) (tᵢ, xᵢ) < δ_f := by
+      calc dist (tᵢ, y) (tᵢ, xᵢ)
+          = max (dist tᵢ tᵢ) (dist y xᵢ) := Prod.dist_eq
+        _ = max 0 (dist y xᵢ) := by rw [dist_self]
+        _ = dist y xᵢ := max_eq_right dist_nonneg
+        _ < δ := by rwa [Real.dist_eq]
+        _ ≤ δ_f := min_le_left _ _
+    -- By UC of f'' on K: |f''(tᵢ, y) - f''(tᵢ, xᵢ)| < η
+    have h_uc := hδ_f (tᵢ, y) hy_in_K (tᵢ, xᵢ) hxᵢ_in_K hdist_pair
+    rw [Real.dist_eq] at h_uc
+    simp only [] at h_uc
+    exact le_of_lt h_uc
+  -- Triangle inequality: |∑ Rᵢ| ≤ ∑ |Rᵢ|
+  calc |∑ i : Fin nk,
+        (f (↑(i : ℕ) * t / ↑nk) (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω) -
+         f (↑(i : ℕ) * t / ↑nk) (X.process (↑(i : ℕ) * t / ↑nk) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑nk) x) (X.process (↑(i : ℕ) * t / ↑nk) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω - X.process (↑(i : ℕ) * t / ↑nk) ω) -
+         (1 : ℝ) / 2 *
+           deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑nk) x))
+             (X.process (↑(i : ℕ) * t / ↑nk) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+            X.process (↑(i : ℕ) * t / ↑nk) ω) ^ 2)|
+      ≤ ∑ i : Fin nk,
+        |f (↑(i : ℕ) * t / ↑nk) (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω) -
+         f (↑(i : ℕ) * t / ↑nk) (X.process (↑(i : ℕ) * t / ↑nk) ω) -
+         deriv (fun x => f (↑(i : ℕ) * t / ↑nk) x) (X.process (↑(i : ℕ) * t / ↑nk) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω - X.process (↑(i : ℕ) * t / ↑nk) ω) -
+         (1 : ℝ) / 2 *
+           deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑nk) x))
+             (X.process (↑(i : ℕ) * t / ↑nk) ω) *
+           (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+            X.process (↑(i : ℕ) * t / ↑nk) ω) ^ 2| :=
+        Finset.abs_sum_le_sum_abs _ _
+    _ ≤ ∑ i : Fin nk,
+        η * (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+             X.process (↑(i : ℕ) * t / ↑nk) ω) ^ 2 :=
+        Finset.sum_le_sum (fun i _ => h_per_term i)
+    _ = η * ∑ i : Fin nk,
+        (X.process ((↑(i : ℕ) + 1) * t / ↑nk) ω -
+         X.process (↑(i : ℕ) * t / ↑nk) ω) ^ 2 :=
+        (Finset.mul_sum ..).symm
+    _ ≤ η * (QV_ω + 1) := by
+        apply mul_le_mul_of_nonneg_left (hS_bdd k hk_N₁) (le_of_lt hη_pos)
+    _ < ε := by
+        rw [hη_def, div_mul_eq_mul_div]
+        have hqv2 : (0 : ℝ) < QV_ω + 2 := by linarith
+        rw [div_lt_iff₀ hqv2]
+        nlinarith
 
 end SPDE

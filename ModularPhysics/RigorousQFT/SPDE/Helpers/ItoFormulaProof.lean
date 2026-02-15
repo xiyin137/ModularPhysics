@@ -7,6 +7,7 @@ import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaInfrastructure
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaDecomposition
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoIntegralProperties
+import ModularPhysics.RigorousQFT.SPDE.Helpers.QVConvergence
 import Mathlib.Analysis.Calculus.Taylor
 
 /-!
@@ -345,221 +346,785 @@ theorem ito_weighted_qv_convergence {F : Filtration Ω ℝ}
     (fun n => ito_qv_weights_adapted X f hf_x hdiff_adapted t n)
     (fun n i ω => ito_qv_weights_bounded X f hMf hMσ t n i ω)
 
-/-! ## L² convergence of partition sums
+/-! ## SI-increment martingale approach
 
-The main estimate showing that the simple stochastic integrals converge
-to the Itô formula remainder in L².
+Instead of approximating the Itô formula remainder via simple stochastic integrals
+of the partition process f'(tᵢ)·σ(tᵢ) (which requires σ-continuity in time to
+converge in L²), we directly use the stochastic integral increments
+ΔSIᵢ = SI(tᵢ₊₁) - SI(tᵢ).
 
-**Proof structure:**
-The error S_n(t) - M_t decomposes as:
-  S_n - M = -(weighted QV) + (lower order)
-where:
-- weighted QV = Σ ½f''σ²[(ΔW)²-Δt] → 0 (by `ito_weighted_qv_convergence`)
-- lower order = Taylor remainders + Riemann sum errors + cross terms → 0
+Define: M_n(u) = Σᵢ f'ₓ(tᵢ, X_{tᵢ}) · [SI(min(tᵢ₊₁, u)) - SI(min(tᵢ, u))]
 
-By (a+b)² ≤ 2a² + 2b², the total L² error is bounded by
-  2·E[|QV|²] + 2·E[|lower|²] → 0. -/
+**Martingale property**: For 0 ≤ v ≤ u and A ∈ F_v,
+  ∫_A M_n(u) = ∫_A M_n(v)
+follows term-by-term from SI being a martingale and f'(X_{tᵢ}) being F_{tᵢ}-adapted,
+via `stoch_integral_martingale` + `integral_mul_eq_zero_of_setIntegral_eq_zero`.
 
-/-- Lower-order error terms in the Itô formula converge to 0 in L².
-    These include:
-    1. Space Taylor remainders: O(|ΔX|³) per interval
-    2. Time Taylor remainders: O(Δt · |ΔX|) per interval
-    3. Riemann sum errors: Σ g(tᵢ)Δt vs ∫ g ds
-    4. Cross terms: Σ f'(ΔSI - σΔW), (ΔX)²-(ΔSI)², etc.
+**L² convergence**: M_n(u) → itoRemainder(u) in L² as mesh → 0.
+The error decomposes as:
+- Riemann sum errors for ∂_t f and f'·μ (bounded integrands, mesh → 0)
+- Weighted QV error: Σ ½f''·(ΔX)² → ∫ ½f''·σ² ds (QV convergence)
+- Taylor remainders: Σ Rᵢ → 0 (proved in `taylor_remainder_L2_convergence`)
 
-    Each is o(1) in L² as mesh → 0, using boundedness of drift/diffusion. -/
-theorem ito_lower_order_L2_convergence {F : Filtration Ω ℝ}
+None of these require σ-continuity in time. -/
+
+/-- The SI-increment approximation to the Itô formula remainder.
+    For uniform partition 0 = t₀ < t₁ < ... < t_{n+1} = T, at time u:
+    M_n(u, ω) = Σᵢ f'ₓ(tᵢ, X_{tᵢ}(ω)) · [SI(min(tᵢ₊₁, u), ω) - SI(min(tᵢ, u), ω)]
+    where tᵢ = i · T / (n+1). -/
+def siIncrementApprox {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (T : ℝ) (n : ℕ) (u : ℝ) (ω : Ω) : ℝ :=
+  ∑ i : Fin (n + 1),
+    deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+      (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω) *
+    (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+     X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω)
+
+/-- The SI-increment approximation is integrable at each time u ≥ 0.
+    Each term is bounded f'(X_{tᵢ}) (bounded by Mf') times an SI increment
+    (L²-integrable hence L¹ on probability space). The finite sum is integrable. -/
+theorem si_increment_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
+    (T : ℝ) (_hT : 0 ≤ T) (n : ℕ) (u : ℝ) (hu : 0 ≤ u) :
+    Integrable (siIncrementApprox X f T n u) μ := by
+  -- Each term: bounded × integrable = integrable
+  -- f'(X_{t_i}) is bounded by Mf', SI increments are L¹ (from L²)
+  unfold siIncrementApprox
+  apply integrable_finset_sum
+  intro i _
+  obtain ⟨Mf', hMf'⟩ := hf_x_bdd
+  -- The SI values are integrable at nonneg times
+  have h_nn1 : 0 ≤ min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u :=
+    le_min (by positivity) hu
+  have h_nn2 : 0 ≤ min (↑(i : ℕ) * T / ↑(n + 1)) u :=
+    le_min (by positivity) hu
+  have hSI_int := (X.stoch_integral_integrable _ h_nn1).sub
+    (X.stoch_integral_integrable _ h_nn2)
+  -- f'(X_{t_i}) is bounded and measurable
+  have hf'_meas : Measurable (fun ω =>
+      deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω)) :=
+    (contDiff_two_deriv_continuous (hf_x _)).measurable.comp
+      ((X.process_adapted _).mono (F.le_ambient _) le_rfl)
+  exact hSI_int.bdd_mul hf'_meas.aestronglyMeasurable
+    (ae_of_all _ fun ω => by
+      rw [Real.norm_eq_abs]; exact hMf' _ _)
+
+/-- The squared difference (M_n(u) - itoRemainder(u))² is integrable.
+    Follows from (a-b)² ≤ 2a²+2b², both terms being integrable. -/
+theorem si_increment_diff_sq_integrable {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
+    (T : ℝ) (hT : 0 ≤ T) (n : ℕ) (u : ℝ) (hu : 0 ≤ u)
+    (hrem_int : Integrable (itoRemainder X f u) μ)
+    (hrem_sq_int : Integrable (fun ω => (itoRemainder X f u ω)^2) μ) :
+    Integrable (fun ω => (siIncrementApprox X f T n u ω - itoRemainder X f u ω) ^ 2) μ := by
+  -- (a - b)² ≤ 2a² + 2b²
+  have hM_int := si_increment_integrable X f hf_x hf_x_bdd T hT n u hu
+  have hdiff_int := hM_int.sub hrem_int
+  -- Need AEStronglyMeasurable for the square
+  have hasm : AEStronglyMeasurable
+      (fun ω => (siIncrementApprox X f T n u ω - itoRemainder X f u ω) ^ 2) μ :=
+    (hdiff_int.aestronglyMeasurable.mul hdiff_int.aestronglyMeasurable).congr
+      (ae_of_all _ fun ω => by
+        show (siIncrementApprox X f T n u ω - itoRemainder X f u ω) *
+          (siIncrementApprox X f T n u ω - itoRemainder X f u ω) =
+          (siIncrementApprox X f T n u ω - itoRemainder X f u ω) ^ 2
+        ring)
+  -- Use MemLp 2 approach: show M_n ∈ L² and R ∈ L², then difference ∈ L²
+  -- itoRemainder ∈ L²
+  have hR_memLp : MemLp (itoRemainder X f u) 2 μ :=
+    (memLp_two_iff_integrable_sq hrem_int.aestronglyMeasurable).mpr hrem_sq_int
+  -- Suffices to show siIncrementApprox ∈ L²
+  suffices hM_memLp : MemLp (siIncrementApprox X f T n u) 2 μ by
+    have hdiff_memLp := hM_memLp.sub hR_memLp
+    exact (memLp_two_iff_integrable_sq hdiff_memLp.1).mp hdiff_memLp
+  -- siIncrementApprox = Σᵢ f'(X_{tᵢ}) · ΔSI_i, each term ∈ L²
+  unfold siIncrementApprox
+  apply memLp_finset_sum
+  intro i _
+  -- f'(X_{tᵢ}) is bounded, SI increment is L²
+  obtain ⟨Mf', hMf'⟩ := hf_x_bdd
+  have h_nn1 : 0 ≤ min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u :=
+    le_min (by positivity) hu
+  have h_nn2 : 0 ≤ min (↑(i : ℕ) * T / ↑(n + 1)) u :=
+    le_min (by positivity) hu
+  -- SI increment is L²
+  have hSI_memLp : MemLp (fun ω =>
+      X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+      X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) 2 μ :=
+    ((memLp_two_iff_integrable_sq
+        (X.stoch_integral_integrable _ h_nn1).aestronglyMeasurable).mpr
+      (X.stoch_integral_sq_integrable _ h_nn1)).sub
+    ((memLp_two_iff_integrable_sq
+        (X.stoch_integral_integrable _ h_nn2).aestronglyMeasurable).mpr
+      (X.stoch_integral_sq_integrable _ h_nn2))
+  -- f'(X_{tᵢ}) · ΔSI ∈ L²: bounded × L² → L²
+  have hf'_meas : AEStronglyMeasurable (fun ω =>
+      deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω)) μ :=
+    ((contDiff_two_deriv_continuous (hf_x _)).measurable.comp
+      ((X.process_adapted _).mono (F.le_ambient _) le_rfl)).aestronglyMeasurable
+  -- Use: if g is bounded and h ∈ L², then g·h ∈ L²
+  -- Proof: ∫|g·h|² = ∫ g²·h² ≤ M²·∫|h|², hence MemLp 2
+  have hprod_asm : AEStronglyMeasurable (fun ω =>
+      deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω) *
+      (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω)) μ :=
+    hf'_meas.mul hSI_memLp.1
+  rw [memLp_two_iff_integrable_sq hprod_asm]
+  have hsq_eq : (fun ω => (deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω) *
+      (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω)) ^ 2) =
+    (fun ω => (deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω)) ^ 2 *
+      (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2) := by
+    ext ω; ring
+  rw [hsq_eq]
+  -- ΔSI² is integrable (from MemLp 2)
+  have hSI_sq_int : Integrable (fun ω =>
+      (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2) μ :=
+    (memLp_two_iff_integrable_sq hSI_memLp.1).mp hSI_memLp
+  have hf'_sq_asm : AEStronglyMeasurable (fun ω =>
+      (deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+        (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω)) ^ 2) μ :=
+    (hf'_meas.mul hf'_meas).congr (ae_of_all _ fun ω => by simp [Pi.mul_apply, sq])
+  exact hSI_sq_int.bdd_mul (c := Mf' ^ 2)
+    hf'_sq_asm
+    (ae_of_all _ fun ω => by
+      simp only [Real.norm_eq_abs, abs_pow]
+      exact pow_le_pow_left₀ (abs_nonneg _) (hMf' _ _) 2)
+
+/-- Helper: For bounded F_τ-measurable g, A ∈ F_τ, and 0 ≤ τ ≤ s ≤ t:
+    ∫_A g · [SI(t) - SI(s)] = 0.
+    Core tool for proving the martingale property of SI-increment approximations.
+    Proof converts ∫_A g·Y to ∫ (1_A·g)·Y and applies
+    `integral_mul_eq_zero_of_setIntegral_eq_zero`. -/
+private lemma setIntegral_adapted_mul_si_increment_eq_zero
+    {F : Filtration Ω ℝ} [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    (g : Ω → ℝ) (τ s t : ℝ) (hτ : 0 ≤ τ) (hτs : τ ≤ s) (hst : s ≤ t)
+    (hg_meas : @Measurable Ω ℝ (F.σ_algebra τ) _ g)
+    (hg_bdd : ∃ C : ℝ, ∀ ω, |g ω| ≤ C)
+    {A : Set Ω} (hA : @MeasurableSet Ω (F.σ_algebra τ) A) :
+    ∫ ω in A, g ω * (X.stoch_integral t ω - X.stoch_integral s ω) ∂μ = 0 := by
+  have hA' : MeasurableSet A := F.le_ambient τ A hA
+  -- Convert: ∫_A g·Y = ∫ (1_A · g) · Y
+  rw [← integral_indicator hA']
+  simp_rw [Set.indicator_mul_left]
+  -- Apply integral_mul_eq_zero_of_setIntegral_eq_zero
+  have hs : 0 ≤ s := le_trans hτ hτs
+  have ht' : 0 ≤ t := le_trans hs hst
+  apply integral_mul_eq_zero_of_setIntegral_eq_zero (F.le_ambient τ)
+  · -- A.indicator g is F_τ-measurable
+    exact hg_meas.indicator hA
+  · -- SI(t) - SI(s) is integrable
+    exact (X.stoch_integral_integrable t ht').sub (X.stoch_integral_integrable s hs)
+  · -- (A.indicator g) · (SI(t) - SI(s)) is integrable (bounded × integrable)
+    obtain ⟨C, hC⟩ := hg_bdd
+    exact ((X.stoch_integral_integrable t ht').sub
+      (X.stoch_integral_integrable s hs)).bdd_mul (c := C)
+      ((hg_meas.indicator hA).mono (F.le_ambient τ) le_rfl).aestronglyMeasurable
+      (ae_of_all μ fun ω => by
+        rw [Real.norm_eq_abs]
+        simp only [Set.indicator]
+        split_ifs
+        · exact hC ω
+        · simp [le_trans (abs_nonneg _) (hC ω)])
+  · -- ∀ B ∈ F_τ, ∫_B [SI(t) - SI(s)] = 0 (by stoch_integral_martingale)
+    intro B hB
+    rw [integral_sub
+      (X.stoch_integral_integrable t ht').integrableOn
+      (X.stoch_integral_integrable s hs).integrableOn]
+    exact sub_eq_zero.mpr (X.stoch_integral_martingale s t hs hst B (F.mono τ s hτs B hB))
+
+/-- The SI-increment approximation satisfies the martingale set-integral property.
+    For 0 ≤ v ≤ u ≤ T and A ∈ F_v:
+      ∫_A M_n(u) = ∫_A M_n(v)
+
+    **Proof**: The sum is pushed through the integral, and each term is handled by
+    case analysis on the partition time tᵢ relative to v:
+    - tᵢ₊₁ ≤ v: SI increments at u and v both equal SI(tᵢ₊₁) - SI(tᵢ), terms equal.
+    - tᵢ ≤ v < tᵢ₊₁: difference is f'·[SI(min(tᵢ₊₁,u)) - SI(v)], use helper with F_v.
+    - v < tᵢ and u < tᵢ: both terms are 0.
+    - v < tᵢ ≤ u: use helper with F_{tᵢ} and A promoted via F.mono. -/
+theorem si_increment_martingale_property {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
+    (T : ℝ) (_hT : 0 < T) (n : ℕ)
+    (v u : ℝ) (hv : 0 ≤ v) (hvu : v ≤ u) (_hu : u ≤ T)
+    (A : Set Ω) (hA : @MeasurableSet Ω (F.σ_algebra v) A) :
+    ∫ ω in A, siIncrementApprox X f T n u ω ∂μ =
+    ∫ ω in A, siIncrementApprox X f T n v ω ∂μ := by
+  -- Unfold siIncrementApprox and push integral through finite sum
+  simp only [siIncrementApprox]
+  -- Abbreviations for partition times
+  set t_ : Fin (n + 1) → ℝ := fun i => ↑(i : ℕ) * T / ↑(n + 1) with ht_def
+  -- f' at partition time tᵢ
+  set f'_ : Fin (n + 1) → Ω → ℝ := fun i ω =>
+    deriv (fun x => f (t_ i) x) (X.process (t_ i) ω) with hf'_def
+  -- Each summand is integrable (for integral_finset_sum)
+  have h_term_int : ∀ (t' : ℝ), 0 ≤ t' → ∀ i : Fin (n + 1),
+      Integrable (fun ω => f'_ i ω *
+        (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) t') ω -
+         X.stoch_integral (min (t_ i) t') ω)) μ := by
+    intro t' ht' i
+    obtain ⟨Mf', hMf'⟩ := hf_x_bdd
+    exact ((X.stoch_integral_integrable _ (le_min (by positivity) ht')).sub
+      (X.stoch_integral_integrable _ (le_min (by positivity) ht'))).bdd_mul (c := Mf')
+      ((contDiff_two_deriv_continuous (hf_x _)).measurable.comp
+        ((X.process_adapted _).mono (F.le_ambient _) le_rfl)).aestronglyMeasurable
+      (ae_of_all μ fun ω => by rw [Real.norm_eq_abs]; exact hMf' _ _)
+  rw [integral_finset_sum _ (fun i _ => (h_term_int u (le_trans hv hvu) i).integrableOn),
+      integral_finset_sum _ (fun i _ => (h_term_int v hv i).integrableOn)]
+  -- Show sums equal term by term
+  congr 1; ext i
+  -- Per-term: show ∫_A f'ᵢ · ΔSI_i(u) = ∫_A f'ᵢ · ΔSI_i(v)
+  -- f'ᵢ properties
+  obtain ⟨Mf', hMf'⟩ := hf_x_bdd
+  have hf'_meas : @Measurable Ω ℝ (F.σ_algebra (t_ i)) _ (f'_ i) :=
+    (contDiff_two_deriv_continuous (hf_x _)).measurable.comp (X.process_adapted (t_ i))
+  have hf'_bdd : ∃ C : ℝ, ∀ ω, |f'_ i ω| ≤ C := ⟨Mf', fun ω => hMf' _ _⟩
+  -- Partition time nonneg
+  have ht_nn : 0 ≤ t_ i := by positivity
+  have ht1_nn : 0 ≤ (↑(i : ℕ) + 1) * T / ↑(n + 1) := by positivity
+  -- t_ i ≤ t_{i+1} (used in Cases 3a, 3b)
+  have hti_le_t1 : t_ i ≤ (↑(i : ℕ) + 1) * T / ↑(n + 1) :=
+    div_le_div_of_nonneg_right
+      (mul_le_mul_of_nonneg_right (by linarith : (↑(i : ℕ) : ℝ) ≤ ↑(i : ℕ) + 1) _hT.le)
+      (Nat.cast_nonneg _)
+  -- Case analysis on t_ i vs v
+  by_cases hcase1 : (↑(i : ℕ) + 1) * T / ↑(n + 1) ≤ v
+  · -- Case 1: tᵢ₊₁ ≤ v (hence tᵢ ≤ v too). Both min's collapse.
+    have hti_le_v : t_ i ≤ v := le_trans hti_le_t1 hcase1
+    simp only [min_eq_left (le_trans hcase1 hvu), min_eq_left hcase1,
+               min_eq_left (le_trans hti_le_v hvu), min_eq_left hti_le_v]
+  · push_neg at hcase1
+    by_cases hcase2 : t_ i ≤ v
+    · -- Case 2: tᵢ ≤ v < tᵢ₊₁. ΔSI_i(v) = SI(v) - SI(tᵢ).
+      -- ΔSI_i(u) = SI(min(tᵢ₊₁, u)) - SI(tᵢ).
+      -- Difference = f'ᵢ · [SI(min(tᵢ₊₁, u)) - SI(v)].
+      have hti_le_u : t_ i ≤ u := le_trans hcase2 hvu
+      simp only [min_eq_left hti_le_u, min_eq_left hcase2, min_eq_right hcase1.le]
+      -- Goal: ∫_A f'·(SI(min(tᵢ₊₁,u)) - SI(tᵢ)) = ∫_A f'·(SI(v) - SI(tᵢ))
+      -- Key: ∫_A f' · [SI(min(tᵢ₊₁,u)) - SI(v)] = 0
+      have key := setIntegral_adapted_mul_si_increment_eq_zero X (f'_ i)
+        v v (min ((↑↑i + 1) * T / ↑(n + 1)) u)
+        hv le_rfl (le_min hcase1.le hvu)
+        (hf'_meas.mono (F.mono _ v hcase2) le_rfl)
+        hf'_bdd hA
+      -- Split: f'·(SI(min(t₁,u)) - SI(tᵢ)) = f'·(SI(min(t₁,u)) - SI(v)) + f'·(SI(v) - SI(tᵢ))
+      have hsplit : ∀ ω, f'_ i ω *
+          (X.stoch_integral (min ((↑↑i + 1) * T / ↑(n + 1)) u) ω -
+            X.stoch_integral (t_ i) ω) =
+          f'_ i ω * (X.stoch_integral (min ((↑↑i + 1) * T / ↑(n + 1)) u) ω -
+            X.stoch_integral v ω) +
+          f'_ i ω * (X.stoch_integral v ω - X.stoch_integral (t_ i) ω) := by
+        intro ω; ring
+      simp_rw [hsplit]
+      -- Integrability of each summand (with explicit pointwise types)
+      have hint1 : IntegrableOn (fun ω => f'_ i ω *
+          (X.stoch_integral (min ((↑↑i + 1) * T / ↑(n + 1)) u) ω -
+           X.stoch_integral v ω)) A μ :=
+        (Integrable.bdd_mul (c := Mf')
+          ((X.stoch_integral_integrable _ (le_min ht1_nn (le_trans hv hvu))).sub
+            (X.stoch_integral_integrable v hv))
+          ((hf'_meas.mono (F.le_ambient _) le_rfl).aestronglyMeasurable)
+          (ae_of_all _ fun ω => by rw [Real.norm_eq_abs]; exact hMf' _ _)).integrableOn
+      have hint2 : IntegrableOn (fun ω => f'_ i ω *
+          (X.stoch_integral v ω - X.stoch_integral (t_ i) ω)) A μ :=
+        (Integrable.bdd_mul (c := Mf')
+          ((X.stoch_integral_integrable v hv).sub
+            (X.stoch_integral_integrable _ ht_nn))
+          ((hf'_meas.mono (F.le_ambient _) le_rfl).aestronglyMeasurable)
+          (ae_of_all _ fun ω => by rw [Real.norm_eq_abs]; exact hMf' _ _)).integrableOn
+      -- Split integral: ∫(g₁+g₂) = ∫g₁ + ∫g₂, then ∫g₁ = 0 by key
+      have h_add : ∫ ω in A, (f'_ i ω *
+          (X.stoch_integral (min ((↑↑i + 1) * T / ↑(n + 1)) u) ω -
+           X.stoch_integral v ω) +
+          f'_ i ω * (X.stoch_integral v ω - X.stoch_integral (t_ i) ω)) ∂μ =
+        ∫ ω in A, f'_ i ω *
+          (X.stoch_integral (min ((↑↑i + 1) * T / ↑(n + 1)) u) ω -
+           X.stoch_integral v ω) ∂μ +
+        ∫ ω in A, f'_ i ω *
+          (X.stoch_integral v ω - X.stoch_integral (t_ i) ω) ∂μ :=
+        integral_add hint1 hint2
+      rw [h_add, key, zero_add]
+    · -- Case 3: v < tᵢ. Both min(tᵢ, v) = v and min(tᵢ₊₁, v) = v.
+      push_neg at hcase2
+      have hmin_ti_v : min (t_ i) v = v := min_eq_right hcase2.le
+      have hmin_t1_v : min ((↑↑i + 1) * T / ↑(n + 1)) v = v :=
+        min_eq_right (le_trans hcase2.le hti_le_t1)
+      by_cases hcase3 : u < t_ i
+      · -- Case 3a: u < tᵢ. Both ΔSI_i(u) = 0 and ΔSI_i(v) = 0.
+        have hmin_ti_u : min (t_ i) u = u := min_eq_right hcase3.le
+        have hmin_t1_u : min ((↑↑i + 1) * T / ↑(n + 1)) u = u :=
+          min_eq_right (le_trans hcase3.le hti_le_t1)
+        simp only [hmin_ti_v, hmin_t1_v, hmin_ti_u, hmin_t1_u, sub_self, mul_zero]
+      · -- Case 3b: u ≥ tᵢ. ΔSI_i(v) = 0, ΔSI_i(u) = SI(min(tᵢ₊₁,u)) - SI(tᵢ).
+        push_neg at hcase3
+        have hmin_ti_u : min (t_ i) u = t_ i := min_eq_left hcase3
+        simp only [hmin_ti_v, hmin_t1_v, hmin_ti_u, sub_self, mul_zero,
+                   integral_zero]
+        -- Need: ∫_A f'ᵢ · [SI(min(tᵢ₊₁,u)) - SI(tᵢ)] = 0
+        -- Use helper with τ = tᵢ, s = tᵢ, t = min(tᵢ₊₁,u)
+        -- A ∈ F_v ⊆ F_{tᵢ} (by mono, v < tᵢ)
+        have hA_ti : @MeasurableSet Ω (F.σ_algebra (t_ i)) A :=
+          F.mono v (t_ i) hcase2.le A hA
+        exact setIntegral_adapted_mul_si_increment_eq_zero X (f'_ i)
+          (t_ i) (t_ i) (min ((↑↑i + 1) * T / ↑(n + 1)) u)
+          ht_nn le_rfl (le_min hti_le_t1 hcase3)
+          hf'_meas hf'_bdd hA_ti
+
+/-- Four-term Cauchy-Schwarz: (a+b+c-d)² ≤ 4(a²+b²+c²+d²).
+    Follows from the identity (a+b+c-d)² + (a-b)² + ... = 4(a²+b²+c²+d²)
+    minus the nonnegative terms. -/
+private lemma four_sq_sub_bound (a b c d : ℝ) :
+    (a + b + c - d)^2 ≤ 4 * (a^2 + b^2 + c^2 + d^2) := by
+  nlinarith [sq_nonneg (a - b), sq_nonneg (a - c), sq_nonneg (a + d),
+             sq_nonneg (b - c), sq_nonneg (b + d), sq_nonneg (c + d)]
+
+/-! ### Process L² increment bounds
+
+The Itô process has L² continuous sample paths in the sense that
+E[(X_t - X_s)²] ≤ C·|t - s| for bounded coefficients.
+
+This follows from the integral form X_t - X_s = ∫_s^t μ du + [SI(t) - SI(s)]
+plus Cauchy-Schwarz for the drift and Itô isometry for the stochastic integral. -/
+
+/-- L² bound on process increments: E[(X_t - X_s)²] ≤ (2Mμ²T + 2Mσ²)(t-s).
+    From integral form: X_t - X_s = ∫_s^t μ du + (SI_t - SI_s) a.e.
+    Then: (a+b)² ≤ 2a² + 2b², with Cauchy-Schwarz for drift and Itô isometry for SI. -/
+theorem process_L2_increment_bound {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
-    (f : ℝ → ℝ → ℝ)
+    {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    {T : ℝ} (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) (ht_le : t ≤ T) :
+    ∫ ω, (X.process t ω - X.process s ω) ^ 2 ∂μ ≤
+    (2 * Mμ ^ 2 * T + 2 * Mσ ^ 2) * (t - s) := by
+  have ht : 0 ≤ t := le_trans hs hst
+  have h_ts : 0 ≤ t - s := sub_nonneg.mpr hst
+  -- Step 1: Bound the drift integral difference: |∫_0^t μ - ∫_0^s μ| ≤ Mμ*(t-s)
+  have h_drift_bdd : ∀ ω, (∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+      ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) ^ 2 ≤ Mμ ^ 2 * (t - s) ^ 2 := by
+    intro ω
+    have h_split : ∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+        ∫ u in Set.Icc 0 s, X.drift u ω ∂volume =
+        ∫ u in Set.Icc s t, X.drift u ω ∂volume := by
+      linarith [setIntegral_Icc_split hs hst (X.drift_time_integrable ω t ht)]
+    rw [h_split]
+    have h_abs : |∫ u in Set.Icc s t, X.drift u ω ∂volume| ≤ Mμ * (t - s) := by
+      have h_norm := norm_integral_le_integral_norm
+        (μ := volume.restrict (Set.Icc s t)) (f := fun u => X.drift u ω)
+      simp only [Real.norm_eq_abs] at h_norm
+      calc |∫ u in Set.Icc s t, X.drift u ω ∂volume| ≤
+            ∫ u in Set.Icc s t, |X.drift u ω| ∂volume := h_norm
+        _ ≤ ∫ u in Set.Icc s t, Mμ ∂volume := by
+            apply setIntegral_mono_on
+            · exact ((X.drift_time_integrable ω t ht).mono_set
+                (Set.Icc_subset_Icc hs le_rfl)).norm
+            · exact integrableOn_const (show volume (Set.Icc s t) ≠ ⊤ from by
+                rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top)
+            · exact measurableSet_Icc
+            · intro u _; exact hMμ u ω
+        _ = Mμ * (t - s) := by simp [h_ts]; ring
+    calc (∫ u in Set.Icc s t, X.drift u ω ∂volume) ^ 2
+        = |∫ u in Set.Icc s t, X.drift u ω ∂volume| ^ 2 := by rw [sq_abs]
+      _ ≤ (Mμ * (t - s)) ^ 2 := pow_le_pow_left₀ (abs_nonneg _) h_abs 2
+      _ = Mμ ^ 2 * (t - s) ^ 2 := by ring
+  -- Step 2: SI increment L² bound via isometry
+  have h_SI_iso := X.stoch_integral_isometry s t hs hst
+  -- Helper: ∫_s^t σ² ≤ Mσ² * (t-s) for each ω
+  have h_inner_bdd : ∀ ω, ∫ u in Set.Icc s t, (X.diffusion u ω) ^ 2 ∂volume ≤
+      Mσ ^ 2 * (t - s) := by
+    intro ω
+    have h1 : ∫ u in Set.Icc s t, (X.diffusion u ω) ^ 2 ∂volume ≤
+        ∫ u in Set.Icc s t, Mσ ^ 2 ∂volume :=
+      setIntegral_mono_on
+        ((X.diffusion_sq_time_integrable ω t ht).mono_set
+          (Set.Icc_subset_Icc hs le_rfl))
+        (integrableOn_const (show volume (Set.Icc s t) ≠ ⊤ from by
+          rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top))
+        measurableSet_Icc
+        (fun u _ => by
+          calc (X.diffusion u ω) ^ 2 = |X.diffusion u ω| ^ 2 := by rw [sq_abs]
+            _ ≤ Mσ ^ 2 := pow_le_pow_left₀ (abs_nonneg _) (hMσ u ω) 2)
+    linarith [show ∫ u in Set.Icc s t, Mσ ^ 2 ∂volume = Mσ ^ 2 * (t - s) by
+      simp [h_ts]; ring]
+  have h_SI_bdd : ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 ∂μ ≤
+      Mσ ^ 2 * (t - s) := by
+    rw [h_SI_iso]
+    calc ∫ ω, (∫ u in Set.Icc s t, (X.diffusion u ω) ^ 2 ∂volume) ∂μ
+        ≤ ∫ _ : Ω, Mσ ^ 2 * (t - s) ∂μ := by
+          apply integral_mono_of_nonneg
+          · exact ae_of_all _ (fun ω => setIntegral_nonneg measurableSet_Icc
+              (fun u _ => sq_nonneg _))
+          · exact integrable_const _
+          · exact ae_of_all _ h_inner_bdd
+      _ = Mσ ^ 2 * (t - s) := by rw [integral_const]; simp
+  -- Step 3: SI increment squared integrable
+  have h_SI_sq_int : Integrable (fun ω =>
+      (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2) μ := by
+    have h1 := X.stoch_integral_sq_integrable t ht
+    have h2 := X.stoch_integral_sq_integrable s hs
+    -- Dominate by 2(SI_t² + SI_s²) via (a-b)² ≤ 2(a²+b²)
+    apply Integrable.mono' ((h1.const_mul 2).add (h2.const_mul 2))
+    · exact (((X.stoch_integral_adapted t).mono (F.le_ambient t) le_rfl).sub
+        ((X.stoch_integral_adapted s).mono (F.le_ambient s) le_rfl)).pow_const 2
+        |>.aestronglyMeasurable
+    · filter_upwards with ω
+      simp only [Real.norm_eq_abs, Pi.add_apply]
+      rw [abs_of_nonneg (sq_nonneg _)]
+      -- (a-b)² ≤ 2a² + 2b² from (a+b)² ≥ 0
+      nlinarith [sq_nonneg (X.stoch_integral t ω + X.stoch_integral s ω)]
+  -- Step 4: Drift diff squared is integrable (bounded by constant)
+  have h_drift_sq_int : Integrable (fun ω =>
+      (∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+       ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) ^ 2) μ := by
+    apply Integrable.mono' (integrable_const (Mμ ^ 2 * (t - s) ^ 2))
+    · -- AEStronglyMeasurable: derive from integral_form
+      -- ∫_0^r drift(u, ω) du =ᵐ X_r - X_0 - SI_r, all three measurable from adaptedness
+      have h_proc_meas : ∀ r, AEStronglyMeasurable (X.process r) μ :=
+        fun r => ((X.process_adapted r).mono (F.le_ambient r) le_rfl).aestronglyMeasurable
+      have h_SI_meas : ∀ r, AEStronglyMeasurable (X.stoch_integral r) μ :=
+        fun r => ((X.stoch_integral_adapted r).mono (F.le_ambient r) le_rfl).aestronglyMeasurable
+      have h_drift_int_meas : ∀ r, 0 ≤ r →
+          AEStronglyMeasurable (fun ω => ∫ u in Set.Icc 0 r, X.drift u ω ∂volume) μ :=
+        fun r hr => (((h_proc_meas r).sub (h_proc_meas 0)).sub (h_SI_meas r)).congr
+          (by filter_upwards [X.integral_form r hr] with ω h_form
+              show X.process r ω - X.process 0 ω - X.stoch_integral r ω =
+                ∫ u in Set.Icc 0 r, X.drift u ω ∂volume
+              linarith)
+      have h_diff := (h_drift_int_meas t ht).sub (h_drift_int_meas s hs)
+      exact (h_diff.mul h_diff).congr (ae_of_all _ fun ω => by
+        simp only [Pi.sub_apply, Pi.mul_apply]; ring)
+    · exact ae_of_all _ fun ω => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        exact h_drift_bdd ω
+  -- Step 5: From a.e. equality, bound ∫(X_t - X_s)² ≤ 2∫drift² + 2∫SI²
+  have h_eq : ∫ ω, (X.process t ω - X.process s ω) ^ 2 ∂μ =
+      ∫ ω, ((∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+             ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) +
+            (X.stoch_integral t ω - X.stoch_integral s ω)) ^ 2 ∂μ := by
+    apply integral_congr_ae
+    filter_upwards [X.integral_form t ht, X.integral_form s hs] with ω ht_eq hs_eq
+    congr 1; rw [ht_eq, hs_eq]; ring
+  rw [h_eq]
+  -- Step 5: Use (a+b)² ≤ 2a² + 2b² pointwise, then split and bound integrals
+  calc ∫ ω, ((∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+       ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) +
+      (X.stoch_integral t ω - X.stoch_integral s ω)) ^ 2 ∂μ
+      ≤ ∫ ω, (2 * (∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+           ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) ^ 2 +
+          2 * (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2) ∂μ := by
+        apply integral_mono_of_nonneg
+        · exact ae_of_all _ (fun ω => sq_nonneg _)
+        · exact (h_drift_sq_int.const_mul 2).add (h_SI_sq_int.const_mul 2)
+        · exact ae_of_all _ (fun ω => by
+            nlinarith [sq_nonneg ((∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+              ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) -
+              (X.stoch_integral t ω - X.stoch_integral s ω))])
+    _ = 2 * ∫ ω, (∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+         ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) ^ 2 ∂μ +
+        2 * ∫ ω, (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 ∂μ := by
+        rw [integral_add (h_drift_sq_int.const_mul 2) (h_SI_sq_int.const_mul 2),
+            integral_const_mul, integral_const_mul]
+    _ ≤ 2 * (Mμ ^ 2 * (t - s) ^ 2) + 2 * (Mσ ^ 2 * (t - s)) := by
+        have h1 : ∫ ω, (∫ u in Set.Icc 0 t, X.drift u ω ∂volume -
+            ∫ u in Set.Icc 0 s, X.drift u ω ∂volume) ^ 2 ∂μ ≤
+            Mμ ^ 2 * (t - s) ^ 2 := by
+          calc ∫ ω, _ ∂μ ≤ ∫ _ : Ω, Mμ ^ 2 * (t - s) ^ 2 ∂μ :=
+                integral_mono h_drift_sq_int (integrable_const _) h_drift_bdd
+            _ = Mμ ^ 2 * (t - s) ^ 2 := by
+                rw [integral_const]; simp
+        linarith [h_SI_bdd]
+    _ ≤ (2 * Mμ ^ 2 * T + 2 * Mσ ^ 2) * (t - s) := by
+        have h_ts_le_T : t - s ≤ T := le_trans (sub_le_self t hs) ht_le
+        nlinarith [sq_nonneg Mμ, sq_nonneg Mσ, mul_le_mul_of_nonneg_left h_ts_le_T
+          (mul_nonneg (by positivity : (0 : ℝ) ≤ 2 * Mμ ^ 2) h_ts)]
+
+/-! ### Error decomposition for L² convergence
+
+The error siIncrementApprox(u) - itoRemainder(u) decomposes via the telescope
+identity f(u,X_u) - f(0,X_0) = Σ [spatial + time changes], combined with Taylor
+expansion of the spatial changes into:
+
+  error = E₁ + E₂ + E₃ - E₄
+
+where:
+- E₁ = ∫₀ᵘ ∂_t f(s,X_s) ds - Σ [f(τᵢ₊₁,X(τᵢ₊₁)) - f(τᵢ,X(τᵢ₊₁))]   (time Riemann)
+- E₂ = ∫₀ᵘ f'(s,X_s)μ(s) ds - Σ f'(τᵢ,X(τᵢ))·ΔDᵢ                       (drift Riemann)
+- E₃ = ∫₀ᵘ ½f''(s,X_s)σ²(s) ds - Σ ½f''(τᵢ,X(τᵢ))·(ΔXᵢ)²               (QV error)
+- E₄ = Σ Rᵢ  (Taylor remainders)
+
+with τᵢ = min(tᵢ, u), ΔXᵢ = X(τᵢ₊₁) - X(τᵢ), ΔDᵢ = ∫_{τᵢ}^{τᵢ₊₁} μ ds.
+
+Each E[Eₖ²] → 0 as mesh → 0. We bound E[error²] ≤ 4Σ E[Eₖ²] via (a+b+c+d)² ≤ 4(a²+b²+c²+d²). -/
+
+/-- The error identity: siIncrementApprox(u) - itoRemainder(u) equals
+    the sum of time-Riemann + drift-Riemann + QV errors minus the Taylor remainder.
+
+    This follows from the telescope identity
+    f(u,X_u) - f(0,X_0) = Σᵢ [f(τᵢ₊₁,X(τᵢ₊₁)) - f(τᵢ,X(τᵢ))]
+    split into spatial and time changes, with Taylor expansion of the spatial part. -/
+private lemma ito_error_decomposition {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (T : ℝ) (hT : 0 < T) (n : ℕ) (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) (ω : Ω) :
+    (siIncrementApprox X f T n u ω - itoRemainder X f u ω)^2 ≤
+    4 * ((∫ s in Set.Icc 0 u,
+        deriv (fun t => f t (X.process s ω)) s ∂volume -
+      ∑ i : Fin (n + 1),
+        (f (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u)
+          (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+         f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω)))^2 +
+    (∫ s in Set.Icc 0 u,
+        deriv (fun x => f s x) (X.process s ω) * X.drift s ω ∂volume -
+      ∑ i : Fin (n + 1),
+        deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+          (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+        (∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+            (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u),
+          X.drift s ω ∂volume))^2 +
+    (∫ s in Set.Icc 0 u,
+        (1 : ℝ) / 2 * deriv (deriv (fun x => f s x)) (X.process s ω) *
+        (X.diffusion s ω) ^ 2 ∂volume -
+      ∑ i : Fin (n + 1),
+        (1 : ℝ) / 2 * deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+          (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+         X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2)^2 +
+    (∑ i : Fin (n + 1),
+        (f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+         f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+         deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+          (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+          (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+           X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+         (1 : ℝ) / 2 *
+          deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+            (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+          (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+           X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2))^2) := by
+  -- Name the four error terms
+  set E1 := ∫ s in Set.Icc 0 u,
+      deriv (fun t => f t (X.process s ω)) s ∂volume -
+    ∑ i : Fin (n + 1),
+      (f (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u)
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+       f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω))
+  set E2 := ∫ s in Set.Icc 0 u,
+      deriv (fun x => f s x) (X.process s ω) * X.drift s ω ∂volume -
+    ∑ i : Fin (n + 1),
+      deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+        (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+      (∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u),
+        X.drift s ω ∂volume)
+  set E3 := ∫ s in Set.Icc 0 u,
+      (1 : ℝ) / 2 * deriv (deriv (fun x => f s x)) (X.process s ω) *
+      (X.diffusion s ω) ^ 2 ∂volume -
+    ∑ i : Fin (n + 1),
+      (1 : ℝ) / 2 * deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+        (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+      (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2
+  set E4 := ∑ i : Fin (n + 1),
+      (f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+       f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+        (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+       deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+        (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+         X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+       (1 : ℝ) / 2 *
+        deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+          (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+         X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2)
+  -- Step 1: The error equals E1 + E2 + E3 - E4
+  -- (From telescope identity + Taylor expansion, see docstring)
+  suffices h_ident : siIncrementApprox X f T n u ω - itoRemainder X f u ω =
+      E1 + E2 + E3 - E4 by
+    -- Step 2: Apply four-term Cauchy-Schwarz inequality
+    rw [h_ident]
+    exact four_sq_sub_bound E1 E2 E3 E4
+  -- The identity proof: telescope + time/space split + Taylor expansion + X = X₀ + D + SI
+  sorry
+
+/-- Time-derivative Riemann error → 0 in L². -/
+private lemma time_riemann_L2_convergence {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
     (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
     (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
-    (hdiff_meas : ∀ t, Measurable (X.diffusion t))
-    (hdiff_adapted : ∀ t, @Measurable Ω ℝ (F.σ_algebra t) _ (X.diffusion t))
     (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
     (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
-    (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
-    (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
-    (t : ℝ) (ht : 0 < t) :
+    (hf_t_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun s => f s x) t| ≤ M)
+    (hf_t_cont : Continuous (fun p : ℝ × ℝ => deriv (fun t => f t p.2) p.1))
+    (T : ℝ) (hT : 0 < T)
+    (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) :
     Filter.Tendsto
       (fun n => ∫ ω,
-        (SimpleProcess.stochasticIntegral_at
-          (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM t ω -
-         itoRemainder X f t ω +
-         -- The QV term (which we add back since it was subtracted in the decomposition)
-         ∑ i : Fin (n + 1),
-          ((1 : ℝ) / 2 *
-            deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(n + 1)) x))
-              (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) *
-            (X.diffusion (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2) *
-          ((X.BM.toAdapted.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
-            X.BM.toAdapted.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 -
-           t / ↑(n + 1)))^2 ∂μ)
+        (∫ s in Set.Icc 0 u,
+          deriv (fun t => f t (X.process s ω)) s ∂volume -
+        ∑ i : Fin (n + 1),
+          (f (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u)
+            (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+           f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+            (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω)))^2 ∂μ)
       atTop (nhds 0) := by
   sorry
 
-/-- The key L² convergence estimate for the Itô formula.
-
-    For the uniform partition with n intervals on [0, t]:
-    E[|itoRemainder(t) - ∫ H_n dW_t|²] → 0 as n → ∞
-
-    The error decomposes as:
-    1. Weighted QV: Σ f''σ²[(ΔW)²-Δt] → 0 (PROVED via `ito_weighted_qv_convergence`)
-    2. Lower order: Taylor remainders + Riemann sums + cross terms → 0 -/
-theorem ito_formula_L2_convergence {F : Filtration Ω ℝ}
+/-- Drift Riemann error → 0 in L². -/
+private lemma drift_riemann_L2_convergence {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
-    (X : ItoProcess F μ)
-    (f : ℝ → ℝ → ℝ)
-    (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
     (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
-    -- Regularity of diffusion
-    (hdiff_meas : ∀ t, Measurable (X.diffusion t))
-    (hdiff_adapted : ∀ t, @Measurable Ω ℝ (F.σ_algebra t) _ (X.diffusion t))
     (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
-    -- Regularity of drift
     (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
-    -- Boundedness of derivatives
     (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
-    (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
-    (t : ℝ) (ht : 0 < t)
-    -- Integrability of the Itô remainder (provided by caller, follows from regularity)
-    (hrem_int : Integrable (itoRemainder X f t) μ)
-    (hrem_sq_int : Integrable (fun ω => (itoRemainder X f t ω)^2) μ) :
+    (hf'_cont : Continuous (fun p : ℝ × ℝ => deriv (fun x => f p.1 x) p.2))
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
+    (T : ℝ) (hT : 0 < T)
+    (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) :
     Filter.Tendsto
       (fun n => ∫ ω,
-        (SimpleProcess.stochasticIntegral_at
-          (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM t ω -
-         itoRemainder X f t ω)^2 ∂μ)
+        (∫ s in Set.Icc 0 u,
+          deriv (fun x => f s x) (X.process s ω) * X.drift s ω ∂volume -
+        ∑ i : Fin (n + 1),
+          deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+            (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+          (∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+              (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u),
+            X.drift s ω ∂volume))^2 ∂μ)
       atTop (nhds 0) := by
-  -- Define the weighted QV and lower-order terms
-  let qv : ℕ → Ω → ℝ := fun n ω =>
-    ∑ i : Fin (n + 1),
-      ((1 : ℝ) / 2 *
-        deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(n + 1)) x))
-          (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) *
-        (X.diffusion (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2) *
-      ((X.BM.toAdapted.process ((↑(i : ℕ) + 1) * t / ↑(n + 1)) ω -
-        X.BM.toAdapted.process (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2 -
-       t / ↑(n + 1))
-  let error : ℕ → Ω → ℝ := fun n ω =>
-    SimpleProcess.stochasticIntegral_at
-      (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM t ω -
-    itoRemainder X f t ω
-  -- lower = error + qv (the QV-free remainder)
-  let lower : ℕ → Ω → ℝ := fun n ω => error n ω + qv n ω
-  -- Tautological decomposition: error = -qv + lower
-  have hdecomp : ∀ n ω, error n ω = -qv n ω + lower n ω := by
-    intro n ω; show _ = -(qv n ω) + (error n ω + qv n ω); ring
-  -- Step 1: E[|qv|²] → 0 by weighted_qv_L2_convergence
-  have hqv_conv : Filter.Tendsto (fun n => ∫ ω, (qv n ω)^2 ∂μ) atTop (nhds 0) :=
-    ito_weighted_qv_convergence X f hf_x hdiff_adapted hdiff_bdd hf_xx_bdd t ht.le
-  -- Step 2: E[|lower|²] → 0 (lower-order terms)
-  have hlower_conv : Filter.Tendsto (fun n => ∫ ω, (lower n ω)^2 ∂μ) atTop (nhds 0) :=
-    ito_lower_order_L2_convergence X f hf_t hf_x hdiff_meas hdiff_adapted
-      hdiff_bdd hdrift_bdd hf_x_bdd hf_xx_bdd t ht
-  -- Step 3: Integrability infrastructure
-  -- Extract bounds
-  obtain ⟨Mf', hMf'⟩ := hf_x_bdd
-  obtain ⟨Mf'', hMf''⟩ := hf_xx_bdd
-  obtain ⟨Mσ, hMσ⟩ := hdiff_bdd
-  -- error² integrable: (S_n - itoRemainder)² integrable by stochasticIntegral_at_sub_sq_integrable
-  have herror_sq_int : ∀ n, Integrable (fun ω => (error n ω) ^ 2) μ := by
-    intro n
-    exact SimpleProcess.stochasticIntegral_at_sub_sq_integrable
-      (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM
-      (itoPartitionProcess_adapted X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n) hdiff_adapted)
-      (itoPartitionProcess_bounded X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)
-        ⟨Mf', hMf'⟩ ⟨Mσ, hMσ⟩)
-      (itoPartitionProcess_times_nonneg X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n))
-      (itoRemainder X f t) hrem_int hrem_sq_int t ht.le
-  -- qv² integrable: from weighted_qv_sq_integrable
-  have hqv_sq_int : ∀ n, Integrable (fun ω => (qv n ω) ^ 2) μ := by
-    intro n
-    exact weighted_qv_sq_integrable X.BM t ht.le (n + 1) (Nat.succ_pos n)
-      (fun i => fun ω => (1 : ℝ) / 2 *
-        deriv (deriv (fun x => f (↑(i : ℕ) * t / ↑(n + 1)) x))
-          (X.process (↑(i : ℕ) * t / ↑(n + 1)) ω) *
-        (X.diffusion (↑(i : ℕ) * t / ↑(n + 1)) ω) ^ 2)
-      (1 / 2 * |Mf''| * Mσ ^ 2) (by positivity)
-      (ito_qv_weights_adapted X f hf_x hdiff_adapted t n)
-      (fun i ω => ito_qv_weights_bounded X f hMf'' hMσ t n i ω)
-  -- error integrable (S_n - M, both L¹)
-  have herror_int : ∀ n, Integrable (error n) μ := by
-    intro n
-    exact (SimpleProcess.stochasticIntegral_at_integrable
-      (itoPartitionProcess X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)) X.BM
-      (itoPartitionProcess_adapted X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n) hdiff_adapted)
-      (itoPartitionProcess_bounded X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n)
-        ⟨Mf', hMf'⟩ ⟨Mσ, hMσ⟩)
-      (itoPartitionProcess_times_nonneg X f hf_x hdiff_meas t ht (n + 1) (Nat.succ_pos n))
-      t ht.le).sub hrem_int
-  -- qv measurable (sum of measurable terms)
-  have hqv_meas : ∀ n, Measurable (qv n) := by
-    intro n
-    apply Finset.measurable_sum; intro i _
-    have hg := (ito_qv_weights_adapted X f hf_x hdiff_adapted t n i).mono
-      (X.BM.F.le_ambient _) le_rfl
-    have hW1 := (X.BM.toAdapted.adapted ((↑(i : ℕ) + 1) * t / ↑(n + 1))).mono
-      (X.BM.F.le_ambient _) le_rfl
-    have hW2 := (X.BM.toAdapted.adapted (↑(i : ℕ) * t / ↑(n + 1))).mono
-      (X.BM.F.le_ambient _) le_rfl
-    exact hg.mul (hW1.sub hW2 |>.pow_const 2 |>.sub measurable_const)
-  -- qv integrable: |qv| ≤ 1 + qv², and 1 + qv² is integrable on probability space
-  have hqv_int : ∀ n, Integrable (qv n) μ := by
-    intro n
-    exact ((integrable_const (1 : ℝ)).add (hqv_sq_int n)).mono'
-      (hqv_meas n).aestronglyMeasurable
-      (ae_of_all _ fun ω => by
-        rw [Real.norm_eq_abs, Pi.add_apply]
-        nlinarith [sq_abs (qv n ω), sq_nonneg (|qv n ω| - 1)])
-  -- lower² integrable: lower = error + qv, so lower² ≤ 2·error² + 2·qv²
-  have hlower_sq_int : ∀ n, Integrable (fun ω => (lower n ω) ^ 2) μ := by
-    intro n
-    have hlower_asm : AEStronglyMeasurable (fun ω => (lower n ω) ^ 2) μ := by
-      have h := ((herror_int n).add (hqv_int n)).aestronglyMeasurable
-      exact (h.mul h).congr (ae_of_all _ fun ω => by
-        show (error n ω + qv n ω) * (error n ω + qv n ω) = (error n ω + qv n ω) ^ 2
-        ring)
-    exact ((herror_sq_int n).const_mul 2 |>.add ((hqv_sq_int n).const_mul 2)).mono'
-      hlower_asm
-      (ae_of_all _ fun ω => by
-        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
-        show (error n ω + qv n ω) ^ 2 ≤ 2 * (error n ω) ^ 2 + 2 * (qv n ω) ^ 2
-        nlinarith [sq_nonneg (error n ω - qv n ω)])
-  -- Step 4: Combine via (a+b)² ≤ 2a² + 2b²
-  apply squeeze_zero
-  · intro n; exact integral_nonneg (fun ω => sq_nonneg _)
-  · intro n
-    -- Rewrite error using decomposition
-    have hrewrite : (fun ω => (error n ω) ^ 2) =
-        fun ω => (-qv n ω + lower n ω) ^ 2 := by
-      ext ω; rw [hdecomp]
-    -- (-a + b)² ≤ 2a² + 2b²
-    calc ∫ ω, (error n ω) ^ 2 ∂μ
-        = ∫ ω, (-qv n ω + lower n ω) ^ 2 ∂μ := by rw [hrewrite]
-      _ ≤ ∫ ω, (2 * (qv n ω) ^ 2 + 2 * (lower n ω) ^ 2) ∂μ := by
-          apply integral_mono_of_nonneg
-          · exact ae_of_all _ fun ω => sq_nonneg _
-          · exact ((hqv_sq_int n).const_mul 2).add ((hlower_sq_int n).const_mul 2)
-          · exact ae_of_all _ fun ω => by nlinarith [sq_nonneg (qv n ω + lower n ω)]
-      _ = 2 * ∫ ω, (qv n ω) ^ 2 ∂μ + 2 * ∫ ω, (lower n ω) ^ 2 ∂μ := by
-          have h := integral_add ((hqv_sq_int n).const_mul 2) ((hlower_sq_int n).const_mul 2)
-          rw [show (fun ω => 2 * (qv n ω) ^ 2 + 2 * (lower n ω) ^ 2) =
-            fun ω => (2 * (qv n ω) ^ 2) + (2 * (lower n ω) ^ 2) from by ext ω; ring]
-          rw [h, integral_const_mul, integral_const_mul]
-  · -- 2·E[qv²] + 2·E[lower²] → 0
-    rw [show (0 : ℝ) = 2 * 0 + 2 * 0 from by ring]
-    exact (hqv_conv.const_mul 2).add (hlower_conv.const_mul 2)
+  sorry
+
+/-- QV error → 0 in L². -/
+private lemma qv_error_L2_convergence {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
+    (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
+    (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
+    (T : ℝ) (hT : 0 < T)
+    (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) :
+    Filter.Tendsto
+      (fun n => ∫ ω,
+        (∫ s in Set.Icc 0 u,
+          (1 : ℝ) / 2 * deriv (deriv (fun x => f s x)) (X.process s ω) *
+          (X.diffusion s ω) ^ 2 ∂volume -
+        ∑ i : Fin (n + 1),
+          (1 : ℝ) / 2 * deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+            (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+          (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+           X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2)^2 ∂μ)
+      atTop (nhds 0) := by
+  sorry
+
+/-- Taylor remainder error → 0 in L².
+    Adapts `taylor_remainder_L2_convergence` (which works on uniform [0,t] partitions)
+    to the truncated partition min(tᵢ, u). For i with tᵢ ≥ u, the remainder is 0. -/
+private lemma taylor_truncated_L2_convergence {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
+    (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
+    (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
+    (T : ℝ) (hT : 0 < T)
+    (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) :
+    Filter.Tendsto
+      (fun n => ∫ ω,
+        (∑ i : Fin (n + 1),
+          (f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+            (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+           f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+            (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+           deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+            (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+            (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+             X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+           (1 : ℝ) / 2 *
+            deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+              (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+            (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+             X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2))^2 ∂μ)
+      atTop (nhds 0) := by
+  sorry
+
+/-- The SI-increment approximation converges to the Itô formula remainder in L².
+    Error decomposition: M_n(u) - itoRemainder(u) consists of:
+    1. [∫ ∂_t f ds - Σ time_terms] (time Riemann error)
+    2. [∫ f'·μ ds - Σ f'·ΔD] (drift Riemann error)
+    3. [∫ ½f''σ² ds - Σ ½f''·(ΔX)²] (weighted QV error)
+    4. [-Σ Rᵢ] (Taylor remainders)
+
+    All four terms → 0 in L² as mesh → 0, without requiring σ-continuity.
+    The combined error is bounded via (a+b+c+d)² ≤ 4(a²+b²+c²+d²). -/
+theorem si_increment_L2_convergence {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
+    (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
+    (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
+    (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
+    (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
+    (hf_t_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun s => f s x) t| ≤ M)
+    (hf_t_cont : Continuous (fun p : ℝ × ℝ => deriv (fun t => f t p.2) p.1))
+    (hf'_cont : Continuous (fun p : ℝ × ℝ => deriv (fun x => f p.1 x) p.2))
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
+    (T : ℝ) (hT : 0 < T)
+    (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) :
+    Filter.Tendsto
+      (fun n => ∫ ω, (siIncrementApprox X f T n u ω - itoRemainder X f u ω)^2 ∂μ)
+      atTop (nhds 0) := by
+  -- Strategy: bound ∫ error² ≤ 4·(∫ E1² + ∫ E2² + ∫ E3² + ∫ E4²),
+  -- show each ∫ Eₖ² → 0, conclude by squeeze theorem.
+  -- Sub-error convergences:
+  --   time_riemann_L2_convergence, drift_riemann_L2_convergence,
+  --   qv_error_L2_convergence, taylor_truncated_L2_convergence
+  -- Pointwise bound: ito_error_decomposition
+  -- Wiring: squeeze_zero with integral_mono + integral linearity
+  sorry
 
 /-! ## Main martingale property theorem
 
-Applies `ito_integral_martingale_setIntegral` using the L² convergence. -/
+Combines SI-increment approximation with L² limit infrastructure via
+`martingale_setIntegral_eq_of_L2_limit`. -/
 
 /-- The Itô formula remainder is a martingale.
 
     This is the key content of the Itô formula: the process
     M_t = f(t, X_t) - f(0, X_0) - ∫₀ᵗ [∂_t f + ∂_x f · μ + ½∂²_x f · σ²] ds
-    satisfies the martingale set-integral property. -/
+    satisfies the martingale set-integral property.
+
+    **Proof**: M_t is the L² limit of SI-increment approximations M_n(t),
+    each of which satisfies the martingale set-integral property. By
+    `martingale_setIntegral_eq_of_L2_limit`, the property transfers to the limit. -/
 theorem ito_formula_martingale {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
@@ -567,14 +1132,19 @@ theorem ito_formula_martingale {F : Filtration Ω ℝ}
     (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
     (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
     -- Regularity of diffusion
-    (hdiff_meas : ∀ t, Measurable (X.diffusion t))
-    (hdiff_adapted : ∀ t, @Measurable Ω ℝ (F.σ_algebra t) _ (X.diffusion t))
+    (_hdiff_meas : ∀ t, Measurable (X.diffusion t))
+    (_hdiff_adapted : ∀ t, @Measurable Ω ℝ (F.σ_algebra t) _ (X.diffusion t))
     (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
     -- Regularity of drift
     (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
     -- Boundedness of derivatives
     (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
     (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
+    (hf_t_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun s => f s x) t| ≤ M)
+    -- Joint continuity of derivatives (C^{1,2} regularity)
+    (hf_t_cont : Continuous (fun p : ℝ × ℝ => deriv (fun t => f t p.2) p.1))
+    (hf'_cont : Continuous (fun p : ℝ × ℝ => deriv (fun x => f p.1 x) p.2))
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
     -- Integrability of the remainder (verified by caller using boundedness of f, drift, etc.)
     (hrem_int : ∀ t', 0 ≤ t' → Integrable (itoRemainder X f t') μ)
     (hrem_sq_int : ∀ t', 0 ≤ t' → Integrable (fun ω => (itoRemainder X f t' ω)^2) μ) :
@@ -585,26 +1155,110 @@ theorem ito_formula_martingale {F : Filtration Ω ℝ}
   -- Handle the trivial case s = t
   by_cases hst_eq : s = t
   · subst hst_eq; rfl
-  -- For s < t, apply ito_integral_martingale_setIntegral
   have hst_lt : s < t := lt_of_le_of_ne hst hst_eq
   have ht_pos : 0 < t := lt_of_le_of_lt hs hst_lt
-  -- Transfer measurability from F to BM.F
-  have hA_BM : MeasurableSet[X.BM.F.σ_algebra s] A :=
-    (X.F_le_BM_F s) _ hA
-  -- Apply ito_integral_martingale_setIntegral
-  exact SPDE.ito_integral_martingale_setIntegral X.BM (itoRemainder X f)
-    (fun n => itoPartitionProcess X f hf_x hdiff_meas t ht_pos (n + 1) (Nat.succ_pos n))
-    (fun n => itoPartitionProcess_adapted X f hf_x hdiff_meas t ht_pos
-      (n + 1) (Nat.succ_pos n) hdiff_adapted)
-    (fun n => itoPartitionProcess_bounded X f hf_x hdiff_meas t ht_pos
-      (n + 1) (Nat.succ_pos n) hf_x_bdd hdiff_bdd)
-    (fun n => itoPartitionProcess_times_nonneg X f hf_x hdiff_meas t ht_pos
-      (n + 1) (Nat.succ_pos n))
-    (fun t' ht'_nn ht'_le => by
-      -- L² convergence: this is `ito_formula_L2_convergence` restricted to [0, t]
-      sorry)
-    (fun t' ht'_nn ht'_le => hrem_int t' ht'_nn)
-    (fun t' ht'_nn ht'_le => hrem_sq_int t' ht'_nn)
-    hs hst le_rfl hA_BM
+  -- Apply martingale_setIntegral_eq_of_L2_limit with:
+  --   M := itoRemainder X f
+  --   M_n n := siIncrementApprox X f t n  (partition of [0, t])
+  exact martingale_setIntegral_eq_of_L2_limit
+    -- Integrability of itoRemainder at s and t
+    (hrem_int s hs)
+    (hrem_int t ht_pos.le)
+    -- Integrability of M_n at s and t
+    (fun n => si_increment_integrable X f hf_x hf_x_bdd t ht_pos.le n s hs)
+    (fun n => si_increment_integrable X f hf_x hf_x_bdd t ht_pos.le n t ht_pos.le)
+    -- Square-integrability of (M_n - itoRemainder) at s and t
+    (fun n => si_increment_diff_sq_integrable X f hf_x hf_x_bdd t ht_pos.le n s hs
+      (hrem_int s hs) (hrem_sq_int s hs))
+    (fun n => si_increment_diff_sq_integrable X f hf_x hf_x_bdd t ht_pos.le n t ht_pos.le
+      (hrem_int t ht_pos.le) (hrem_sq_int t ht_pos.le))
+    -- L² convergence at s (partition of [0,t], evaluated at s ≤ t)
+    (si_increment_L2_convergence X f hf_t hf_x hdiff_bdd hdrift_bdd hf_x_bdd hf_xx_bdd
+      hf_t_bdd hf_t_cont hf'_cont hf''_cont t ht_pos s hs hst)
+    -- L² convergence at t (partition of [0,t], evaluated at t)
+    (si_increment_L2_convergence X f hf_t hf_x hdiff_bdd hdrift_bdd hf_x_bdd hf_xx_bdd
+      hf_t_bdd hf_t_cont hf'_cont hf''_cont t ht_pos t ht_pos.le le_rfl)
+    -- MeasurableSet A in ambient σ-algebra (from F_s ≤ ambient)
+    (F.le_ambient s _ hA)
+    -- Martingale property of M_n: ∫_A M_n(t) = ∫_A M_n(s) for A ∈ F_s
+    (fun n => si_increment_martingale_property X f hf_x hf_x_bdd t ht_pos n
+      s t hs hst le_rfl A hA)
+
+/-! ## Itô's Formula (full theorem)
+
+Combines the martingale property (`ito_formula_martingale`) with the trivial
+initial condition and identity parts. This is the main entry point. -/
+
+/-- Itô's formula for a C² function f applied to an Itô process.
+
+    f(t, X_t) = f(0, X_0) + ∫₀ᵗ [∂_t f + μ ∂_x f + ½ σ² ∂²_x f](s, X_s) ds
+                + stoch_int(t)
+
+    where stoch_int is a martingale. The conclusion asserts the existence of a
+    stochastic integral process that:
+    (i) starts at 0 a.s.
+    (ii) is a martingale (set-integral property for F_s-measurable sets)
+    (iii) satisfies the Itô formula equation
+
+    **Hypotheses**: Beyond C² regularity of f, we need boundedness of derivatives
+    and coefficients. These ensure integrability of the remainder and convergence
+    of the approximation scheme. -/
+theorem ito_formula {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
+    (X : ItoProcess F μ)
+    (f : ℝ → ℝ → ℝ)
+    (hf_t : ∀ x, Differentiable ℝ (fun t => f t x))
+    (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
+    -- Regularity of diffusion
+    (hdiff_meas : ∀ t, Measurable (X.diffusion t))
+    (hdiff_adapted : ∀ t, @Measurable Ω ℝ (F.σ_algebra t) _ (X.diffusion t))
+    (hdiff_bdd : ∃ M : ℝ, ∀ t ω, |X.diffusion t ω| ≤ M)
+    -- Regularity of drift
+    (hdrift_bdd : ∃ M : ℝ, ∀ t ω, |X.drift t ω| ≤ M)
+    -- Boundedness of derivatives
+    (hf_x_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun x => f t x) x| ≤ M)
+    (hf_xx_bdd : ∃ M : ℝ, ∀ t x, |deriv (deriv (fun x => f t x)) x| ≤ M)
+    (hf_t_bdd : ∃ M : ℝ, ∀ t x, |deriv (fun s => f s x) t| ≤ M)
+    -- Joint continuity of derivatives (C^{1,2} regularity)
+    (hf_t_cont : Continuous (fun p : ℝ × ℝ => deriv (fun t => f t p.2) p.1))
+    (hf'_cont : Continuous (fun p : ℝ × ℝ => deriv (fun x => f p.1 x) p.2))
+    (hf''_cont : Continuous (fun p : ℝ × ℝ => deriv (deriv (fun x => f p.1 x)) p.2))
+    -- Integrability of the remainder
+    (hrem_int : ∀ t', 0 ≤ t' → Integrable (itoRemainder X f t') μ)
+    (hrem_sq_int : ∀ t', 0 ≤ t' → Integrable (fun ω => (itoRemainder X f t' ω)^2) μ) :
+    ∃ (stoch_int : ℝ → Ω → ℝ),
+    -- (i) Initial condition: the stochastic integral starts at 0
+    (∀ᵐ ω ∂μ, stoch_int 0 ω = 0) ∧
+    -- (ii) Martingale property: for 0 ≤ s ≤ t and A ∈ F_s, ∫_A M_t = ∫_A M_s
+    (∀ s t : ℝ, 0 ≤ s → s ≤ t →
+      ∀ A : Set Ω, @MeasurableSet Ω (F.σ_algebra s) A →
+      ∫ ω in A, stoch_int t ω ∂μ = ∫ ω in A, stoch_int s ω ∂μ) ∧
+    -- (iii) Itô's formula
+    (∀ t : ℝ, t ≥ 0 → ∀ᵐ ω ∂μ,
+      f t (X.process t ω) = f 0 (X.process 0 ω) +
+        (∫ (s : ℝ) in Set.Icc 0 t,
+          (deriv (fun u => f u (X.process s ω)) s +
+           deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
+           (1/2) * deriv (deriv (fun x => f s x)) (X.process s ω) * (X.diffusion s ω)^2)
+          ∂volume) +
+        stoch_int t ω) := by
+  -- The stochastic integral is the Itô remainder
+  refine ⟨itoRemainder X f, ?_, ?_, ?_⟩
+  · -- (i) Initial condition: itoRemainder at t=0 is 0
+    filter_upwards with ω
+    unfold itoRemainder
+    have hmeas_zero : (volume.restrict (Set.Icc (0 : ℝ) 0)) = 0 := by
+      rw [Measure.restrict_eq_zero, Set.Icc_self]; simp
+    rw [hmeas_zero, integral_zero_measure]
+    ring
+  · -- (ii) Martingale property: from ito_formula_martingale
+    exact ito_formula_martingale X f hf_t hf_x hdiff_meas hdiff_adapted hdiff_bdd
+      hdrift_bdd hf_x_bdd hf_xx_bdd hf_t_bdd hf_t_cont hf'_cont hf''_cont
+      hrem_int hrem_sq_int
+  · -- (iii) Itô's formula: by definition of itoRemainder
+    intro t ht
+    filter_upwards with ω
+    unfold itoRemainder
+    ring
 
 end SPDE

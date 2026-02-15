@@ -1328,4 +1328,98 @@ theorem factorial_ratio_stirling_bounds (n k : ℕ) (hk_pos : 1 ≤ k) (hk_lt : 
       _ = 1 / Real.sqrt Real.pi * (Dn / (Dk * Dnk)) * Stirling.stirlingSeq 1 ^ 2 / Real.pi := by
             field_simp
 
+/-! ## Stirling Triple Ratio Convergence
+
+For the local CLT convergence (not just factor-2 bounds), we need the Stirling correction
+factor θ = stirlingSeq(n) × √π / (stirlingSeq(k) × stirlingSeq(n-k)) to converge to 1.
+This follows from Mathlib's `tendsto_stirlingSeq_sqrt_pi`.
+-/
+
+/-- Helper: If a, b, c are close to L > 0, then aL/(bc) is close to 1.
+    Specifically, if |a - L|, |b - L|, |c - L| < ε with ε ≤ L/4, then
+    |aL/(bc) - 1| < 8ε/L.
+    Proof: |aL - bc| ≤ L|a-L| + L|L-b| + (L+ε)|L-c| ≤ (3L+ε)ε ≤ 4Lε
+    bc ≥ (L-ε)² ≥ (3L/4)² = 9L²/16, so |aL/(bc) - 1| ≤ 4Lε/(9L²/16) = 64ε/(9L) < 8ε/L -/
+private theorem ratio_near_one_of_near {a b c L ε : ℝ}
+    (hL : 0 < L) (hε : 0 < ε) (hεL : ε ≤ L / 4)
+    (ha : |a - L| < ε) (hb : |b - L| < ε) (hc : |c - L| < ε) :
+    |a * L / (b * c) - 1| < 8 * ε / L := by
+  have ha_range := abs_lt.mp ha
+  have hb_range := abs_lt.mp hb
+  have hc_range := abs_lt.mp hc
+  have hb_pos : 0 < b := by linarith
+  have hc_pos : 0 < c := by linarith
+  have hbc_pos : 0 < b * c := mul_pos hb_pos hc_pos
+  have hL_ne : L ≠ 0 := ne_of_gt hL
+  have hbc_ne : b * c ≠ 0 := ne_of_gt hbc_pos
+  -- Suffices to show |aL - bc| × L < 8ε × bc
+  suffices h : |a * L - b * c| * L < 8 * ε * (b * c) by
+    rw [div_sub_one hbc_ne, abs_div, abs_of_pos hbc_pos]
+    rwa [div_lt_div_iff₀ hbc_pos hL]
+  -- Bound |aL - bc| ≤ 4Lε:
+  -- aL - bc = L(a - L) + L(L - b) + b(L - c)
+  have hε_le_L : ε ≤ L := by linarith
+  have ha_lower : L - ε ≤ a := by linarith [ha_range.1]
+  have ha_upper : a ≤ L + ε := by linarith [ha_range.2]
+  have hb_lower : L - ε ≤ b := by linarith [hb_range.1]
+  have hb_upper : b ≤ L + ε := by linarith [hb_range.2]
+  have hc_lower : L - ε ≤ c := by linarith [hc_range.1]
+  have hc_upper : c ≤ L + ε := by linarith [hc_range.2]
+  -- Upper bound: aL ≤ (L+ε)L, bc ≥ (L-ε)²
+  -- Lower bound: aL ≥ (L-ε)L, bc ≤ (L+ε)²
+  have haL_upper : a * L ≤ (L + ε) * L := by nlinarith
+  have haL_lower : (L - ε) * L ≤ a * L := by nlinarith
+  have hbc_upper : b * c ≤ (L + ε) * (L + ε) := by nlinarith
+  have hbc_lower2 : (L - ε) * (L - ε) ≤ b * c := by nlinarith
+  have hbound : |a * L - b * c| ≤ 4 * L * ε := by
+    rw [abs_le]
+    constructor
+    · -- aL - bc ≥ (L-ε)L - (L+ε)² = L²-Lε - L²-2Lε-ε² = -(3Lε+ε²) ≥ -4Lε
+      nlinarith
+    · -- aL - bc ≤ (L+ε)L - (L-ε)² = L²+Lε - L²+2Lε-ε² = 3Lε-ε² ≤ 4Lε
+      nlinarith
+  -- bc ≥ (L - ε)² ≥ (3L/4)² = 9L²/16
+  have hbc_lower3 : 9 * L ^ 2 / 16 ≤ b * c := by nlinarith
+  -- |aL - bc| ≤ 4Lε, bc ≥ 9L²/16
+  -- Need: 4Lε × L < 8ε × bc, i.e., 4L² < 8 × bc ≤ 8 × 9L²/16 = 9L²/2
+  -- 4L² < 9L²/2 iff 8 < 9 ✓
+  nlinarith [abs_nonneg (a * L - b * c)]
+
+theorem stirlingSeq_triple_ratio_near_one (δ : ℝ) (hδ : 0 < δ) :
+    ∃ M : ℕ, ∀ n k : ℕ, M ≤ n → M ≤ k → M ≤ n - k →
+      |Stirling.stirlingSeq n * Real.sqrt Real.pi /
+        (Stirling.stirlingSeq k * Stirling.stirlingSeq (n - k)) - 1| < δ := by
+  -- stirlingSeq(m) → √π (Mathlib). So a = stirlingSeq(n), b = stirlingSeq(k),
+  -- c = stirlingSeq(n-k) are all near L = √π. The ratio aL/(bc) → 1.
+  set L := Real.sqrt Real.pi with hL_def
+  have hL : 0 < L := Real.sqrt_pos.mpr Real.pi_pos
+  have hL_ne : L ≠ 0 := ne_of_gt hL
+  -- Choose ε = min(δL/8, L/4)/2 so 8ε/L < δ
+  set ε := min (δ * L / 16) (L / 4) with hε_def
+  have hε_pos : 0 < ε := lt_min (by positivity) (by positivity)
+  have hε_le : ε ≤ L / 4 := min_le_right _ _
+  -- Extract M₀ from stirlingSeq → √π
+  have htend := Stirling.tendsto_stirlingSeq_sqrt_pi
+  rw [Metric.tendsto_atTop] at htend
+  obtain ⟨M₀, hM₀⟩ := htend ε hε_pos
+  use max 1 M₀
+  intro n k hn hk hnk
+  -- Get individual bounds
+  have han : |Stirling.stirlingSeq n - L| < ε := by
+    have := hM₀ n (le_trans (le_max_right _ _) hn); rwa [Real.dist_eq] at this
+  have hbk : |Stirling.stirlingSeq k - L| < ε := by
+    have := hM₀ k (le_trans (le_max_right _ _) hk); rwa [Real.dist_eq] at this
+  have hcnk : |Stirling.stirlingSeq (n - k) - L| < ε := by
+    have := hM₀ (n - k) (le_trans (le_max_right _ _) hnk); rwa [Real.dist_eq] at this
+  -- Apply the algebraic helper lemma
+  have hbound := ratio_near_one_of_near hL hε_pos hε_le han hbk hcnk
+  -- 8ε/L ≤ 8 × (δL/16) / L = δ/2 < δ
+  calc |Stirling.stirlingSeq n * L / (Stirling.stirlingSeq k * Stirling.stirlingSeq (n - k)) - 1|
+      < 8 * ε / L := hbound
+    _ ≤ 8 * (δ * L / 16) / L := by
+        apply div_le_div_of_nonneg_right _ hL.le
+        exact mul_le_mul_of_nonneg_left (min_le_left _ _) (by norm_num)
+    _ = δ / 2 := by field_simp; ring
+    _ < δ := by linarith
+
 end SPDE.Nonstandard.Arithmetic

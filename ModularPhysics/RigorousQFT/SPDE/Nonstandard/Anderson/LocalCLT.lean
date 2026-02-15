@@ -6,6 +6,7 @@ Authors: ModularPhysics Contributors
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.RandomWalkMoments
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.LoebMeasure.BinomialProbability
 import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Foundation.Arithmetic
+import ModularPhysics.RigorousQFT.SPDE.Nonstandard.Anderson.LocalCLTHelpers
 import Mathlib.Algebra.Order.Floor.Ring
 import Mathlib.Analysis.SpecialFunctions.Gaussian.GaussianIntegral
 import Mathlib.Analysis.SpecialFunctions.Pow.Real
@@ -508,17 +509,59 @@ theorem local_clt_central_region (n : ℕ) (j : ℤ) (hn : 9 ≤ n)
     apply le_trans _ hbinom_lower
     -- Goal: gaussApprox / 2 ≤ central / s₁^2 * π / 2^n
 
-    -- With the correct gaussApprox formula, the ratio (central/2^n)/gaussApprox ≈ 1
-    -- multiplied by π/s₁² ≈ 0.85 gives ≈ 0.85 > 0.5 ✓
+    -- Rearrange: central / s₁² * π / 2^n = (π / s₁²) × (central / 2^n)
+    have hrearrange : central / s₁^2 * Real.pi / 2^n = Real.pi / s₁^2 * (central / 2^n) := by
+      have hpi_ne' : Real.pi ≠ 0 := ne_of_gt hpi_pos
+      have h2n_ne : (2:ℝ)^n ≠ 0 := ne_of_gt h2n_pos
+      have hs1_ne : s₁ ≠ 0 := ne_of_gt hs₁_pos
+      field_simp
 
-    rw [div_le_iff₀ (by norm_num : (0:ℝ) < 2)]
-    -- Goal: gaussApprox ≤ central / s₁^2 * π / 2^n * 2
+    -- Use Stirling decomposition: central/2^n = √(n/(2πk(nk))) × exp_factor
+    have hcentral_decomp : central / 2^n =
+        Real.sqrt ((n : ℝ) / (2 * Real.pi * k * (n-k:ℕ))) * exp_factor :=
+      LocalCLTHelpers.stirling_ratio_decomp n k hk_pos hk_lt_n
 
-    simp only [central, stirlingN, stirlingK, stirlingNK, gaussApprox, nk]
+    -- Factor: √(n/(2πk(nk))) = √(n²/(4k(nk))) × √(2/(πn))
+    have hsqrt_factor := LocalCLTHelpers.sqrt_prefactor_factoring n k hk_pos hk_lt_n
 
-    -- The bound requires: (central/2^n) × (π/s₁²) × 2 ≥ gaussApprox
-    -- With the correct formula, numerical verification shows this holds.
-    sorry
+    -- Strategy: use lower_bound_exp_factor_ge from LocalCLTHelpers
+    have hs_eq : (2 * (k : ℝ) - n) = (s : ℝ) := by simp only [s]; push_cast; ring
+
+    rw [hrearrange, hcentral_decomp, hsqrt_factor]
+    -- Goal: gaussApprox / 2 ≤
+    --   π/s₁² × (√(n²/(4k(nk))) × √(2/(πn)) × exp_factor)
+
+    -- Apply lower_bound_exp_factor_ge (combines Pinsker, combined_exp_bound, e⁵ < 16π²)
+    have hj' : (↑|j| : ℝ) ≤ Real.sqrt n := hj
+    have hs_bound := LocalCLTHelpers.central_region_s_bound n j k hn hk_eq hj'
+    have h_lower := LocalCLTHelpers.lower_bound_exp_factor_ge n k hn hk_pos hk_lt_n hs_bound
+    rw [hs_eq] at h_lower
+    have hsqrt_gauss_nn : 0 ≤ Real.sqrt (2 / (Real.pi * n)) := Real.sqrt_nonneg _
+
+    -- Reassociate h_lower: (a*b*c)*d → (a*b)*(c*d) = (a*b)*exp_factor
+    have h_lower_ef : Real.exp (-(↑s) ^ 2 / (2 * ↑n)) / 2 ≤
+        Real.pi / s₁ ^ 2 * Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k))) *
+        exp_factor :=
+      calc Real.exp (-(↑s) ^ 2 / (2 * ↑n)) / 2
+          ≤ Real.pi / s₁ ^ 2 * Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k))) *
+            (↑n / (2 * ↑k)) ^ k * (↑n / (2 * ↑(n - k))) ^ (n - k) := h_lower
+        _ = Real.pi / s₁ ^ 2 * Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k))) *
+            ((↑n / (2 * ↑k)) ^ k * (↑n / (2 * ↑(n - k))) ^ (n - k)) :=
+            mul_assoc _ _ _
+    -- Rewrite gaussApprox to factor out √(2/(πn))
+    have h_gauss_eq : gaussApprox / 2 =
+        Real.sqrt (2 / (Real.pi * ↑n)) * (Real.exp (-(↑s) ^ 2 / (2 * ↑n)) / 2) := by
+      simp only [gaussApprox]; ring
+    -- Rearrange the target RHS: π/s₁² * (√A * √B * EF) = √B * (π/s₁² * √A * EF)
+    -- Using opaque atoms (exp_factor not unfolded), AC normalization is fast
+    have h_rhs_ac : Real.pi / s₁ ^ 2 *
+        (Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k))) * Real.sqrt (2 / (Real.pi * ↑n)) *
+         exp_factor) =
+        Real.sqrt (2 / (Real.pi * ↑n)) *
+        (Real.pi / s₁ ^ 2 * Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k))) * exp_factor) := by
+      simp only [mul_assoc, mul_comm, mul_left_comm]
+    rw [h_gauss_eq, h_rhs_ac]
+    exact mul_le_mul_of_nonneg_left h_lower_ef hsqrt_gauss_nn
 
   · -- Upper bound: binomProb ≤ 2 * gaussApprox
     have hbinom_upper : binomProb ≤ central * s₁^2 / Real.pi / 2^n := by
@@ -528,39 +571,60 @@ theorem local_clt_central_region (n : ℕ) (j : ℤ) (hn : 9 ≤ n)
     apply le_trans hbinom_upper
     -- Goal: central * s₁^2 / π / 2^n ≤ 2 * gaussApprox
 
-    rw [mul_comm (2:ℝ)]
-    -- Goal: central * s₁^2 / π / 2^n ≤ gaussApprox * 2
+    -- Goal: central * s₁^2 / π / 2^n ≤ 2 * gaussApprox
 
-    -- Use s₁²/π = e²/(2π) ≤ 2 from e_sq_le_four_pi
-    have hs1_pi_bound : s₁^2 / Real.pi ≤ 2 := by
-      rw [hs₁_sq_formula]
-      have hpi_pos : 0 < Real.pi := Real.pi_pos
-      rw [div_div, div_le_iff₀ (by positivity : (0:ℝ) < 2 * Real.pi)]
-      linarith [he_sq_bound]
+    -- Key ingredients from LocalCLTHelpers
+    have hexp_bound := LocalCLTHelpers.exp_factor_le_one n k hk_pos hk_lt_n
+    have hj' : (↑|j| : ℝ) ≤ Real.sqrt n := hj
+    have hkey := LocalCLTHelpers.central_region_e4_bound n j k hn hk_pos hk_lt_n hk_eq hj'
+    have hprefactor := LocalCLTHelpers.s1_prefactor_le_two n k hk_pos hk_lt_n hkey
+    have hsqrt_factor := LocalCLTHelpers.sqrt_prefactor_factoring n k hk_pos hk_lt_n
 
-    have hcentral_div_pos : 0 < central / 2^n := by positivity
+    -- (a) exp_factor ≤ exp(-s²/(2n))
+    have hs_eq : (2 * (k : ℝ) - n) = (s : ℝ) := by simp only [s]; push_cast; ring
+    have hexp_le : exp_factor ≤ Real.exp (-(s : ℝ)^2 / (2 * n)) := by
+      -- exp_factor_le_one: ef × exp((2k-n)²/(2n)) ≤ 1
+      -- s = 2k - n, so (2k-n)² = s²
+      have h1 : exp_factor * Real.exp ((s : ℝ)^2 / (2 * n)) ≤ 1 := by
+        have : (s : ℝ) = 2 * (k : ℝ) - n := hs_eq.symm
+        rw [this]; exact hexp_bound
+      have hexp_pos' : 0 < Real.exp ((s : ℝ)^2 / (2 * n)) := Real.exp_pos _
+      -- ef ≤ 1/exp(s²/(2n)) = exp(-s²/(2n))
+      have h2 : exp_factor ≤ (Real.exp ((s : ℝ)^2 / (2 * n)))⁻¹ := by
+        rw [← one_div]
+        exact (le_div_iff₀ hexp_pos').mpr h1
+      calc exp_factor ≤ (Real.exp ((s : ℝ)^2 / (2 * n)))⁻¹ := h2
+        _ = Real.exp (-((s : ℝ)^2 / (2 * n))) := (Real.exp_neg _).symm
+        _ = Real.exp (-(s : ℝ)^2 / (2 * n)) := by ring_nf
 
-    -- The bound follows from:
-    -- central × s₁²/π / 2^n ≤ 2 × central / 2^n ≤ 2 × gaussApprox
-    -- The first inequality uses s₁²/π ≤ 2
-    -- The second needs central / 2^n ≤ gaussApprox, i.e., the ratio ≈ 1
+    -- (b) central/2^n = √(n/(2πk(nk))) × exp_factor (Stirling decomposition)
+    have hcentral_decomp : central / 2^n =
+        Real.sqrt ((n : ℝ) / (2 * Real.pi * k * (n-k:ℕ))) * exp_factor :=
+      LocalCLTHelpers.stirling_ratio_decomp n k hk_pos hk_lt_n
 
-    calc central * s₁^2 / Real.pi / 2^n
-        = (s₁^2 / Real.pi) * (central / 2^n) := by ring
-      _ ≤ 2 * (central / 2^n) := by
-          apply mul_le_mul_of_nonneg_right hs1_pi_bound (le_of_lt hcentral_div_pos)
-      _ ≤ gaussApprox * 2 := by
-          -- Need: central / 2^n ≤ gaussApprox
-          -- With the correct formula, the ratio (central/2^n)/gaussApprox ≈ 1
-          -- so this is essentially true by the local CLT approximation
-          rw [mul_comm (2:ℝ), ← le_div_iff₀ (by norm_num : (0:ℝ) < 2)]
-          simp only [central, stirlingN, stirlingK, stirlingNK, gaussApprox, nk]
+    -- (c) Rearrange: central * s₁²/π / 2^n = (s₁²/π) × (central / 2^n)
+    have hrearrange : central * s₁^2 / Real.pi / 2^n = s₁^2 / Real.pi * (central / 2^n) := by
+      have hpi_ne' : Real.pi ≠ 0 := ne_of_gt hpi_pos
+      have h2n_ne : (2:ℝ)^n ≠ 0 := ne_of_gt h2n_pos
+      have hs1_ne : s₁ ≠ 0 := ne_of_gt hs₁_pos
+      field_simp
 
-          -- The ratio central/(2^n × gaussApprox) ≈ 1
-          -- With s₁²/π ≈ 1.18, we need: 1.18 × (central/2^n) ≤ 2 × gaussApprox
-          -- i.e., (central/2^n)/gaussApprox ≤ 2/1.18 ≈ 1.69
-          -- Numerically: max ratio ≈ 1.02, so 1.18 × 1.02 ≈ 1.20 < 2 ✓
-          sorry
+    -- Combine everything
+    rw [hrearrange, hcentral_decomp, hsqrt_factor]
+    -- Goal: s₁²/π × (√(n²/(4k(nk))) × √(2/(πn)) × exp_factor) ≤ 2 × gaussApprox
+
+    have hsqrt_gauss_nn : 0 ≤ Real.sqrt (2 / (Real.pi * n)) := Real.sqrt_nonneg _
+
+    calc s₁ ^ 2 / Real.pi *
+          (Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k))) * Real.sqrt (2 / (Real.pi * ↑n)) * exp_factor)
+        = (s₁ ^ 2 / Real.pi * Real.sqrt (↑n ^ 2 / (4 * ↑k * ↑(n - k)))) *
+          (Real.sqrt (2 / (Real.pi * ↑n)) * exp_factor) := by ring
+      _ ≤ 2 * (Real.sqrt (2 / (Real.pi * ↑n)) * Real.exp (-(s : ℝ)^2 / (2 * ↑n))) :=
+          mul_le_mul hprefactor
+            (mul_le_mul_of_nonneg_left hexp_le hsqrt_gauss_nn)
+            (mul_nonneg hsqrt_gauss_nn (by positivity))
+            (by linarith)
+      _ = 2 * gaussApprox := rfl
 
 /-! ## Tail Bounds
 
