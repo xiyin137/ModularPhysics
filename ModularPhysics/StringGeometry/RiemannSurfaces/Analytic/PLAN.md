@@ -13,91 +13,182 @@ Develop a **self-contained analytic theory** of Riemann surfaces, culminating in
 
 ---
 
+## ⚠️ TOP PRIORITY: Complete All Sorrys in R-R Dependency Graph
+
+**The #1 goal is making `riemann_roch_h0_duality` and `riemann_roch_classical` sorry-free.**
+
+The transitive import chain of `RiemannRoch.lean` is:
+```
+RiemannRoch.lean
+├── LineBundles.lean                    ✅ 0 sorrys
+├── SerreDuality.lean                   ❌ 4 sorrys
+│   ├── HodgeDecomposition.lean         ❌ 9 sorrys
+│   │   └── Dolbeault.lean              ❌ 1 sorry
+│   │       ├── DifferentialForms.lean  ✅ 0 sorrys
+│   │       └── WirtingerDerivatives    ✅ 0 sorrys
+│   └── LineBundles.lean                ✅ 0 sorrys
+├── DolbeaultCohomology.lean            ❌ 4 sorrys
+│   └── HodgeDecomposition.lean         (same as above)
+├── ArgumentPrinciple.lean              ❌ 3 sorrys
+│   ├── ChartMeromorphic.lean           ✅ 0 sorrys
+│   ├── ChartTransition.lean            ✅ 0 sorrys
+│   ├── ConnectedComplement.lean        ✅ 0 sorrys
+│   ├── AnalyticKthRoot.lean            ✅ 0 sorrys
+│   └── AnalyticExtension.lean          ✅ 0 sorrys
+└── LinearCombination.lean              ✅ 0 sorrys
+    ├── LineBundles.lean                ✅ 0 sorrys
+    └── AnalyticBridge.lean             ✅ 0 sorrys
+```
+
+**Total sorrys in R-R transitive closure: 27** (across 6 files)
+
+### Files NOT in R-R Dependency Chain (lower priority)
+
+These files have sorrys but are NOT imported by `RiemannRoch.lean`:
+- `MeromorphicFunction.lean` (1 sorry) — `analyticArgumentPrinciple`
+- `Harmonic.lean` (2 sorrys) — `harmonic_1forms_dimension`, `poisson_dirichlet_existence`
+- `HarmonicConjugate.lean` (1 sorry) — `harmonic_conjugate_simply_connected`
+- `EvaluationMap.lean` (1 sorry) — `h0_add_point_upper`
+- `Jacobian/`, `Applications/`, `Moduli/` (22 sorrys total)
+
+---
+
+## Complete R-R Sorry Inventory (27 sorrys, 6 files)
+
+### RiemannRoch.lean — 6 sorrys
+
+| # | Sorry | Line | Blocks | Strategy |
+|---|-------|------|--------|----------|
+| 1 | `eval_residue_complementarity` | 699 | Level 1 (`riemann_roch_h0_duality`) | Residue pairing / ∂̄-equation |
+| 2 | `h0_canonical_eq_genus` | 472 | Level 1 (discharges hK hypothesis) | From #3 + `harmonic_10_are_canonical_sections` |
+| 3 | `harmonic_10_are_canonical_sections` | 978 | `h0_canonical_eq_genus` | H^{1,0} ≅ H⁰(K) identification |
+| 4 | `canonical_divisor_exists` | 479 | Instantiation only (K is a param) | Existence of meromorphic 1-forms |
+| 5 | `connectionForm_exists` | 1028 | Level 2 (`riemann_roch_classical`) | Smooth triviality of line bundles |
+| 6 | `serre_duality_h1` | 1051 | Level 2 (`riemann_roch_classical`) | Twisted Dolbeault + Hodge theory |
+
+### ArgumentPrinciple.lean — 3 sorrys
+
+| # | Sorry | Line | Blocks | Strategy |
+|---|-------|------|--------|----------|
+| 7 | `fiberMultiplicity_constant` | 271 | `totalZeroOrder_eq_totalPoleOrder` | LMT + compactness + connected ℂ |
+| 8 | `chartOrderSum_locally_constant` | 789 | degree theory | LMT at zeros + pole invariance |
+| 9 | `chartOrderSum_zero_large_c` | 816 | degree theory | LMT for 1/f at poles, large |c| |
+
+### HodgeDecomposition.lean — 9 sorrys
+
+| # | Sorry | Line | Blocks | Strategy |
+|---|-------|------|--------|----------|
+| 10 | `hodge_decomposition_01` | 563 | Dolbeault iso, Serre duality | Elliptic PDE / Fredholm theory |
+| 11 | `hodge_decomposition_10` | 572 | dim H^{1,0} = g | Conjugate of #10 |
+| 12 | `dim_harmonic_10_eq_genus` | 578 | `h0_canonical_eq_genus` | Topological genus = dim H^{1,0} |
+| 13 | `del_real.smooth'` | 611 | `del_real` definition | wirtingerDeriv_z preserves ℝ-smoothness |
+| 14 | `dbar_real_hd.smooth'` | 623 | `dbar_real_hd` definition | wirtingerDerivBar preserves ℝ-smoothness |
+| 15 | `hodge_isomorphism` | 887 | de Rham ≅ harmonic | Hodge decomposition + regularity |
+| 16 | `l2_inner_product_10_exists` | 914 | orthogonality arguments | Integration theory + hermitian metric |
+| 17 | `harmonic_orthogonal_exact` | 938 | Hodge decomposition | Integration by parts (Stokes) |
+| 18 | `dolbeault_isomorphism_01` | 989 | Dolbeault cohomology | ∂̄-Poincaré lemma + partition of unity |
+
+### SerreDuality.lean — 4 sorrys
+
+| # | Sorry | Line | Blocks | Strategy |
+|---|-------|------|--------|----------|
+| 19 | `l2_inner_product_exists` | 137 | Serre pairing | Integration theory + metric |
+| 20 | `serre_pairing_linear_functional` | 234 | Serre duality | Finite-dim + Riesz representation |
+| 21 | `residue_theorem` | 343 | Residue calculations | Stokes' theorem on RS |
+| 22 | `serre_duality_implies_h1_eq_h0_dual` | 410 | Full Serre duality | From pairing + injectivity |
+
+### DolbeaultCohomology.lean — 4 sorrys
+
+| # | Sorry | Line | Blocks | Strategy |
+|---|-------|------|--------|----------|
+| 23 | `dbar_real.smooth'` | 58 | `dbar_real` definition | wirtingerDerivBar preserves ℝ-smoothness |
+| 24 | `dolbeault_hodge_iso` | 199 | h1 = g | Hodge decomposition → iso |
+| 25 | `h1_trivial_eq_genus` | 213 | h1(O) = g | From #24 + conjugate + dim H^{1,0} |
+| 26 | `dbar_twisted.smooth'` | 239 | twisted ∂̄ definition | Smooth fn × smooth form is smooth |
+
+### Dolbeault.lean — 1 sorry
+
+| # | Sorry | Line | Blocks | Strategy |
+|---|-------|------|--------|----------|
+| 27 | `local_dbar_poincare` | 493 | Dolbeault isomorphism | Local Cauchy integral formula |
+
+---
+
+## R-R Three-Level Structure and Blocking Sorrys
+
+### Level 1: `riemann_roch_h0_duality` (proof body complete)
+```
+h0(D) - h0(K-D) = deg(D) + 1 - g   [with hK : h0(K) = g as hypothesis]
+```
+
+**Direct blocker**: `eval_residue_complementarity` (#1)
+**To discharge hK**: `h0_canonical_eq_genus` (#2) ← `harmonic_10_are_canonical_sections` (#3) + `dim_harmonic_10_eq_genus` (#12)
+
+### Level 2: `riemann_roch_classical` (proof body complete)
+```
+h0(D) - h1_dolbeault(D) = deg(D) + 1 - g
+```
+
+**Direct blockers**: `connectionForm_exists` (#5), `serre_duality_h1` (#6)
+**Transitive via Serre duality**: #19, #20, #21, #22
+**Also needs**: all of Level 1
+
+### Level 3: Hodge theorem (discharges hK for Level 1)
+```
+h0(K) = g
+```
+
+**Direct blockers**: #2, #3, #12
+**Transitive via Hodge theory**: #10, #11, #13, #14, #15, #16, #17, #18, #24, #25, #27
+
+### Dependency Graph
+```
+                    ┌─────────────────────────┐
+                    │ riemann_roch_h0_duality  │ ✅ PROVEN (proof body)
+                    │  (with hK hypothesis)    │
+                    └─────────┬───────────────┘
+                              │ needs
+               ┌──────────────┴──────────────┐
+               ▼                             ▼
+    ┌──────────────────┐          ┌───────────────────┐
+    │eval_residue_comp │ #1       │h0_canonical_eq_gen│ #2
+    │(residue pairing) │          │   (Hodge theorem) │
+    └──────────────────┘          └────────┬──────────┘
+                                           │ needs
+                              ┌────────────┴────────────┐
+                              ▼                         ▼
+                   ┌───────────────────┐    ┌──────────────────┐
+                   │harmonic_10_are    │ #3 │dim_harmonic_10   │ #12
+                   │_canonical_sections│    │_eq_genus         │
+                   │(H^{1,0}≅H⁰(K))   │    │(topological)     │
+                   └───────────────────┘    └──────────────────┘
+
+                    ┌─────────────────────────┐
+                    │ riemann_roch_classical   │ ✅ PROVEN (proof body)
+                    └─────────┬───────────────┘
+                              │ needs Level 1 +
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+        connectionForm  serre_duality_h1  (Level 1)
+        _exists #5           #6
+               │              │
+               ▼              ▼
+        smooth triv.    SerreDuality.lean
+        of line bdls    #19,#20,#21,#22
+```
+
+---
+
 ## Current State (Feb 2026)
-
-### Riemann-Roch: Scaffolding in Place, Hard Content Still Sorry
-
-The file `RiemannRoch.lean` has scaffolding for:
-> `h0(D) - h0(K-D) = deg(D) + 1 - g`
-
-The proof reduces to `eval_residue_complementarity` (sorry) via trivial induction
-on total variation. The actual mathematical content of Riemann-Roch — the point
-exact sequence / residue pairing — is entirely in that sorry.
-
-**What remains to actually prove Riemann-Roch:**
-1. `eval_residue_complementarity` — the hard analytic content (residue pairing / ∂̄-equation)
-2. `h0_canonical_eq_genus` — Hodge theorem (dim H^{1,0} = g)
-
-**Definitions are now correct (no axiom smuggling):**
-- **`h0`**: properly defined as dim L(D) via Nat.find ✅
-- **`CanonicalDivisor`**: only has `degree_eq` field, NO `h0_eq_genus` ✅
-- **`h0_canonical_eq_genus`**: separate theorem (sorry — Hodge theorem) ✅
-- **`h1_dolbeault`**: defined via Dolbeault cohomology (sorry for general D) ✅
-- **Serre duality** `serre_duality_h1`: separate theorem, NOT a definition ✅
-- **`riemann_roch_classical`**: h0(D) - h1_dolbeault(D) = deg(D)+1-g (via Serre duality) ✅
-- **`DolbeaultCohomology.lean`** (NEW): proper H^{0,1} = Ω^{0,1}/im(∂̄_real) ✅
-
-**Three-level proof structure:**
-- **Level 1 (proof body complete, depends on `eval_residue_complementarity` sorry):**
-  h0(D) - h0(K-D) = deg(D)+1-g (with hK as hypothesis)
-- **Level 2 (proof body complete, depends on Level 1 + Serre duality sorrys):**
-  h0(D) - h1_dolbeault(D) = deg(D)+1-g
-- **Level 3 (sorry):** h0(K) = g (Hodge theorem: dim H^{1,0} = topological genus)
-
-### Recent Progress (2026-02-15)
-- **Audit completed**: No axiom smuggling in any structures ✅
-- **ALL placeholder definitions FIXED** (5 total):
-  - `DeRhamH1`: now proper quotient `closedForms1 / exactForms1` (was `Type := sorry`)
-  - `SheafH1O`: now proper Dolbeault quotient `Form_01 / dbarImage_hd` (was `Type := sorry`)
-  - `residue`: now proper iteratedDeriv formula from `MeromorphicAt.choose` (was `ℂ := sorry`)
-  - `h1_dolbeault`: now `finrank ℂ (TwistedDolbeaultH01 RS A)` via connection form (was `ℕ := sorry`)
-  - `poissonIntegral`: now delegates to `poissonIntegralDisc f 0 1 z` (was `ℝ := sorry`)
-- **`IsConnectionFormFor` fixed**: proper local singularity characterization
-  replacing `True` placeholder (now uses `D(p)/(2z̄)` + continuous regularization)
-- **New twisted Dolbeault infrastructure** in DolbeaultCohomology.lean:
-  - `dbar_twisted` (∂̄_A = ∂̄ + A), `twistedDbarImage`, `TwistedDolbeaultH01`
-  - `AddCommGroup` and `Module ℂ` instances on twisted cohomology
-- **New de Rham infrastructure** in HodgeDecomposition.lean:
-  - `del_01` (∂ on (0,1)-forms), `del_real` (∂ on functions), `dbar_real_hd` (∂̄ local copy)
-  - `closedForms1`, `exactForms1` submodules
-- **New Dolbeault infrastructure** in HodgeDecomposition.lean:
-  - `dbarImage_hd` submodule (image of ∂̄ on smooth functions)
-- **ALL linearity sorrys proven** (15 total eliminated):
-  - DolbeaultCohomology.lean: `dbar_real_add/zero/const_mul/of_holomorphic` + `dbar_twisted_add/zero/const_mul` + `twistedDbarImage` (7→4 sorrys)
-  - HodgeDecomposition.lean: `del_01_add/smul/zero`, `del_real_add/zero/const_mul`, `dbar_real_hd_add/zero/const_mul`, `dbar_10_zero` + `closedForms1/exactForms1/dbarImage_hd` proofs (21→9 sorrys)
-
-### Previous Progress (2026-02-14)
-- **`local_mapping_theorem` FULLY PROVEN** — k-th root extraction + IFT, 200+ line proof
-- **`fiber_finite` FULLY PROVEN** — identity principle + compactness on compact RS
-- **`chartOrderSum_split` FULLY PROVEN** — chartOrderSum = TZO - TPO
-- **`chartOrderSum_eq_zero` PROVEN** (modulo `totalZeroOrder_eq_totalPoleOrder`)
-- **`chartMeromorphic_argument_principle` PROVEN** — wraps chartOrderSum_eq_zero
-- **ChartTransition.lean CREATED** ✅ 0 sorrys — chart independence of meromorphic order,
-  isolated zeros, finiteness of support on compact surfaces
-- **AnalyticKthRoot.lean CREATED** ✅ 0 sorrys — k-th root extraction for nonvanishing
-  analytic functions (used by local_mapping_theorem)
-- **ConnectedComplement.lean: `rs_compl_finite_isConnected` PROVEN** ✅ 0 sorrys
-- **Pole invariance** `chartOrderAt_sub_const_at_pole` PROVEN
-- ChartMeromorphic.lean: 1 → **0 sorrys** (argument principle moved to ArgumentPrinciple.lean)
-- ArgumentPrinciple.lean: 5 → **3 sorrys** (down from 5)
-
-### Previous Progress (2026-02-13)
-- **`zero_counting_linear_combination` FULLY PROVEN** — key lemma for `h0_bounded`
-- **`chartOrderAt_lcRegularValue_ge_neg_D` FULLY PROVEN** — inductive step on Fin sums
-- **`lcRegularValue_chartOrderSupport_finite` FULLY PROVEN** — isolated zeros on compact RS
-- **Meromorphic identity principle FULLY PROVEN** — `chartOrderAt_ne_top_of_ne_top_somewhere`
-- **`rs_nontrivial` and `rs_nhdsNE_neBot` FULLY PROVEN** — RS has ≥ 2 pts, no isolated pts
-- LinearCombination.lean: 2 → **0 sorrys**
-- RiemannRoch.lean: 4 → **3 sorrys**
 
 ### Folder Structure
 ```
 Analytic/
 ├── Basic.lean                      # RiemannSurface, CompactRiemannSurface           ✅ 0 sorrys
-├── MeromorphicFunction.lean        # AnalyticMeromorphicFunction                     1 sorry
+├── MeromorphicFunction.lean        # AnalyticMeromorphicFunction                     1 sorry  [NOT in R-R chain]
 ├── Divisors.lean                   # Analytic Divisor, PicardGroup                   ✅ 0 sorrys
 ├── LineBundles.lean                # HolomorphicLineBundle, LinearSystem             ✅ 0 sorrys
-├── RiemannRoch.lean                # Analytic RR — h0 duality proven                 6 sorrys
+├── RiemannRoch.lean                # Analytic RR — h0 duality proven                 6 sorrys  [R-R]
 ├── Analytic.lean                   # Re-exports                                      ✅ 0 sorrys
 ├── Helpers/                        # Riemann-Roch infrastructure
 │   ├── AnalyticBridge.lean         # MDifferentiable → AnalyticAt bridge             ✅ 0 sorrys
@@ -106,17 +197,17 @@ Analytic/
 │   ├── ChartMeromorphic.lean       # Chart-local meromorphic + identity principle    ✅ 0 sorrys
 │   ├── ChartTransition.lean        # Chart independence, isolated zeros              ✅ 0 sorrys
 │   ├── AnalyticKthRoot.lean        # k-th root of nonvanishing analytic fn           ✅ 0 sorrys
-│   ├── ArgumentPrinciple.lean      # LMT, degree theory, argument principle          4 sorrys
+│   ├── ArgumentPrinciple.lean      # LMT, degree theory, argument principle          3 sorrys  [R-R]
 │   ├── ConnectedComplement.lean    # RS \ finite set connected                       ✅ 0 sorrys
-│   ├── AnalyticExtension.lean      # Analytic extension infrastructure (NEW)         1 sorry
-│   └── EvaluationMap.lean          # Evaluation map for L(D+[p])                     1 sorry
+│   ├── AnalyticExtension.lean      # Analytic extension, correctedFn                 ✅ 0 sorrys
+│   └── EvaluationMap.lean          # Evaluation map for L(D+[p])                     1 sorry  [NOT in R-R chain]
 ├── HodgeTheory/
 │   ├── DifferentialForms.lean      # (p,q)-forms, wedge, conjugation                 ✅ 0 sorrys
-│   ├── Dolbeault.lean              # dbar operator, Dolbeault cohomology              1 sorry
-│   ├── DolbeaultCohomology.lean    # H^{0,1} = Ω^{0,1}/im(∂̄_real), twisted ∂̄         4 sorrys
-│   ├── Harmonic.lean               # Harmonic functions on RS                         3 sorrys
-│   ├── HodgeDecomposition.lean     # Hodge decomp, de Rham, Dolbeault infra          9 sorrys
-│   ├── SerreDuality.lean           # Analytic Serre duality                           4 sorrys
+│   ├── Dolbeault.lean              # dbar operator, Dolbeault cohomology              1 sorry  [R-R]
+│   ├── DolbeaultCohomology.lean    # H^{0,1} = Ω^{0,1}/im(∂̄_real), twisted ∂̄         4 sorrys  [R-R]
+│   ├── Harmonic.lean               # Harmonic functions on RS                         2 sorrys [NOT in R-R chain]
+│   ├── HodgeDecomposition.lean     # Hodge decomp, de Rham, Dolbeault infra          9 sorrys  [R-R]
+│   ├── SerreDuality.lean           # Analytic Serre duality                           4 sorrys  [R-R]
 │   ├── Helpers/
 │   │   └── HarmonicHelpers.lean    # Coordinate definitions                          ✅ 0 sorrys
 │   └── Infrastructure/
@@ -125,32 +216,43 @@ Analytic/
 │       ├── MaximumPrinciple.lean   # Maximum principle via circle averages            ✅ 0 sorrys
 │       ├── MeanValueConverse.lean  # MVP <=> harmonic                                ✅ 0 sorrys
 │       ├── PoissonIntegral.lean    # Schwarz/Poisson integral, boundary values        ✅ 0 sorrys
-│       └── HarmonicConjugate.lean  # Harmonic conjugate existence                    1 sorry
-├── Jacobian/                       # (lower priority)
+│       └── HarmonicConjugate.lean  # Harmonic conjugate existence                    1 sorry  [NOT in R-R chain]
+├── Jacobian/                       # (lower priority, NOT in R-R chain)
 │   ├── AbelJacobi.lean             # Abel-Jacobi map                                 7 sorrys
 │   ├── ThetaFunctions.lean         # Theta functions                                 4 sorrys
 │   └── Helpers/ThetaHelpers.lean   # Theta helpers                                   5 sorrys
-├── Applications/                   # (lower priority)
+├── Applications/                   # (lower priority, NOT in R-R chain)
 │   ├── GreenFunction.lean          # Green's function                                4 sorrys
 │   └── Helpers/GreenHelpers.lean   # Green helpers                                   ✅ 0 sorrys
-└── Moduli/                         # (lower priority)
+└── Moduli/                         # (lower priority, NOT in R-R chain)
     ├── Moduli.lean                 # Re-exports                                      ✅ 0 sorrys
     ├── FenchelNielsen.lean         # Fenchel-Nielsen coordinates                     ✅ 0 sorrys
     ├── QuasiconformalMaps.lean     # Quasiconformal maps                             2 sorrys
     └── SiegelSpace.lean            # Siegel upper half-space                         ✅ 0 sorrys
+
+Sorry totals:
+  R-R chain:     27 sorrys (6 files)
+  Non-R-R chain: 27 sorrys (lower priority)
+  Grand total:   54 sorrys
 ```
 
-### Sorry Count Summary (Updated 2026-02-15, post-linearity-fix)
-- **Total**: ~57 sorrys across 16 files (down from 74 after linearity lemmas proven)
-- **Core RR pipeline (RiemannRoch.lean)**: 6 sorrys (h0_canonical_eq_genus, canonical_divisor_exists,
-  eval_residue_complementarity, harmonic_10_are_canonical_sections, connectionForm_exists, serre_duality_h1)
-- **Argument Principle**: 4 sorrys (`fiberMultiplicity_constant`, `chartOrderSum_locally_constant`,
-  `chartOrderSum_zero_large_c` case, +1)
-- **HodgeDecomposition**: 9 sorrys (Hodge decomposition + smooth' + deep analytic results)
-- **DolbeaultCohomology**: 4 sorrys (smooth' + Hodge iso + h1=g)
-- **SerreDuality**: 4 sorrys (L² products, residue sum, Kodaira vanishing)
-- **Jacobian/Applications/Moduli**: 22 sorrys (lower priority)
-- **Other (MeromorphicFunction, EvaluationMap, AnalyticExtension, Harmonic, etc.)**: 8 sorrys
+### Sorry Count by Priority
+
+| Priority | File | Sorrys | Notes |
+|----------|------|--------|-------|
+| **R-R** | RiemannRoch.lean | 6 | Main theorem sorrys |
+| **R-R** | HodgeDecomposition.lean | 9 | Hodge theory core |
+| **R-R** | SerreDuality.lean | 4 | Serre duality |
+| **R-R** | DolbeaultCohomology.lean | 4 | Twisted ∂̄, Hodge iso |
+| **R-R** | ArgumentPrinciple.lean | 3 | Degree theory |
+| **R-R** | Dolbeault.lean | 1 | local_dbar_poincare |
+| Lower | Harmonic.lean | 2 | NOT in R-R chain |
+| Lower | HarmonicConjugate.lean | 1 | NOT in R-R chain |
+| Lower | MeromorphicFunction.lean | 1 | NOT in R-R chain |
+| Lower | EvaluationMap.lean | 1 | NOT in R-R chain |
+| Lower | Jacobian/ | 16 | NOT in R-R chain |
+| Lower | Applications/ | 4 | NOT in R-R chain |
+| Lower | Moduli/ | 2 | NOT in R-R chain |
 
 **Audit Status (2026-02-15)**:
 - ✅ No axiom smuggling in any structures
@@ -158,6 +260,117 @@ Analytic/
 - ✅ No placeholder VALUE definitions (previously had 3: residue, h1_dolbeault, poissonIntegral — all fixed)
 - ✅ No placeholder PROP definitions (previously had 1: IsConnectionFormFor with True — fixed)
 - ✅ All sorry occurrences are legitimate proof obligations
+
+---
+
+## Next Steps (R-R Priority Order)
+
+### Tier A: Direct R-R Blockers (in RiemannRoch.lean)
+
+1. **`eval_residue_complementarity`** (#1, RiemannRoch.lean:699) — HARDEST
+   - Blocks Level 1 `riemann_roch_h0_duality`
+   - **Strategy**: Residue pairing between L(D+[p])/L(D) and L(K-D)/L(K-D-[p])
+   - **Infrastructure needed**: Meromorphic 1-forms, residue at a point, residue sum formula
+   - **Alternative**: ∂̄-equation approach (solve ∂̄u = ω with prescribed singularity)
+
+2. **`h0_canonical_eq_genus`** (#2, RiemannRoch.lean:472) — Hodge theorem
+   - Blocks Level 1 (discharges hK hypothesis)
+   - Depends on `harmonic_10_are_canonical_sections` (#3) + `dim_harmonic_10_eq_genus` (#12)
+
+3. **`harmonic_10_are_canonical_sections`** (#3, RiemannRoch.lean:978)
+   - H^{1,0} ≅ H⁰(K) identification
+   - Needs holomorphic 1-form ↔ canonical section correspondence
+
+4. **`connectionForm_exists`** (#5, RiemannRoch.lean:1028) — Level 2 only
+   - Smooth triviality of complex line bundles on surfaces
+   - Standard result via partition of unity
+
+5. **`serre_duality_h1`** (#6, RiemannRoch.lean:1051) — Level 2 only
+   - h1_dolbeault(D) = h0(K-D)
+   - Depends on Serre duality infrastructure (#19-22)
+
+### Tier B: Analytic Infrastructure (supporting R-R)
+
+6. **`del_real.smooth'` + `dbar_real_hd.smooth'` + `dbar_real.smooth'` + `dbar_twisted.smooth'`**
+   (#13, #14, #23, #26)
+   - All need: Wirtinger derivatives preserve ℝ-smoothness
+   - Common infrastructure: `contMDiff_wirtingerDeriv_of_real_smooth` lemma
+   - Likely provable with existing Mathlib `ContDiff.fderiv` machinery
+
+7. **`local_dbar_poincare`** (#27, Dolbeault.lean:493)
+   - Local exactness of ∂̄ via Cauchy integral formula
+   - Key building block for Dolbeault isomorphism
+
+8. **`l2_inner_product_exists` / `l2_inner_product_10_exists`** (#19, #16)
+   - Integration theory on compact Riemann surfaces
+   - Hermitian metric existence
+
+9. **`residue_theorem`** (#21, SerreDuality.lean:343)
+   - Sum of residues = 0 on compact surfaces
+   - Requires Stokes' theorem
+
+### Tier C: Deep Hodge Theory
+
+10. **`hodge_decomposition_01` + `hodge_decomposition_10`** (#10, #11)
+    - Elliptic PDE / Fredholm theory on compact manifolds
+    - The deepest analytic content
+
+11. **`dim_harmonic_10_eq_genus`** (#12, HodgeDecomposition.lean:578)
+    - Topological genus = analytic genus
+    - Requires Hodge decomposition + de Rham theorem
+
+12. **`hodge_isomorphism`** (#15) — harmonic ≅ de Rham
+13. **`harmonic_orthogonal_exact`** (#17) — integration by parts
+14. **`dolbeault_isomorphism_01`** (#18) — Dolbeault cohomology ≅ sheaf
+
+### Tier D: Argument Principle (not on critical path for R-R levels)
+
+15. **`fiberMultiplicity_constant`** (#7), **`chartOrderSum_locally_constant`** (#8),
+    **`chartOrderSum_zero_large_c`** (#9)
+    - ArgumentPrinciple.lean degree theory
+    - `chartMeromorphic_argument_principle` is already proven (via `totalZeroOrder_eq_totalPoleOrder`
+      which calls these) — but these sorrys propagate
+    - **Strategy**: LMT at zeros + pole invariance + compactness → locally constant;
+      connected ℂ → globally constant
+
+---
+
+## Riemann-Roch: What's Proven
+
+### RiemannRoch.lean — Main Theorem Structure
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `IsLinIndepLS` | ✅ Defined | ℂ-linear independence via regularValue |
+| `zero_counting_linear_combination` | ✅ **PROVEN** | Key lemma: g vanishing at deg(D)+1 pts ⟹ g ≡ 0 |
+| `h0` via `Nat.find` | ✅ Defined | Max independent elements in L(D) = dim H⁰(X, O(D)) |
+| `h0_bounded` | ✅ Proven | L(D) finite-dimensional (uses zero_counting) |
+| `h0_vanishes_negative_degree` | ✅ Proven | deg(D)<0 → h0=0 |
+| `CanonicalDivisor` | ✅ Fixed | Only degree_eq field, no smuggled h0_eq_genus |
+| `h0_canonical_eq_genus` | ❌ Sorry #2 | Hodge theorem: h0(K) = g (topological genus) |
+| `h0_trivial` | ✅ Proven | h0(0) = 1 (constant functions) |
+| `chi_add_point` | ✅ Proof body complete | χ(D+[p]) = χ(D) + 1 (depends on #1) |
+| `correction_eq_zero_correction` | ✅ Proven | f(D) = f(0) by induction on TV(D) |
+| **`riemann_roch_h0_duality`** | ✅ Proof body complete | h0(D)-h0(K-D) = deg(D)+1-g (hK hyp; depends on #1) |
+| `h1_dolbeault` | ✅ Defined | Proper def via `TwistedDolbeaultH01` + connection form |
+| `connectionForm_exists` | ❌ Sorry #5 | Smooth triviality of line bundles on surfaces |
+| `serre_duality_h1` | ❌ Sorry #6 | h1_dolbeault(D) = h0(K-D) (theorem, not definition) |
+| `riemann_roch_classical` | ✅ Proven | h0(D) - h1_dolbeault(D) = deg(D)+1-g (from above two) |
+| `h0_KminusD_vanishes_high_degree` | ✅ Proven | deg(D)>2g-2 → h0(K-D)=0 |
+| `riemann_roch_high_degree` | ✅ Proven | h0(D) = deg(D)+1-g for deg(D)>2g-2 |
+| `euler_characteristic_structure_sheaf` | ✅ Proven | h0(0) - h0(K) = 1-g (hK hypothesis) |
+
+### DolbeaultCohomology.lean — Proper H^{0,1}
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| `dbar_real` | ✅ Defined | ∂̄ on RealSmoothFunction (non-trivial, unlike dbar_fun on holomorphic) |
+| `dbar_real_add/zero/const_mul` | ✅ Proven | Linearity of dbar_real |
+| `dbarImage` | ✅ Defined | im(∂̄) as ℂ-submodule of Form_01 |
+| `DolbeaultH01` | ✅ Defined | H^{0,1} = Form_01 / dbarImage |
+| `h1_dolbeault_trivial` | ✅ Defined | finrank of DolbeaultH01 |
+| `dolbeault_hodge_iso` | ❌ Sorry #24 | H^{0,1} ≅ Harmonic01Forms |
+| `h1_trivial_eq_genus` | ❌ Sorry #25 | h1(O) = g (Hodge theorem) |
 
 ---
 
@@ -183,22 +396,23 @@ Analytic/
 - **ChartMeromorphic.lean** ✅ **0 sorrys**: `IsChartMeromorphic`, `chartOrderAt`,
   arithmetic lemmas, `chartOrderAt_add_ge`, `isChartMeromorphic_of_mdifferentiable`,
   `chartOrderAt_ne_top_of_ne_top_somewhere` (meromorphic identity principle),
-  `rs_nontrivial`, `rs_nhdsNE_neBot` — ALL fully proven (argument principle moved to
-  ArgumentPrinciple.lean)
-- **ChartTransition.lean** ✅ **0 sorrys** (NEW): `chartOrderAt_eq_in_chart` (chart independence
+  `rs_nontrivial`, `rs_nhdsNE_neBot` — ALL fully proven
+- **ChartTransition.lean** ✅ **0 sorrys**: `chartOrderAt_eq_in_chart` (chart independence
   of meromorphic order), `chartTransition_analyticAt`, `chartTransition_deriv_ne_zero`,
   `meromorphicOrderAt_eq_zero_near`, `chartOrderAt_eq_zero_near`,
   `chartOrderSupport_finite_general` — ALL fully proven
-- **AnalyticKthRoot.lean** ✅ **0 sorrys** (NEW): `analytic_kth_root` (k-th root of nonvanishing
+- **AnalyticKthRoot.lean** ✅ **0 sorrys**: `analytic_kth_root` (k-th root of nonvanishing
   analytic function), `ncard_kthRoots`, `norm_kthRoot_eq` — ALL fully proven
 - **ConnectedComplement.lean** ✅ **0 sorrys**: `rs_compl_finite_isConnected` (compact RS
   minus finite set is connected), `preconnected_remove_point` — ALL fully proven
-- **ArgumentPrinciple.lean** (3 sorrys, down from 5): Degree theory framework.
+- **AnalyticExtension.lean** ✅ **0 sorrys**: `correctedFn`, `correctedFn_locally_eq_analytic`,
+  `correctedFn_same_order`, `correctedFn_continuous`, `correctedFn_constant` — ALL fully proven
+- **ArgumentPrinciple.lean** (3 sorrys): Degree theory framework.
   - ✅ PROVEN: `local_mapping_theorem` (200+ lines, k-th root + IFT), `fiber_finite`,
     `chartOrderSum_split`, `chartOrderAt_sub_const_at_pole` (pole invariance),
     `chartRep_sub_const`, `chartOrderSum_eq_zero`, `chartMeromorphic_argument_principle`
-  - SORRY: `fiberMultiplicity_constant` (not on critical path),
-    `chartOrderSum_locally_constant`, `chartOrderSum_zero_large_c` (degree theory)
+  - SORRY: `fiberMultiplicity_constant` (#7), `chartOrderSum_locally_constant` (#8),
+    `chartOrderSum_zero_large_c` (#9)
 
 ### Differential Forms & Smoothness
 - **DifferentialForms.lean**: `SmoothFunction`, `Form_10/01/11/1`, wedge products,
@@ -217,253 +431,6 @@ Analytic/
 - **PoissonIntegral.lean**: All major results proven including
   `schwarzIntegral_differentiableAt`, `poissonIntegral_harmonicOnNhd`,
   `poissonIntegral_boundary_values`, `mvp_eq_poissonIntegral`
-
----
-
-## Riemann-Roch: What's Proven
-
-### RiemannRoch.lean — Main Theorem Structure
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `IsLinIndepLS` | ✅ Defined | ℂ-linear independence via regularValue |
-| `zero_counting_linear_combination` | ✅ **PROVEN** | Key lemma: g vanishing at deg(D)+1 pts ⟹ g ≡ 0 |
-| `h0` via `Nat.find` | ✅ Defined | Max independent elements in L(D) = dim H⁰(X, O(D)) |
-| `h0_bounded` | ✅ Proven | L(D) finite-dimensional (uses zero_counting) |
-| `h0_vanishes_negative_degree` | ✅ Proven | deg(D)<0 → h0=0 |
-| `CanonicalDivisor` | ✅ Fixed | Only degree_eq field, no smuggled h0_eq_genus |
-| `h0_canonical_eq_genus` | ❌ Sorry | Hodge theorem: h0(K) = g (topological genus) |
-| `h0_trivial` | ✅ Proven | h0(0) = 1 (constant functions) |
-| `chi_add_point` | ✅ Proof body complete | χ(D+[p]) = χ(D) + 1 (depends on eval_residue_comp sorry) |
-| `correction_eq_zero_correction` | ✅ Proven | f(D) = f(0) by induction on TV(D) |
-| **`riemann_roch_h0_duality`** | ✅ Proof body complete | h0(D)-h0(K-D) = deg(D)+1-g (hK hyp; depends on eval_residue_comp sorry) |
-| `h1_dolbeault` | ✅ Defined | Proper def via `TwistedDolbeaultH01` + connection form |
-| `connectionForm_exists` | ❌ Sorry | Smooth triviality of line bundles on surfaces |
-| `serre_duality_h1` | ❌ Sorry | h1_dolbeault(D) = h0(K-D) (theorem, not definition) |
-| `riemann_roch_classical` | ✅ Proven | h0(D) - h1_dolbeault(D) = deg(D)+1-g (from above two) |
-| `h0_KminusD_vanishes_high_degree` | ✅ Proven | deg(D)>2g-2 → h0(K-D)=0 |
-| `riemann_roch_high_degree` | ✅ Proven | h0(D) = deg(D)+1-g for deg(D)>2g-2 |
-| `euler_characteristic_structure_sheaf` | ✅ Proven | h0(0) - h0(K) = 1-g (hK hypothesis) |
-
-### DolbeaultCohomology.lean — Proper H^{0,1} (NEW)
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `dbar_real` | ✅ Defined | ∂̄ on RealSmoothFunction (non-trivial, unlike dbar_fun on holomorphic) |
-| `dbar_real_add/zero/const_mul` | ✅ Proven | Linearity of dbar_real |
-| `dbarImage` | ✅ Defined | im(∂̄) as ℂ-submodule of Form_01 |
-| `DolbeaultH01` | ✅ Defined | H^{0,1} = Form_01 / dbarImage |
-| `h1_dolbeault_trivial` | ✅ Defined | finrank of DolbeaultH01 |
-| `dolbeault_hodge_iso` | ❌ Sorry | H^{0,1} ≅ Harmonic01Forms |
-| `h1_trivial_eq_genus` | ❌ Sorry | h1(O) = g (Hodge theorem) |
-
-### LinearSystem `chartOrderAt_eq` field (2026-02-10)
-
-Added soundness field connecting abstract AMF order to chart-local meromorphic order:
-```lean
-chartOrderAt_eq : ∀ p, chartOrderAt fn.regularValue p = (fn.order p : WithTop ℤ)
-```
-All LinearSystem constructors updated (LineBundles, RRHelpers, RiemannRoch).
-
----
-
-## Critical Sorrys (Blocking Riemann-Roch)
-
-### RiemannRoch.lean — 6 sorrys
-
-| Sorry | Line | Used By | Status |
-|-------|------|---------|--------|
-| `h0_canonical_eq_genus` | ~470 | Hypothesis for `riemann_roch_h0_duality` | Hodge theorem |
-| `canonical_divisor_exists` | ~477 | Not used in proof (K is a parameter) | LOW priority |
-| `eval_residue_complementarity` | ~699 | `chi_add_point` → main theorem | Needs residue pairing |
-| `harmonic_10_are_canonical_sections` | ~978 | Relates H^{1,0} ≅ H^0(K) | Hodge theory |
-| `connectionForm_exists` | ~1025 | `h1_dolbeault` definition | Smooth triviality |
-| `serre_duality_h1` | ~1048 | `riemann_roch_classical` | Hodge + residue |
-
-### Infrastructure Sorrys Supporting RiemannRoch
-
-| Sorry | File | What's Needed | Status |
-|-------|------|---------------|--------|
-| `zero_counting_linear_combination` | RiemannRoch.lean | — | ✅ **PROVEN** |
-| `chartOrderAt_lcRegularValue_ge_neg_D` | LinearCombination.lean | — | ✅ **PROVEN** |
-| `lcRegularValue_chartOrderSupport_finite` | LinearCombination.lean | — | ✅ **PROVEN** |
-| `chartOrderAt_ne_top_of_ne_top_somewhere` | ChartMeromorphic.lean | — | ✅ **PROVEN** |
-| `chartMeromorphic_argument_principle` | ArgumentPrinciple.lean | — | ✅ **PROVEN** (via `totalZeroOrder_eq_totalPoleOrder`) |
-| `local_mapping_theorem` | ArgumentPrinciple.lean | — | ✅ **PROVEN** (k-th root + IFT) |
-| `fiber_finite` | ArgumentPrinciple.lean | — | ✅ **PROVEN** (identity principle + compactness) |
-| `chartOrderSum_split` | ArgumentPrinciple.lean | — | ✅ **PROVEN** (Finset arithmetic) |
-| `rs_compl_finite_isConnected` | ConnectedComplement.lean | — | ✅ **PROVEN** (2-manifold topology) |
-| `totalZeroOrder_eq_totalPoleOrder` | ArgumentPrinciple:658 | Degree theory (N(c) const) | 1 sorry |
-| `analyticArgumentPrinciple` | MeromorphicFunction:521 | Integration / topological degree | 1 sorry |
-
-### Remaining Sorry Difficulty Assessment
-
-| Sorry | File | Difficulty | Mathlib Support | Notes |
-|-------|------|-----------|----------------|-------|
-| `totalZeroOrder_eq_totalPoleOrder` | ArgumentPrinciple:658 | HIGH | Partial | Degree theory: TZO=TPO via fiber multiplicity constancy |
-| `eval_residue_complementarity` | RiemannRoch:694 | VERY HIGH | None | Residue pairing from scratch |
-| `canonical_divisor_exists` | RiemannRoch:470 | HIGH | None | Needs Hodge theory (dim H^{1,0}=g) |
-| `harmonic_10_are_canonical_sections` | RiemannRoch:1000 | MEDIUM | Partial | Identification of spaces |
-| `fiberMultiplicity_constant` | ArgumentPrinciple:268 | HIGH | None | Not on critical path |
-| `analyticArgumentPrinciple` | MeromorphicFunction:521 | HIGH | Same as above | Equivalent to arg principle |
-
-### `zero_counting_linear_combination` — FULLY PROVEN (2026-02-13)
-The proof by contradiction:
-1. g = Σ cᵢfᵢ has chart order ≥ -D(q) at every point q (chartOrderAt_lcRegularValue_ge_neg_D ✅)
-2. Identity principle: chartOrderAt g q ≠ ⊤ for ALL q (chartOrderAt_ne_top_of_ne_top_somewhere ✅)
-3. chartOrderSupport is finite (lcRegularValue_chartOrderSupport_finite ✅)
-4. Argument principle: chartOrderSum = 0 for nonzero g (chartMeromorphic_argument_principle ✅)
-5. Lower bound: chartOrderSum ≥ (deg(D)+1) zeros - deg(D) poles = 1 (finset arithmetic ✅)
-6. Contradiction: 0 = chartOrderSum ≥ 1
-
-### Argument Principle Pipeline — MOSTLY PROVEN (2026-02-14)
-The argument principle `chartOrderSum_eq_zero` is proven via:
-1. `chartOrderSum_split`: chartOrderSum = TZO - TPO ✅
-2. `totalZeroOrder_eq_totalPoleOrder`: TZO = TPO (1 sorry — degree theory)
-The degree theory proof requires showing fiber multiplicity N(c) is constant on ℂ:
-- N(c) = total order of zeros of f-c in regular locus
-- N is locally constant: LMT at zeros + pole invariance + compactness
-- ℂ is connected → N is globally constant
-- N(0) = TZO, N(large c) = TPO (LMT for 1/f at poles)
-Key Mathlib tools: `IsLocallyConstant.apply_eq_of_isPreconnected`,
-`MeromorphicAt.analyticAt`, `tendsto_nhds_of_meromorphicOrderAt_nonneg`
-
----
-
-## Priority Sorrys (HodgeTheory Pipeline)
-
-### Tier 1: Low-Hanging Fruit
-
-| Sorry | File | What's Needed |
-|-------|------|--------------|
-| `harmonic_conjugate_simply_connected` | HarmonicConjugate.lean | Poincare lemma / homotopy invariance of curve integrals |
-
-### Tier 2: Hodge Theory Core
-
-| Sorry | File | What's Needed |
-|-------|------|--------------|
-| `local_dbar_poincare` | Dolbeault.lean | Local exactness of dbar (local Cauchy integral formula) |
-| `hodge_decomposition_01` | HodgeDecomposition.lean | Hodge decomposition for (0,1)-forms |
-| `harmonic_10_closed` | HodgeDecomposition.lean | dbar-closed (1,0)-forms => harmonic |
-| `dim_harmonic_10_eq_genus` | HodgeDecomposition.lean | dim H^{1,0} = genus |
-| `hodge_isomorphism` | HodgeDecomposition.lean | Harmonic forms represent de Rham |
-| `l2_inner_product_10_exists` | HodgeDecomposition.lean | L² inner product existence |
-| `harmonic_orthogonal_exact` | HodgeDecomposition.lean | Integration by parts |
-| `dolbeault_isomorphism_01` | HodgeDecomposition.lean | Dolbeault isomorphism |
-| `del_real.smooth'` | HodgeDecomposition.lean | Wirtinger deriv of ℝ-smooth fn is ℝ-smooth |
-| `dbar_real_hd.smooth'` | HodgeDecomposition.lean | Wirtinger deriv bar of ℝ-smooth fn is ℝ-smooth |
-| ~~closedForms1 proofs~~ | HodgeDecomposition.lean | ✅ PROVEN (linearity of dbar_10, del_01) |
-| ~~exactForms1 proofs~~ | HodgeDecomposition.lean | ✅ PROVEN (linearity of del_real, dbar_real_hd) |
-| ~~dbarImage_hd proofs~~ | HodgeDecomposition.lean | ✅ PROVEN (linearity of dbar_real_hd) |
-
-### Tier 3: Serre Duality
-
-| Sorry | File | What's Needed |
-|-------|------|--------------|
-| `l2_inner_product_exists` | SerreDuality.lean | Integration + metric |
-| `surjective_of_serre_duality` | SerreDuality.lean | Riesz representation |
-| `residue_sum_zero` | SerreDuality.lean | Stokes' theorem |
-| `kodaira_vanishing_kernel_dimension` | SerreDuality.lean | Full Serre duality |
-
-### Tier 4: Other
-
-| Sorry | File | What's Needed |
-|-------|------|--------------|
-| `harmonic_1forms_dimension` | Harmonic.lean | Hodge theory |
-| `poisson_dirichlet_existence` | Harmonic.lean | Poisson solution |
-| `argument_principle_count` | MeromorphicFunction.lean | Integration / topological degree |
-
----
-
-## Complete Sorry Dependency Tree for Riemann-Roch (2026-02-15)
-
-The Riemann-Roch theorem has three levels. Here is the complete transitive sorry
-dependency tree showing exactly what blocks each level.
-
-### Level 1: `riemann_roch_h0_duality` — proof body complete (depends on sorry)
-```
-h0(D) - h0(K-D) = deg(D) + 1 - g   [with hK : h0(K) = g as hypothesis]
-```
-**Blocking sorry**: `eval_residue_complementarity` (RiemannRoch.lean:699)
-**Also needed**: `h0_canonical_eq_genus` to discharge the `hK` hypothesis
-
-### Level 2: `riemann_roch_classical` — proof body complete (from Level 1 + Serre duality)
-```
-h0(D) - h1_dolbeault(D) = deg(D) + 1 - g
-```
-**Direct sorrys**:
-- `connectionForm_exists` (RiemannRoch.lean:~1025) — smooth triviality of line bundles
-- `serre_duality_h1` (RiemannRoch.lean:~1048) — h1_dolbeault(D) = h0(K-D)
-
-**h1_dolbeault now proper definition** (was sorry): uses `TwistedDolbeaultH01` via connection form
-
-**Transitive sorrys (via Serre duality)**:
-- SerreDuality.lean: `l2_inner_product_exists`, `surjective_of_serre_duality`,
-  `residue_sum_zero`, `kodaira_vanishing_kernel_dimension`
-
-### Level 3: `h0_canonical_eq_genus` — Hodge theorem
-```
-h0(K) = g   [discharges the hK hypothesis in Level 1]
-```
-**Direct sorrys**:
-- `h0_canonical_eq_genus` (RiemannRoch.lean:472)
-- `harmonic_10_are_canonical_sections` (RiemannRoch.lean:978)
-
-**Transitive sorrys (via Hodge theory)**:
-- HodgeDecomposition.lean (9 sorrys): `hodge_decomposition_01`, `hodge_decomposition_10`,
-  `dim_harmonic_10_eq_genus`, `del_real.smooth'`, `dbar_real_hd.smooth'`,
-  `hodge_isomorphism`, `l2_inner_product_10_exists`,
-  `harmonic_orthogonal_exact`, `dolbeault_isomorphism_01`
-- De Rham infrastructure: `del_real.smooth'`, `dbar_real_hd.smooth'`
-  (closedForms1/exactForms1/dbarImage_hd proofs ✅ DONE)
-- Dolbeault.lean: `local_dbar_poincare`
-- DolbeaultCohomology.lean: `dolbeault_hodge_iso`, `h1_trivial_eq_genus`, `dbar_real.smooth'`, `dbar_twisted.smooth'`
-  (dbar_real linearity + twistedDbarImage ✅ DONE)
-- Harmonic.lean: `harmonic_1forms_dimension`, `poisson_dirichlet_existence`
-- HarmonicConjugate.lean: `harmonic_conjugate_simply_connected`
-
-### Also needed: `canonical_divisor_exists` (RiemannRoch.lean:479)
-Not blocking the proof (K is a parameter), but needed for instantiation.
-
-### Dependency Graph (Sorry Flow)
-```
-                    ┌─────────────────────┐
-                    │ riemann_roch_h0_dual │ ✅ PROVEN
-                    │  (with hK hypothesis)│
-                    └────────┬────────────┘
-                             │ needs
-                    ┌────────▼────────────┐
-                    │eval_residue_compl   │ ← HARDEST sorry
-                    │ (residue pairing)   │    on critical path
-                    └─────────────────────┘
-
-                    ┌─────────────────────┐
-                    │riemann_roch_classical│ ✅ PROVEN (from h0_dual + Serre)
-                    └────────┬────────────┘
-                             │ needs
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-        connectionForm  serre_duality_h1  (Level 1)
-        _exists              │
-              │              ▼
-              ▼         SerreDuality.lean
-        smooth triv.    (4 sorrys: L², residue,
-        of line bdls    Riesz, Kodaira)
-
-                    ┌─────────────────────┐
-                    │ h0_canonical_eq_genus│ ← discharges hK
-                    └────────┬────────────┘
-                             │ needs
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-      dim_harmonic    harmonic_10_are    Hodge decomp
-      _10_eq_genus    _canonical_sec     (9 sorrys in
-      (topological)   (H^{1,0}≅H⁰(K))  HodgeDecomp)
-              │                                │
-              ▼                                ▼
-        Harmonic.lean              DolbeaultCohomology
-        (2 sorrys)                 (4 sorrys)
-```
 
 ---
 
@@ -488,54 +455,56 @@ Not blocking the proof (K is a parameter), but needed for instantiation.
 2. `harmonic_10_are_canonical_sections`: H^{1,0} ≅ H^0(K)
 3. `h0_canonical_eq_genus`: h0(K) = g (combines above two)
 
-### Key Dependencies
+### Key Import Dependencies
 ```
 RealSmoothness ──> DifferentialForms ──> Dolbeault ──> HodgeDecomposition
      |                                      |                |
 WirtingerDerivs ─────────────────────────────┘          SerreDuality
-     |                                                       |
-MaximumPrinciple ──> PoissonIntegral ──> MeanValueConverse   |
-     |                                      |                |
-HarmonicConjugate ──> Harmonic ─────────────┘                |
+                                                             |
                                                              v
 AnalyticBridge ──> ChartMeromorphic ──> LinearCombination    |
                                              |               |
                                         RRHelpers            |
                                              |               |
 LineBundles ─────────────────────────> RiemannRoch <─────────┘
+                                             ↑
+                                    DolbeaultCohomology
+                                             ↑
+                                    ArgumentPrinciple
 ```
 
 ---
 
-## Next Steps (Priority Order)
+## Recent Progress
 
-1. **~~Prove `zero_counting_linear_combination`~~** ✅ DONE (2026-02-13)
+### 2026-02-15
+- **`correctedFn_same_order` FULLY PROVEN** — chartOrderAt preserved by correctedFn
+- **AnalyticExtension.lean: 1 → 0 sorrys** ✅
+- **`correctedFn_locally_eq_analytic` strengthened** — now returns order equality too
+- **Audit completed**: No axiom smuggling in any structures ✅
+- **ALL placeholder definitions FIXED** (5 total)
+- **ALL linearity sorrys proven** (15 total eliminated)
+- DolbeaultCohomology.lean: 7→4 sorrys
+- HodgeDecomposition.lean: 21→9 sorrys
 
-2. **~~Prove `chartMeromorphic_argument_principle`~~** ✅ DONE (2026-02-14)
-   - local_mapping_theorem: PROVEN (k-th root + IFT, 200+ lines)
-   - fiber_finite: PROVEN (identity principle + compactness)
-   - chartOrderSum_split + chartOrderSum_eq_zero: PROVEN
-   - Remaining: `totalZeroOrder_eq_totalPoleOrder` (degree theory: TZO = TPO)
+### 2026-02-14
+- **`local_mapping_theorem` FULLY PROVEN** — k-th root extraction + IFT, 200+ line proof
+- **`fiber_finite` FULLY PROVEN** — identity principle + compactness on compact RS
+- **`chartOrderSum_split` FULLY PROVEN** — chartOrderSum = TZO - TPO
+- **`chartOrderSum_eq_zero` PROVEN** (modulo `totalZeroOrder_eq_totalPoleOrder`)
+- **`chartMeromorphic_argument_principle` PROVEN** — wraps chartOrderSum_eq_zero
+- **ChartTransition.lean CREATED** ✅ 0 sorrys
+- **AnalyticKthRoot.lean CREATED** ✅ 0 sorrys
+- **ConnectedComplement.lean PROVEN** ✅ 0 sorrys
+- ArgumentPrinciple.lean: 5 → 3 sorrys
 
-3. **~~Prove `rs_compl_finite_isConnected`~~** ✅ DONE (2026-02-14)
-
-4. **Prove `totalZeroOrder_eq_totalPoleOrder`** (ArgumentPrinciple.lean:658)
-   - Last sorry blocking the argument principle
-   - **Strategy**: Fiber multiplicity constancy — N(c) = Σ ord(f-c) at zeros is constant on ℂ
-   - N(0) = TZO(f), N(large c) = TPO(f) (preimages near poles via LMT for 1/f)
-   - Needs: locally constant N + connected ℂ → constant N
-   - Key Mathlib: `IsLocallyConstant.apply_eq_of_isPreconnected`, `MeromorphicAt.analyticAt`,
-     `tendsto_nhds_of_meromorphicOrderAt_nonneg`
-
-5. **Prove `eval_residue_complementarity`** (RiemannRoch.lean:694)
-   - The hardest remaining sorry on the critical path
-   - **Strategy**: Residue pairing between L(D+[p])/L(D) and L(K-D)/L(K-D-[p])
-   - **Infrastructure needed**: Meromorphic 1-forms, residue at a point, residue sum formula
-   - **Alternative**: Could use ∂̄-equation approach (solve ∂̄u = ω with prescribed singularity)
-
-6. **Work on Dolbeault `local_dbar_poincare`** — key for cohomology theory
-7. **HodgeDecomposition sorrys** — core of analytic approach
-8. **SerreDuality** — needed for classical form of Riemann-Roch
+### 2026-02-13
+- **`zero_counting_linear_combination` FULLY PROVEN** — key lemma for `h0_bounded`
+- **`chartOrderAt_lcRegularValue_ge_neg_D` FULLY PROVEN** — inductive step on Fin sums
+- **`lcRegularValue_chartOrderSupport_finite` FULLY PROVEN** — isolated zeros on compact RS
+- **Meromorphic identity principle FULLY PROVEN** — `chartOrderAt_ne_top_of_ne_top_somewhere`
+- LinearCombination.lean: 2 → **0 sorrys**
+- RiemannRoch.lean: 4 → **3 sorrys**
 
 ---
 

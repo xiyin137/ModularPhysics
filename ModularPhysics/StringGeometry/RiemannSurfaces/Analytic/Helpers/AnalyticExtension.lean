@@ -150,19 +150,6 @@ theorem correctedFn_tendsto (CRS : CompactRiemannSurface)
       (nhds (correctedFn CRS f hf hno_pole p)) :=
   correctedValue_tendsto (hf p) (hno_pole p)
 
-/-- The corrected function agrees with the original on the meromorphic orders:
-    chartOrderAt f p = chartOrderAt (correctedFn) p, because the functions agree on
-    punctured neighborhoods. -/
-theorem correctedFn_same_order (CRS : CompactRiemannSurface)
-    (f : CRS.toRiemannSurface.carrier → ℂ)
-    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
-    (hno_pole : ∀ q, (0 : WithTop ℤ) ≤
-      chartOrderAt (RS := CRS.toRiemannSurface) f q)
-    (p : CRS.toRiemannSurface.carrier) :
-    chartOrderAt (RS := CRS.toRiemannSurface) f p =
-      chartOrderAt (RS := CRS.toRiemannSurface) (correctedFn CRS f hf hno_pole) p := by
-  sorry
-
 /-- Near each point, correctedFn agrees with an analytic function composed with the chart.
     Specifically, ∃ g analytic at chartPt p₀ with correctedFn =ᶠ g ∘ (extChartAt p₀) near p₀. -/
 theorem correctedFn_locally_eq_analytic (CRS : CompactRiemannSurface)
@@ -176,15 +163,17 @@ theorem correctedFn_locally_eq_analytic (CRS : CompactRiemannSurface)
     letI : ChartedSpace ℂ CRS.toRiemannSurface.carrier := CRS.toRiemannSurface.chartedSpace
     ∃ g : ℂ → ℂ, AnalyticAt ℂ g (extChartAt 𝓘(ℂ, ℂ) p₀ p₀) ∧
       correctedFn CRS f hf hno_pole =ᶠ[nhds p₀]
-        (fun q => g (extChartAt 𝓘(ℂ, ℂ) p₀ q)) := by
+        (fun q => g (extChartAt 𝓘(ℂ, ℂ) p₀ q)) ∧
+      meromorphicOrderAt g (chartPt (RS := CRS.toRiemannSurface) p₀) =
+        chartOrderAt (RS := CRS.toRiemannSurface) f p₀ := by
   letI := CRS.toRiemannSurface.topology
   letI := CRS.toRiemannSurface.chartedSpace
   haveI := CRS.toRiemannSurface.isManifold
   haveI := CRS.toRiemannSurface.t2
   haveI := CRS.toRiemannSurface.connected
-  obtain ⟨g, hg_ana, hg_agree, _⟩ := exists_analyticExtension_of_nonneg_order
+  obtain ⟨g, hg_ana, hg_agree, hg_ord⟩ := exists_analyticExtension_of_nonneg_order
     (hf p₀) (hne_top p₀) (hno_pole p₀)
-  refine ⟨g, hg_ana, ?_⟩
+  refine ⟨g, hg_ana, ?_, hg_ord⟩
   -- Extract the open set where g agrees with chartRep f p₀
   have hg_agree' : ∀ᶠ z in nhdsWithin (chartPt (RS := CRS.toRiemannSurface) p₀)
       {chartPt (RS := CRS.toRiemannSurface) p₀}ᶜ,
@@ -257,6 +246,76 @@ theorem correctedFn_locally_eq_analytic (CRS : CompactRiemannSurface)
   rw [show f (e_q.symm w) = f (e₀.symm (T w)) by rw [h_left_inv]]
   exact hU_g_sub (T w) hw_Ug hw_T_ne
 
+/-- The corrected function agrees with the original on the meromorphic orders:
+    chartOrderAt f p = chartOrderAt (correctedFn) p, because the functions agree on
+    punctured neighborhoods. -/
+theorem correctedFn_same_order (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hno_pole : ∀ q, (0 : WithTop ℤ) ≤
+      chartOrderAt (RS := CRS.toRiemannSurface) f q)
+    (p : CRS.toRiemannSurface.carrier) :
+    chartOrderAt (RS := CRS.toRiemannSurface) f p =
+      chartOrderAt (RS := CRS.toRiemannSurface) (correctedFn CRS f hf hno_pole) p := by
+  letI := CRS.toRiemannSurface.topology
+  letI := CRS.toRiemannSurface.chartedSpace
+  haveI := CRS.toRiemannSurface.isManifold
+  haveI := CRS.toRiemannSurface.t2
+  haveI := CRS.toRiemannSurface.connected
+  by_cases h_exists : ∃ q₀, chartOrderAt (RS := CRS.toRiemannSurface) f q₀ ≠ ⊤
+  · -- Case: some order ≠ ⊤ → all orders ≠ ⊤ by identity principle
+    obtain ⟨q₀, hq₀⟩ := h_exists
+    have hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ ⊤ :=
+      fun q => chartOrderAt_ne_top_of_ne_top_somewhere f hf q₀ hq₀ q
+    -- Get g analytic with correctedFn =ᶠ g ∘ e near p AND order equality
+    obtain ⟨g, _, hcf_eq, hg_ord⟩ :=
+      correctedFn_locally_eq_analytic CRS f hf hne_top hno_pole p
+    -- Derive: chartRep (correctedFn) p =ᶠ[nhdsWithin (chartPt p) {chartPt p}ᶜ] g
+    set e₀ := extChartAt 𝓘(ℂ, ℂ) p
+    have hmem_tgt : e₀ p ∈ e₀.target := e₀.map_source (mem_extChartAt_source p)
+    -- Transfer hcf_eq through e₀.symm to get agreement in chart coordinates
+    have h_cf_g_nhds : ∀ᶠ z in nhds (e₀ p),
+        correctedFn CRS f hf hno_pole (e₀.symm z) = g z := by
+      have h_cont := continuousAt_extChartAt_symm'' (I := 𝓘(ℂ, ℂ)) hmem_tgt
+      rw [ContinuousAt, e₀.left_inv (mem_extChartAt_source p)] at h_cont
+      have h1 := h_cont.eventually hcf_eq
+      -- h1 : correctedFn(e₀.symm z) = g(e₀(e₀.symm z)) eventually
+      have h2 : ∀ᶠ z in nhds (e₀ p), z ∈ e₀.target :=
+        (isOpen_extChartAt_target (I := 𝓘(ℂ, ℂ)) p).mem_nhds hmem_tgt
+      exact (h1.and h2).mono fun z ⟨hz1, hz2⟩ => by
+        dsimp only at hz1; rwa [e₀.right_inv hz2] at hz1
+    -- chartRep (correctedFn) p agrees with g on punctured nhd
+    have h_cf_g : chartRep (RS := CRS.toRiemannSurface) (correctedFn CRS f hf hno_pole) p
+        =ᶠ[nhdsWithin (chartPt (RS := CRS.toRiemannSurface) p)
+          {chartPt (RS := CRS.toRiemannSurface) p}ᶜ] g :=
+      h_cf_g_nhds.filter_mono nhdsWithin_le_nhds
+    -- Chain the order equalities
+    rw [← hg_ord, show chartOrderAt (correctedFn CRS f hf hno_pole) p =
+        meromorphicOrderAt (chartRep (RS := CRS.toRiemannSurface)
+          (correctedFn CRS f hf hno_pole) p)
+          (chartPt (RS := CRS.toRiemannSurface) p) from rfl]
+    exact (meromorphicOrderAt_congr h_cf_g).symm
+  · -- Case: all orders = ⊤
+    push_neg at h_exists
+    -- h_exists : ∀ q, chartOrderAt f q = ⊤
+    -- correctedFn ≡ 0 since all orders are ⊤ (positive order ⟹ correctedValue = 0)
+    have h_cf_zero : ∀ q, correctedFn CRS f hf hno_pole q = 0 := by
+      intro q
+      have hord : (0 : WithTop ℤ) < chartOrderAt (RS := CRS.toRiemannSurface) f q := by
+        rw [h_exists q]; exact WithTop.coe_lt_top 0
+      exact correctedValue_eq_zero_of_pos (hf q) hord
+    -- LHS = ⊤
+    rw [h_exists p]
+    -- RHS: chartRep of zero function has order ⊤
+    symm
+    show chartOrderAt (RS := CRS.toRiemannSurface) (correctedFn CRS f hf hno_pole) p = ⊤
+    rw [show chartOrderAt (RS := CRS.toRiemannSurface) (correctedFn CRS f hf hno_pole) p =
+        meromorphicOrderAt (chartRep (RS := CRS.toRiemannSurface)
+          (correctedFn CRS f hf hno_pole) p)
+          (chartPt (RS := CRS.toRiemannSurface) p) from rfl,
+      meromorphicOrderAt_eq_top_iff]
+    exact Eventually.of_forall (fun z => h_cf_zero _)
+
 /-- The corrected function is continuous on M.
 
     In each chart, the corrected function equals the analytic extension of chartRep f p,
@@ -273,7 +332,7 @@ theorem correctedFn_continuous (CRS : CompactRiemannSurface)
   haveI := CRS.toRiemannSurface.isManifold
   rw [continuous_iff_continuousAt]
   intro p₀
-  obtain ⟨g, hg_ana, heq⟩ := correctedFn_locally_eq_analytic CRS f hf hne_top hno_pole p₀
+  obtain ⟨g, hg_ana, heq, _⟩ := correctedFn_locally_eq_analytic CRS f hf hne_top hno_pole p₀
   have hφ_cont : ContinuousAt (fun q => g (extChartAt 𝓘(ℂ, ℂ) p₀ q)) p₀ := by
     apply ContinuousAt.comp _ (continuousAt_extChartAt (I := 𝓘(ℂ, ℂ)) p₀)
     exact hg_ana.continuousAt
@@ -338,7 +397,7 @@ theorem correctedFn_constant (CRS : CompactRiemannSurface)
     rw [isOpen_iff_forall_mem_open]
     intro q₀ (hq₀ : F q₀ = F p_max)
     -- Get the local analytic representation: F =ᶠ g ∘ (extChartAt q₀) near q₀
-    obtain ⟨g, hg_ana, heq⟩ := correctedFn_locally_eq_analytic CRS f hf hne_top hno_pole q₀
+    obtain ⟨g, hg_ana, heq, _⟩ := correctedFn_locally_eq_analytic CRS f hf hne_top hno_pole q₀
     set e₀ := extChartAt 𝓘(ℂ, ℂ) q₀
     have hval : F q₀ = g (e₀ q₀) := heq.self_of_nhds
     -- g is differentiable near chartPt q₀
