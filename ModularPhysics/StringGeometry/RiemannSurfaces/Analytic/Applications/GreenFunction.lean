@@ -126,10 +126,15 @@ theorem poissonKernel_pos (z : ℂ) (hz : ‖z‖ < 1) (ζ : ℂ) (hζ : ‖ζ�
     exact absurd hz (lt_irrefl 1)
   exact Helpers.poissonKernel_pos z ζ hz hζ hne
 
-/-- Poisson integral solves Dirichlet problem -/
-noncomputable def poissonIntegral (f : ℂ → ℝ) (z : ℂ) (hz : ‖z‖ < 1) : ℝ :=
-  -- (1/2π) ∫_{|ζ|=1} f(ζ) P(z, ζ) |dζ|
-  sorry
+/-- Poisson integral on the unit disc: solves the Dirichlet problem.
+
+    P[f](z) = (1/2π) ∫₀²π f(e^{iθ}) · Re((e^{iθ} + z)/(e^{iθ} - z)) dθ
+
+    This is the real part of the Schwarz integral, specialized to center 0, radius 1.
+    For |z| < 1 and continuous boundary data f on ∂𝔻, P[f] is the unique harmonic
+    function on 𝔻 with boundary values f. -/
+noncomputable def poissonIntegral (f : ℂ → ℝ) (z : ℂ) (_hz : ‖z‖ < 1) : ℝ :=
+  Infrastructure.poissonIntegralDisc f 0 1 z
 
 /-- Poisson integral gives harmonic extension -/
 theorem poissonIntegral_harmonic (f : ℂ → ℝ) (hf : Continuous f) :
@@ -153,10 +158,15 @@ For compact surfaces, the Green's function requires normalization.
 structure CompactGreenFunction (CRS : RiemannSurfaces.CompactRiemannSurface) where
   /-- The Green's function G : Σ × Σ → ℝ (with value -∞ understood on diagonal) -/
   G : CRS.carrier × CRS.carrier → ℝ
-  /-- Logarithmic singularity on diagonal: in local coords, G(z,w) + (1/2π)log|z-w| extends smoothly -/
+  /-- Logarithmic singularity on diagonal: there exist local coordinates φ centered
+      at p (i.e. φ(0) = p) such that G(p, φ(z)) = -(1/2π)log|z| + h(z) with h continuous.
+      The map φ is required to be continuous (it arises as a chart inverse). -/
   logSingularity : ∀ (p : CRS.carrier),
-    ∃ (r : ℝ) (_ : r > 0) (h : ℂ → ℝ),
-      Continuous h ∧ ∀ z, ‖z‖ < r → G (p, p) = -(1/(2*Real.pi)) * Real.log ‖z‖ + h z
+    ∃ (r : ℝ) (_ : r > 0) (φ : ℂ → CRS.carrier) (h : ℂ → ℝ),
+      φ 0 = p ∧ Continuous h ∧
+      @ContinuousOn ℂ CRS.carrier _ CRS.toRiemannSurface.topology φ (Metric.ball 0 r) ∧
+      ∀ z, 0 < ‖z‖ → ‖z‖ < r →
+        G (p, φ z) = -(1/(2*Real.pi)) * Real.log ‖z‖ + h z
   /-- Symmetric -/
   symmetric : ∀ p q, G (p, q) = G (q, p)
   /-- Harmonic off diagonal: for fixed q, G(·, q) is harmonic on Σ \ {q} -/
@@ -185,8 +195,10 @@ structure AdmissibleMetric (CRS : RiemannSurfaces.CompactRiemannSurface) where
   density_pos : ∀ p, density p > 0
   /-- The density is smooth (continuous suffices for basic theory) -/
   density_continuous : @Continuous CRS.carrier ℝ CRS.topology _ density
+  /-- Total area (should be normalized to 1) -/
+  totalArea : ℝ
   /-- Total area is normalized to 1: ∫_Σ μ = 1 -/
-  totalArea : ℝ := 1
+  totalArea_eq_one : totalArea = 1
 
 /-- The Arakelov Green's function.
 
@@ -203,11 +215,20 @@ structure ArakelovGreen (CRS : RiemannSurfaces.CompactRiemannSurface)
   symmetric : ∀ p q, G (p, q) = G (q, p)
   /-- Bounded below: G(z,w) ≥ -C for some constant C -/
   boundedBelow : ∃ C : ℝ, ∀ z w, G (z, w) ≥ -C
+  /-- Logarithmic singularity on the diagonal: there exist local coordinates φ centered
+      at p such that G(p, φ(z)) = -(1/2π)log|z| + h(z) with h continuous. -/
+  logSingularity : ∀ (p : CRS.carrier),
+    ∃ (r : ℝ) (_ : r > 0) (φ : ℂ → CRS.carrier) (h : ℂ → ℝ),
+      φ 0 = p ∧ Continuous h ∧
+      @ContinuousOn ℂ CRS.carrier _ CRS.toRiemannSurface.topology φ (Metric.ball 0 r) ∧
+      ∀ z, 0 < ‖z‖ → ‖z‖ < r →
+        G (p, φ z) = -(1/(2*Real.pi)) * Real.log ‖z‖ + h z
 
-/-- Arakelov Green's function exists uniquely -/
-theorem arakelov_green_exists_unique (CRS : RiemannSurfaces.CompactRiemannSurface)
+/-- Arakelov Green's function exists on any compact Riemann surface
+    with admissible metric. -/
+theorem arakelov_green_exists (CRS : RiemannSurfaces.CompactRiemannSurface)
     (μ : AdmissibleMetric CRS) :
-    ∃! G : ArakelovGreen CRS μ, True := by
+    Nonempty (ArakelovGreen CRS μ) := by
   sorry
 
 /-!

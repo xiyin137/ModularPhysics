@@ -658,6 +658,107 @@ theorem e_fifth_lt_sixteen_pi_sq : Real.exp 1 ^ 5 < 16 * Real.pi ^ 2 := by
   -- 16π² > 16 × 3.14² = 157.7536 > 148.9
   nlinarith
 
+/-- Cubic upper bound on log difference: log(1+t) - log(1-t) - 2t ≤ 2t³/(3(1-t²)).
+    Proof: g(t) = 2t³/(3(1-t²)) - (log(1+t) - log(1-t) - 2t) satisfies g(0)=0
+    and g'(t) = 4t⁴/(3(1-t²)²) ≥ 0 on [0,1). -/
+private theorem log_diff_cubic_bound {t : ℝ} (ht0 : 0 ≤ t) (ht1 : t < 1) :
+    Real.log (1 + t) - Real.log (1 - t) - 2 * t ≤ 2 * t ^ 3 / (3 * (1 - t ^ 2)) := by
+  by_cases ht_eq : t = 0
+  · simp [ht_eq, Real.log_one]
+  have ht_pos : 0 < t := lt_of_le_of_ne ht0 (Ne.symm ht_eq)
+  have ht_sq : t ^ 2 < 1 := by nlinarith
+  have h1mt2 : (0 : ℝ) < 1 - t ^ 2 := by linarith
+  suffices h : 0 ≤ 2 * t ^ 3 / (3 * (1 - t ^ 2)) -
+      (Real.log (1 + t) - Real.log (1 - t) - 2 * t) by linarith
+  have hg0 : 2 * (0 : ℝ) ^ 3 / (3 * (1 - (0 : ℝ) ^ 2)) -
+      (Real.log (1 + (0 : ℝ)) - Real.log (1 - (0 : ℝ)) - 2 * (0 : ℝ)) = 0 := by
+    simp [Real.log_one]
+  have hmono : MonotoneOn
+      (fun s => 2 * s ^ 3 / (3 * (1 - s ^ 2)) -
+        (Real.log (1 + s) - Real.log (1 - s) - 2 * s)) (Icc 0 t) := by
+    apply monotoneOn_of_deriv_nonneg (convex_Icc 0 t)
+    · -- ContinuousOn
+      apply ContinuousOn.sub
+      · apply ContinuousOn.div (continuousOn_const.mul (continuousOn_pow 3))
+          (continuousOn_const.mul (continuousOn_const.sub (continuousOn_pow 2)))
+        intro s hs; exact ne_of_gt (by nlinarith [hs.1, hs.2, sq_nonneg s] : (0:ℝ) < 3 * (1 - s ^ 2))
+      · apply ContinuousOn.sub
+        · apply ContinuousOn.sub
+          · exact ContinuousOn.log (continuousOn_const.add continuousOn_id)
+              (fun s hs => ne_of_gt (by linarith [hs.1] : (0:ℝ) < 1 + s))
+          · exact ContinuousOn.log (continuousOn_const.sub continuousOn_id)
+              (fun s hs => ne_of_gt (by linarith [hs.2] : (0:ℝ) < 1 - s))
+        · exact continuousOn_const.mul continuousOn_id
+    · -- DifferentiableOn on interior
+      intro s hs
+      rw [interior_Icc] at hs
+      have h1pos : (0:ℝ) < 1 + s := by linarith [hs.1]
+      have h2pos : (0:ℝ) < 1 - s := by linarith [hs.2]
+      have h_den_pos : (0:ℝ) < 3 * (1 - s ^ 2) := by nlinarith
+      apply DifferentiableAt.differentiableWithinAt
+      apply DifferentiableAt.sub
+      · exact ((differentiableAt_const _).mul (differentiableAt_pow 3)).div
+            ((differentiableAt_const _).mul ((differentiableAt_const _).sub (differentiableAt_pow 2)))
+            (ne_of_gt h_den_pos)
+      · exact (((differentiableAt_const (1:ℝ)).add differentiableAt_id).log (ne_of_gt h1pos)).sub
+            (((differentiableAt_const (1:ℝ)).sub differentiableAt_id).log (ne_of_gt h2pos)) |>.sub
+            ((differentiableAt_const _).mul differentiableAt_id)
+    · -- Derivative nonneg: g'(s) = 4s⁴/(3(1-s²)²) ≥ 0
+      intro s hs
+      rw [interior_Icc] at hs
+      have h1pos : (0:ℝ) < 1 + s := by linarith [hs.1]
+      have h2pos : (0:ℝ) < 1 - s := by linarith [hs.2]
+      have h_ssq : s ^ 2 < 1 := by nlinarith
+      have h_den_pos : (0:ℝ) < 3 * (1 - s ^ 2) := by nlinarith
+      -- HasDerivAt for 2s³/(3(1-s²))
+      have hd_num : HasDerivAt (fun u => 2 * u ^ 3) (6 * s ^ 2) s := by
+        have := (hasDerivAt_pow 3 s).const_mul 2
+        convert this using 1; ring
+      have hd_den : HasDerivAt (fun u => 3 * (1 - u ^ 2)) (3 * (-(2 * s))) s := by
+        have hd_sq : HasDerivAt (fun u => u ^ 2) (2 * s) s := by
+          have := hasDerivAt_pow 2 s; simp [pow_one] at this; exact this
+        convert (hasDerivAt_const s 3).mul ((hasDerivAt_const s 1).sub hd_sq) using 1; ring
+      have hd_quot : HasDerivAt (fun u => 2 * u ^ 3 / (3 * (1 - u ^ 2)))
+          ((6 * s ^ 2 * (3 * (1 - s ^ 2)) - 2 * s ^ 3 * (3 * (-(2 * s)))) /
+            (3 * (1 - s ^ 2)) ^ 2) s :=
+        hd_num.div hd_den (ne_of_gt h_den_pos)
+      -- HasDerivAt for log(1+s) - log(1-s) - 2s
+      have hd1 : HasDerivAt (fun u => (1:ℝ) + u) 1 s := by
+        simpa using (hasDerivAt_const s (1:ℝ)).add (hasDerivAt_id s)
+      have hd2 : HasDerivAt (fun u => (1:ℝ) - u) (-1) s := by
+        simpa using (hasDerivAt_const s (1:ℝ)).sub (hasDerivAt_id s)
+      have hd_log1 : HasDerivAt (fun u => Real.log (1 + u)) (1 / (1 + s)) s :=
+        hd1.log (ne_of_gt h1pos)
+      have hd_log2 : HasDerivAt (fun u => Real.log (1 - u)) ((-1) / (1 - s)) s :=
+        hd2.log (ne_of_gt h2pos)
+      have hd_lin : HasDerivAt (fun u => (2:ℝ) * u) 2 s := by
+        simpa using (hasDerivAt_id s).const_mul (2:ℝ)
+      have hd_rhs : HasDerivAt
+          (fun u => Real.log (1 + u) - Real.log (1 - u) - 2 * u)
+          (1 / (1 + s) - (-1) / (1 - s) - 2) s :=
+        (hd_log1.sub hd_log2).sub hd_lin
+      have hd_g : HasDerivAt
+          (fun s => 2 * s ^ 3 / (3 * (1 - s ^ 2)) -
+            (Real.log (1 + s) - Real.log (1 - s) - 2 * s))
+          ((6 * s ^ 2 * (3 * (1 - s ^ 2)) - 2 * s ^ 3 * (3 * (-(2 * s)))) /
+            (3 * (1 - s ^ 2)) ^ 2 - (1 / (1 + s) - (-1) / (1 - s) - 2)) s :=
+        hd_quot.sub hd_rhs
+      rw [hd_g.deriv]
+      -- Show the derivative value = 4s⁴/(3(1-s²)²)
+      have hval : (6 * s ^ 2 * (3 * (1 - s ^ 2)) - 2 * s ^ 3 * (3 * (-(2 * s)))) /
+          (3 * (1 - s ^ 2)) ^ 2 - (1 / (1 + s) - (-1) / (1 - s) - 2) =
+          4 * s ^ 4 / (3 * (1 - s ^ 2) ^ 2) := by
+        have h1s_ne : (1 + s : ℝ) ≠ 0 := ne_of_gt h1pos
+        have h2s_ne : (1 - s : ℝ) ≠ 0 := ne_of_gt h2pos
+        have h1ms2_ne : (1 - s ^ 2 : ℝ) ≠ 0 := ne_of_gt (by nlinarith)
+        field_simp [h1s_ne, h2s_ne, h1ms2_ne]
+        ring
+      rw [hval]
+      exact div_nonneg (by nlinarith [sq_nonneg s, sq_nonneg (s ^ 2)])
+        (mul_nonneg (by norm_num) (sq_nonneg _))
+  have h_le := hmono (left_mem_Icc.mpr ht_pos.le) (right_mem_Icc.mpr ht_pos.le) ht_pos.le
+  linarith [hg0]
+
 /-- Pinsker excess bound: h(v) - v² ≤ v⁴/(6(1-v²)) for 0 ≤ v < 1,
     where h(v) = (1+v)ln(1+v) + (1-v)ln(1-v).
     Proof: f(v) = v⁴/(6(1-v²)) - (h(v)-v²) satisfies f(0)=0 and f'(v) ≥ 0.
@@ -716,11 +817,61 @@ theorem pinsker_excess_crude {v : ℝ} (hv0 : 0 ≤ v) (hv1 : v < 1) :
       · exact ((hasDerivAt_mul_log_add t h1pos).differentiableAt.add
             (hasDerivAt_mul_log_sub t h2pos).differentiableAt).sub (differentiableAt_pow 2)
     · -- Derivative nonneg on interior
-      -- f'(t) = t³(2-t²)/(3(1-t²)²) - (ln(1+t)-ln(1-t)-2t)
-      -- φ(t) = f'(t) satisfies φ(0) = 0 and φ'(t) = t⁴(9-5t²)/(3(1-t²)³) ≥ 0
-      -- Deferred to separate helper lemma.
+      -- f'(t) = t³(2-t²)/(3(1-t²)²) - (log(1+t)-log(1-t)-2t) ≥ 0
       intro t ht
-      sorry
+      rw [interior_Icc] at ht
+      have h1pos : (0:ℝ) < 1 + t := by linarith [ht.1]
+      have h2pos : (0:ℝ) < 1 - t := by linarith [ht.2, hv1]
+      have h_tsq : t ^ 2 < 1 := by nlinarith
+      have h_den_pos : (0:ℝ) < 6 * (1 - t ^ 2) := by linarith
+      -- HasDerivAt for t⁴/(6(1-t²))
+      have hd_num : HasDerivAt (fun s => s ^ 4) (4 * t ^ 3) t := by
+        convert hasDerivAt_pow 4 t using 1
+      have hd_den : HasDerivAt (fun s => 6 * (1 - s ^ 2)) (6 * (-(2 * t))) t := by
+        have hd_sq : HasDerivAt (fun s => s ^ 2) (2 * t) t := by
+          convert hasDerivAt_pow 2 t using 1; simp [pow_one]
+        convert (hasDerivAt_const t 6).mul ((hasDerivAt_const t 1).sub hd_sq) using 1
+        ring
+      have hd_quot : HasDerivAt (fun s => s ^ 4 / (6 * (1 - s ^ 2)))
+          ((4 * t ^ 3 * (6 * (1 - t ^ 2)) - t ^ 4 * (6 * (-(2 * t)))) /
+            (6 * (1 - t ^ 2)) ^ 2) t :=
+        hd_num.div hd_den (ne_of_gt h_den_pos)
+      -- HasDerivAt for (1+t)log(1+t) + (1-t)log(1-t) - t²
+      have hd_sq : HasDerivAt (fun s => s ^ 2) (2 * t) t := by
+        have := hasDerivAt_pow 2 t; simp [pow_one] at this; exact this
+      have hd_hv : HasDerivAt
+          (fun s => (1 + s) * Real.log (1 + s) + (1 - s) * Real.log (1 - s) - s ^ 2)
+          (Real.log (1 + t) - Real.log (1 - t) - 2 * t) t := by
+        have hd := (hasDerivAt_mul_log_add t h1pos).add
+          (hasDerivAt_mul_log_sub t h2pos) |>.sub hd_sq
+        convert hd using 1; ring
+      -- HasDerivAt for the full f
+      have hd_f : HasDerivAt
+          (fun s => s ^ 4 / (6 * (1 - s ^ 2)) -
+            ((1 + s) * Real.log (1 + s) + (1 - s) * Real.log (1 - s) - s ^ 2))
+          ((4 * t ^ 3 * (6 * (1 - t ^ 2)) - t ^ 4 * (6 * (-(2 * t)))) /
+            (6 * (1 - t ^ 2)) ^ 2 -
+            (Real.log (1 + t) - Real.log (1 - t) - 2 * t)) t :=
+        hd_quot.sub hd_hv
+      rw [hd_f.deriv]
+      -- Bound using log_diff_cubic_bound
+      have h_cubic := log_diff_cubic_bound (le_of_lt ht.1) (lt_trans ht.2 hv1)
+      -- The quotient derivative simplifies to t³(2-t²)/(3(1-t²)²)
+      -- We show: t³(2-t²)/(3(1-t²)²) - (log(1+t)-log(1-t)-2t) ≥ 0
+      -- Using: log(1+t)-log(1-t)-2t ≤ 2t³/(3(1-t²))
+      -- And: t³(2-t²)/(3(1-t²)²) - 2t³/(3(1-t²)) = t⁵/(3(1-t²)²) ≥ 0
+      have h_simp : (4 * t ^ 3 * (6 * (1 - t ^ 2)) - t ^ 4 * (6 * (-(2 * t)))) /
+          (6 * (1 - t ^ 2)) ^ 2 = t ^ 3 * (2 - t ^ 2) / (3 * (1 - t ^ 2) ^ 2) := by
+        field_simp; ring
+      rw [h_simp]
+      have h_lower : 2 * t ^ 3 / (3 * (1 - t ^ 2)) ≤
+          t ^ 3 * (2 - t ^ 2) / (3 * (1 - t ^ 2) ^ 2) := by
+        have h_diff : t ^ 3 * (2 - t ^ 2) / (3 * (1 - t ^ 2) ^ 2) -
+            2 * t ^ 3 / (3 * (1 - t ^ 2)) = t ^ 5 / (3 * (1 - t ^ 2) ^ 2) := by
+          field_simp; ring
+        linarith [show 0 ≤ t ^ 5 / (3 * (1 - t ^ 2) ^ 2) from
+          div_nonneg (pow_nonneg (le_of_lt ht.1) 5) (mul_nonneg (by norm_num) (sq_nonneg _))]
+      linarith
   have h_le := hmono (left_mem_Icc.mpr hv_pos.le) (right_mem_Icc.mpr hv_pos.le) hv_pos.le
   linarith [hf0]
 

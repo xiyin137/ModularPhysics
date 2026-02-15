@@ -83,13 +83,6 @@ section MDifferentiableSum
 
 variable {RS : RiemannSurface}
 
--- Establish local instances for readability
-private theorem mk_instances (RS : RiemannSurface) :
-    letI := RS.topology
-    letI := RS.chartedSpace
-    haveI := RS.isManifold
-    True := trivial
-
 /-- A finite sum of MDifferentiableAt functions is MDifferentiableAt. -/
 theorem mdifferentiableAt_finset_sum {ι : Type*} [DecidableEq ι]
     (s : Finset ι) (f : ι → RS.carrier → ℂ) (p : RS.carrier)

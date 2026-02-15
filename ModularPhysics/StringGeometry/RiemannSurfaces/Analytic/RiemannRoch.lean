@@ -990,13 +990,56 @@ Serre duality h¹(D) = h⁰(K - D) is a THEOREM, not a definition.
 Combined with riemann_roch_h0_duality, it gives the classical formula.
 -/
 
-/-- h¹(D) via Dolbeault cohomology with values in O(D).
+/-- A (0,1)-connection form A represents the holomorphic line bundle O(D) if
+    its local singularity structure matches the divisor D.
 
-    For D = 0, this equals h1_dolbeault_trivial (see DolbeaultCohomology.lean).
-    For general D, requires twisted ∂̄-operator on sections of O(D). -/
+    **Characterization**: In local coordinates z around each point p, a (0,1)-form
+    ω = f(z) dz̄ is a connection form for D if:
+      f(z) = D(p) / (2(z̄ - ā)) + h(z)
+    where a = chart(p) and h is continuous (hence smooth) near a.
+
+    This encodes the curvature condition ∂A = 2πi Σ D(p) δ_p:
+    - At p with D(p) = 0: A is smooth (h is the full coefficient)
+    - At p with D(p) = n: A has a prescribed 1/z̄ singularity with residue n/2
+
+    For D = 0, A = 0 satisfies this condition (h = 0 everywhere). -/
+def IsConnectionFormFor (CRS : CompactRiemannSurface)
+    (D : Divisor CRS.toRiemannSurface) (A : Form_01 CRS.toRiemannSurface) : Prop :=
+  let RS := CRS.toRiemannSurface
+  letI := RS.topology
+  letI := RS.chartedSpace
+  haveI := RS.isManifold
+  -- For each point p, the (0,1)-form coefficient A.toSection has the prescribed
+  -- singularity structure D(p)/(2(z̄-ā)) in local coordinates.
+  ∀ (p : RS.carrier),
+    let e := extChartAt (I := 𝓘(ℂ, ℂ)) p
+    let a := e p
+    -- There exists a continuous regularization near p
+    ∃ (h : ℂ → ℂ), ContinuousAt h a ∧
+      ∀ᶠ z in nhdsWithin a {a}ᶜ,
+        A.toSection (e.symm z) =
+          (D.coeff p : ℂ) / (2 * starRingEnd ℂ (z - a)) + h z
+
+/-- Every divisor D on a compact Riemann surface has a (0,1)-connection form.
+    Follows from smooth triviality of complex line bundles on surfaces. -/
+theorem connectionForm_exists (CRS : CompactRiemannSurface)
+    (D : Divisor CRS.toRiemannSurface) :
+    ∃ A : Form_01 CRS.toRiemannSurface, IsConnectionFormFor CRS D A := by
+  sorry -- Requires: smooth triviality of line bundles, partition of unity
+
+/-- h¹(D) via twisted Dolbeault cohomology with values in O(D).
+
+    h¹(D) = dim_ℂ H^{0,1}(O(D)) = dim_ℂ (Ω^{0,1} / im(∂̄_A))
+
+    where A is a (0,1)-connection form for O(D) and ∂̄_A = ∂̄ + A is the
+    twisted ∂̄ operator. The dimension is independent of the choice of A
+    (by gauge equivalence).
+
+    For D = 0, A = 0 gives the standard Dolbeault cohomology `DolbeaultH01`. -/
 noncomputable def h1_dolbeault (CRS : CompactRiemannSurface)
-    (D : Divisor CRS.toRiemannSurface) : ℕ := by
-  sorry -- Full definition requires: twisted Dolbeault complex Ω^{0,q}(O(D))
+    (D : Divisor CRS.toRiemannSurface) : ℕ :=
+  Module.finrank ℂ (TwistedDolbeaultH01 CRS.toRiemannSurface
+    (connectionForm_exists CRS D).choose)
 
 /-- **Serre duality** (analytic): h¹(D) = h⁰(K - D).
 

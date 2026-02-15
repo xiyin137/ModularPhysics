@@ -284,8 +284,6 @@ where η is represented by a meromorphic function f.
 structure ResidueData (RS : RiemannSurface) (p : RS.carrier) where
   /-- The local coefficient function of the meromorphic 1-form -/
   localCoeff : RS.carrier → ℂ
-  /-- The residue value (a_{-1} coefficient in Laurent expansion at p) -/
-  value : ℂ
   /-- The local coefficient is meromorphic at p in chart coordinates -/
   meromorphicAt : letI := RS.topology
     letI := RS.chartedSpace
@@ -299,38 +297,50 @@ structure ResidueData (RS : RiemannSurface) (p : RS.carrier) where
     meromorphicOrderAt (localCoeff ∘ (extChartAt (I := 𝓘(ℂ, ℂ)) p).symm)
       (extChartAt (I := 𝓘(ℂ, ℂ)) p p) < 0
 
-/-- The residue of a meromorphic 1-form at a point, given residue data.
+/-- The residue of a meromorphic function at a pole, defined as the a_{-1}
+    Laurent coefficient.
 
-    For rigorous computation, this requires:
-    1. Laurent series expansion in local coordinates
-    2. Extraction of the a_{-1} coefficient
+    For a simple pole, Res_p(f) = lim_{z→p} (z - p) · f(z).
+    For higher-order poles, this is the coefficient of (z-p)^{-1} in the
+    Laurent expansion.
 
-    We define this using residue data provided as input. -/
+    **Definition:** From `MeromorphicAt f a`, we get `n : ℕ` such that
+    `g(z) = (z - a)^n · f(z)` is analytic at `a`. The Laurent expansion of
+    `f` has coefficients `a_k` where `a_{k-n}` = k-th Taylor coefficient of `g`.
+    The residue `a_{-1}` is the `(n-1)`-th Taylor coefficient of `g`, i.e.,
+    `g^{(n-1)}(a) / (n-1)!`. This is independent of the choice of `n`. -/
 noncomputable def residue (RS : RiemannSurface) (p : RS.carrier)
     (rd : ResidueData RS p) : ℂ :=
-  rd.value
+  letI := RS.topology
+  letI := RS.chartedSpace
+  haveI := RS.isManifold
+  let f := rd.localCoeff ∘ (extChartAt (I := 𝓘(ℂ, ℂ)) p).symm
+  let a := extChartAt (I := 𝓘(ℂ, ℂ)) p p
+  -- From MeromorphicAt: ∃ n : ℕ, AnalyticAt ℂ (fun z => (z - a) ^ n • f z) a
+  let n := rd.meromorphicAt.choose
+  -- The regularized function g(z) = (z - a)^n · f(z) is analytic at a.
+  -- Res_a(f) = g^{(n-1)}(a) / (n-1)!  (the (n-1)-th Taylor coefficient of g)
+  iteratedDeriv (n - 1) (fun z => (z - a) ^ n • f z) a / ↑(Nat.factorial (n - 1))
 
-/-- Residue theorem: the sum of residues of a meromorphic 1-form on a
-    compact Riemann surface is zero.
+/-- A global meromorphic 1-form on a compact Riemann surface with prescribed poles
+    and residues. This encodes the constraint that `residueValues` actually arises from
+    a meromorphic 1-form, not just arbitrary complex numbers at arbitrary points. -/
+def IsGlobalMeromorphic1FormWithResidues (CRS : CompactRiemannSurface)
+    (poles : Finset CRS.toRiemannSurface.carrier)
+    (residueValues : CRS.toRiemannSurface.carrier → ℂ) : Prop :=
+  -- There exist local coefficient functions at each pole such that:
+  -- 1. Each is meromorphic with a pole at the given point
+  -- 2. The residue at each pole matches residueValues
+  -- 3. They patch together to a global meromorphic 1-form
+  ∃ (localData : ∀ p ∈ poles, ResidueData CRS.toRiemannSurface p),
+    ∀ p (hp : p ∈ poles), residue CRS.toRiemannSurface p (localData p hp) = residueValues p
 
-    This fundamental theorem follows from Stokes' theorem:
-    Σ_p Res_p(ω) = (1/2πi) ∮_∂Σ ω = 0
-
-    since compact surfaces have no boundary.
-
-    **Note**: The hypothesis `hres` encodes the constraint that `residueValues` actually
-    arises from a meromorphic 1-form on the surface. Without this constraint, the sum
-    of arbitrary complex values over arbitrary points is not necessarily zero.
-    The full statement requires meromorphic 1-form infrastructure. -/
 theorem residue_theorem (CRS : CompactRiemannSurface)
     (poles : Finset CRS.toRiemannSurface.carrier)
     (residueValues : CRS.toRiemannSurface.carrier → ℂ)
-    (hres : ∃ (ω : Form_10 CRS.toRiemannSurface),
-      -- ω is holomorphic away from poles, and residueValues gives the residues
-      -- (Proper meromorphic form infrastructure is needed for the full statement)
-      True) :
+    (hres : IsGlobalMeromorphic1FormWithResidues CRS poles residueValues) :
     poles.sum residueValues = 0 := by
-  sorry  -- Requires: Stokes' theorem on Riemann surfaces, meromorphic form infrastructure
+  sorry  -- Requires: Stokes' theorem on Riemann surfaces
 
 /-!
 ## Kodaira Vanishing (Special Case)

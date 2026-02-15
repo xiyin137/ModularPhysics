@@ -296,12 +296,14 @@ structure Harmonic1Form (RS : RiemannSurfaces.RiemannSurface) where
   u_harmonic : HarmonicOnSurface RS u
   /-- v is harmonic -/
   v_harmonic : HarmonicOnSurface RS v
-  /-- Closedness: in each chart, u + iv is holomorphic (CR equations).
-      This is expressed by requiring (u, v) to be holomorphic when pulled back to ℂ via
-      some local chart around each point. -/
-  closed : ∀ (_ : RS.carrier),
-    ∃ (r : ℝ) (_ : r > 0) (φ : ℂ → RS.carrier),
-      DifferentiableOn ℂ (fun z => (⟨u (φ z), v (φ z)⟩ : ℂ)) (Metric.ball 0 r)
+  /-- Closedness: in each chart, u + iv satisfies the Cauchy-Riemann equations.
+      For each point p, pulling back via the chart at p gives a holomorphic function. -/
+  closed : letI := RS.topology
+    letI := RS.chartedSpace
+    ∀ (p : RS.carrier),
+      let e := @chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p
+      ∃ (r : ℝ) (_ : r > 0),
+        DifferentiableOn ℂ (fun z => (⟨u (e.symm z), v (e.symm z)⟩ : ℂ)) (Metric.ball (e p) r)
 
 /-- The space of harmonic 1-forms on a compact Riemann surface -/
 def Harmonic1FormSpace (CRS : RiemannSurfaces.CompactRiemannSurface) : Type :=
@@ -334,10 +336,12 @@ structure PoissonSolution (U : Set ℂ) (f : ℂ → ℝ) where
   /-- Satisfies Δu = f -/
   solves : ∀ z ∈ U, laplacian u z = f z
 
-/-- Existence of Poisson solution on bounded domain with Dirichlet boundary -/
+/-- Existence of Poisson solution on bounded domain with Dirichlet boundary condition.
+    Given source term f and boundary data g, there exists u solving Δu = f on U
+    with u = g on ∂U. -/
 theorem poisson_dirichlet_existence (U : Set ℂ) (hU : IsOpen U)
-    (hbdd : Bornology.IsBounded U) (f : ℂ → ℝ) (_ : ℂ → ℝ) :
-    ∃ u : PoissonSolution U f, True := by  -- with u = g on ∂U
+    (hbdd : Bornology.IsBounded U) (f : ℂ → ℝ) (g : ℂ → ℝ) :
+    ∃ u : PoissonSolution U f, ∀ z ∈ frontier U, u.u z = g z := by
   sorry
 
 end RiemannSurfaces.Analytic

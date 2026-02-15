@@ -577,6 +577,297 @@ theorem dim_harmonic_10_eq_genus (CRS : CompactRiemannSurface) :
       Function.Injective basis := by
   sorry
 
+/-!
+## De Rham Cohomology Infrastructure
+
+H¹_dR(X, ℂ) = closed 1-forms / exact 1-forms.
+
+On a Riemann surface (complex dim 1), a 1-form decomposes as ω = α + β where
+α ∈ Ω^{1,0} and β ∈ Ω^{0,1}. The exterior derivative is:
+  dω = ∂̄α + ∂β ∈ Ω^{1,1}
+(since ∂α ∈ Ω^{2,0} = 0 and ∂̄β ∈ Ω^{0,2} = 0 on a surface).
+
+Exact 1-forms are df = (∂f, ∂̄f) for ℝ-smooth f.
+-/
+
+/-- The ∂ operator on (0,1)-forms: ∂(g dz̄) = (∂g/∂z) dz ∧ dz̄.
+    Mirror of `dbar_10` using `wirtingerDeriv_z` instead of `wirtingerDeriv_zbar`.
+    No sign flip (unlike ∂̄ on (1,0)-forms) because dz ∧ dz̄ is the standard ordering. -/
+noncomputable def del_01 (ω : Form_01 RS) : Form_11 RS := by
+  letI := RS.topology
+  letI := RS.chartedSpace
+  exact Form_11.mk (fun p =>
+    wirtingerDeriv_z (ω.toSection ∘ (chartAt ℂ p).symm) ((chartAt ℂ p) p))
+
+/-- The ∂ operator on ℝ-smooth functions: ∂f = (∂f/∂z) dz.
+    Mirror of `dbar_real` (defined in DolbeaultCohomology.lean) using `wirtingerDeriv_z`. -/
+noncomputable def del_real (f : RealSmoothFunction RS) : Form_10 RS where
+  toSection := fun p =>
+    letI := RS.topology
+    letI := RS.chartedSpace
+    let e := @chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p
+    wirtingerDeriv_z (f.toFun ∘ e.symm) (e p)
+  smooth' := by
+    sorry -- Requires: wirtingerDeriv_z of ℝ-smooth function is ℝ-smooth
+
+/-- The ∂̄ operator on ℝ-smooth functions: ∂̄f = (∂f/∂z̄) dz̄.
+    Duplicated from DolbeaultCohomology.lean to avoid circular imports
+    (DolbeaultCohomology imports HodgeDecomposition). -/
+noncomputable def dbar_real_hd (f : RealSmoothFunction RS) : Form_01 RS where
+  toSection := fun p =>
+    letI := RS.topology
+    letI := RS.chartedSpace
+    let e := @chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p
+    wirtingerDeriv_zbar (f.toFun ∘ e.symm) (e p)
+  smooth' := by
+    sorry -- Requires: wirtingerDerivBar of ℝ-smooth function is ℝ-smooth
+
+/-!
+## Linearity of del_01, del_real, dbar_real_hd
+
+These operators are all defined via Wirtinger derivatives composed with charts.
+Their linearity follows from linearity of the Wirtinger derivatives.
+-/
+
+/-- Helper: Form_01 sections composed with chart inverse are ℝ-differentiable. -/
+private theorem form01_chart_differentiableAt (ω : Form_01 RS) (p : RS.carrier) :
+    letI := RS.topology; letI := RS.chartedSpace
+    DifferentiableAt ℝ (ω.toSection ∘ (chartAt ℂ p).symm) ((chartAt ℂ p) p) := by
+  letI := RS.topology; letI := RS.chartedSpace
+  haveI : IsManifold 𝓘(ℂ, ℂ) ⊤ RS.carrier := RS.isManifold
+  haveI : IsManifold 𝓘(ℝ, ℂ) ⊤ RS.carrier := isManifold_real_of_complex
+  exact Infrastructure.differentiableAt_chart_comp ω.smooth' p
+
+/-- Helper: RealSmoothFunction values composed with chart inverse are ℝ-differentiable. -/
+private theorem realSmooth_chart_differentiableAt_hd (f : RealSmoothFunction RS) (p : RS.carrier) :
+    letI := RS.topology; letI := RS.chartedSpace
+    DifferentiableAt ℝ (f.toFun ∘ (chartAt ℂ p).symm) ((chartAt ℂ p) p) := by
+  letI := RS.topology; letI := RS.chartedSpace
+  haveI := RS.isManifold
+  haveI : IsManifold 𝓘(ℝ, ℂ) ⊤ RS.carrier := isManifold_real_of_complex
+  exact Infrastructure.differentiableAt_chart_comp f.smooth' p
+
+-- ∂ on (0,1)-forms: linearity
+
+theorem del_01_add (ω₁ ω₂ : Form_01 RS) :
+    del_01 (ω₁ + ω₂) = del_01 ω₁ + del_01 ω₂ := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_11.ext; funext p
+  simp only [Form_11.add_toSection]
+  show Infrastructure.wirtingerDeriv ((ω₁ + ω₂).toSection ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) =
+    Infrastructure.wirtingerDeriv (ω₁.toSection ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) +
+    Infrastructure.wirtingerDeriv (ω₂.toSection ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p)
+  have hfun_eq : (ω₁ + ω₂).toSection ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      (ω₁.toSection ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) +
+      (ω₂.toSection ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) := by
+    ext z; simp only [Function.comp_apply, Form_01.add_toSection, Pi.add_apply]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDeriv_add (form01_chart_differentiableAt ω₁ p)
+    (form01_chart_differentiableAt ω₂ p)
+
+theorem del_01_smul (c : ℂ) (ω : Form_01 RS) :
+    del_01 (c • ω) = c • del_01 ω := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_11.ext; funext p
+  simp only [Form_11.smul_toSection]
+  show Infrastructure.wirtingerDeriv ((c • ω).toSection ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) =
+    c * Infrastructure.wirtingerDeriv (ω.toSection ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p)
+  have hfun_eq : (c • ω).toSection ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      c • (ω.toSection ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) := by
+    ext z; simp only [Function.comp_apply, Form_01.smul_toSection, Pi.smul_apply, smul_eq_mul]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDeriv_const_smul c (form01_chart_differentiableAt ω p)
+
+private theorem dbar_10_zero : dbar_10 (0 : Form_10 RS) = 0 := by
+  have : (0 : Form_10 RS) = (0 : ℂ) • (0 : Form_10 RS) := by simp
+  rw [this, dbar_10_smul, zero_smul]
+
+private theorem del_01_zero : del_01 (0 : Form_01 RS) = 0 := by
+  have : (0 : Form_01 RS) = (0 : ℂ) • (0 : Form_01 RS) := by simp
+  rw [this, del_01_smul, zero_smul]
+
+-- ∂ on ℝ-smooth functions: linearity
+
+theorem del_real_add (f g : RealSmoothFunction RS) :
+    del_real (f + g) = del_real f + del_real g := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_10.ext; funext p
+  simp only [Form_10.add_toSection]
+  show Infrastructure.wirtingerDeriv ((f + g).toFun ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) =
+    Infrastructure.wirtingerDeriv (f.toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) +
+    Infrastructure.wirtingerDeriv (g.toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p)
+  have hfun_eq : (f + g).toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      (f.toFun ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) +
+      (g.toFun ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) := by
+    ext z; simp only [Function.comp_apply, RealSmoothFunction.add_toFun, Pi.add_apply]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDeriv_add (realSmooth_chart_differentiableAt_hd f p)
+    (realSmooth_chart_differentiableAt_hd g p)
+
+theorem del_real_zero : del_real (0 : RealSmoothFunction RS) = 0 := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_10.ext; funext p
+  simp only [Form_10.zero_toSection]
+  show Infrastructure.wirtingerDeriv ((0 : RealSmoothFunction RS).toFun ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) = 0
+  have hfun_eq : (0 : RealSmoothFunction RS).toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      fun _ => 0 := by
+    ext z; simp only [Function.comp_apply, RealSmoothFunction.zero_toFun]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDeriv_const 0
+
+theorem del_real_const_mul (c : ℂ) (f : RealSmoothFunction RS) :
+    del_real (RealSmoothFunction.const c * f) = c • del_real f := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_10.ext; funext p
+  simp only [Form_10.smul_toSection]
+  show Infrastructure.wirtingerDeriv ((RealSmoothFunction.const c * f).toFun ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) =
+    c * Infrastructure.wirtingerDeriv (f.toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p)
+  have hfun_eq : (RealSmoothFunction.const c * f).toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      c • (f.toFun ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) := by
+    ext z
+    simp only [Function.comp_apply, RealSmoothFunction.mul_toFun, Pi.smul_apply,
+      smul_eq_mul, RealSmoothFunction.const]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDeriv_const_smul c (realSmooth_chart_differentiableAt_hd f p)
+
+-- ∂̄ on ℝ-smooth functions (local copy): linearity
+
+theorem dbar_real_hd_add (f g : RealSmoothFunction RS) :
+    dbar_real_hd (f + g) = dbar_real_hd f + dbar_real_hd g := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_01.ext; funext p
+  simp only [Form_01.add_toSection]
+  show Infrastructure.wirtingerDerivBar ((f + g).toFun ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) =
+    Infrastructure.wirtingerDerivBar (f.toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) +
+    Infrastructure.wirtingerDerivBar (g.toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p)
+  have hfun_eq : (f + g).toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      (f.toFun ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) +
+      (g.toFun ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) := by
+    ext z; simp only [Function.comp_apply, RealSmoothFunction.add_toFun, Pi.add_apply]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDerivBar_add (realSmooth_chart_differentiableAt_hd f p)
+    (realSmooth_chart_differentiableAt_hd g p)
+
+theorem dbar_real_hd_zero : dbar_real_hd (0 : RealSmoothFunction RS) = 0 := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_01.ext; funext p
+  simp only [Form_01.zero_toSection]
+  show Infrastructure.wirtingerDerivBar ((0 : RealSmoothFunction RS).toFun ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) = 0
+  have hfun_eq : (0 : RealSmoothFunction RS).toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      fun _ => 0 := by
+    ext z; simp only [Function.comp_apply, RealSmoothFunction.zero_toFun]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDerivBar_const 0
+
+theorem dbar_real_hd_const_mul (c : ℂ) (f : RealSmoothFunction RS) :
+    dbar_real_hd (RealSmoothFunction.const c * f) = c • dbar_real_hd f := by
+  letI := RS.topology; letI := RS.chartedSpace
+  apply Form_01.ext; funext p
+  simp only [Form_01.smul_toSection]
+  show Infrastructure.wirtingerDerivBar ((RealSmoothFunction.const c * f).toFun ∘
+    (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+    ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p) =
+    c * Infrastructure.wirtingerDerivBar (f.toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm)
+      ((@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p) p)
+  have hfun_eq : (RealSmoothFunction.const c * f).toFun ∘
+      (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm =
+      c • (f.toFun ∘ (@chartAt ℂ _ RS.carrier RS.topology RS.chartedSpace p).symm) := by
+    ext z
+    simp only [Function.comp_apply, RealSmoothFunction.mul_toFun, Pi.smul_apply,
+      smul_eq_mul, RealSmoothFunction.const]
+  rw [hfun_eq]
+  exact Infrastructure.wirtingerDerivBar_const_smul c (realSmooth_chart_differentiableAt_hd f p)
+
+/-- Closed ℂ-valued 1-forms on a Riemann surface.
+    A 1-form (α, β) ∈ Ω^{1,0} ⊕ Ω^{0,1} is closed iff dω = ∂̄α + ∂β = 0 in Ω^{1,1}. -/
+def closedForms1 (RS : RiemannSurface) : Submodule ℂ (Form_10 RS × Form_01 RS) where
+  carrier := { ω | dbar_10 ω.1 + del_01 ω.2 = 0 }
+  add_mem' := by
+    intro a b ha hb
+    show dbar_10 (a.1 + b.1) + del_01 (a.2 + b.2) = 0
+    rw [dbar_10_add, del_01_add]
+    have : (dbar_10 a.1 + dbar_10 b.1) + (del_01 a.2 + del_01 b.2) =
+        (dbar_10 a.1 + del_01 a.2) + (dbar_10 b.1 + del_01 b.2) := by abel
+    rw [this, ha, hb, add_zero]
+  zero_mem' := by
+    show dbar_10 0 + del_01 0 = 0
+    rw [dbar_10_zero, del_01_zero, add_zero]
+  smul_mem' := by
+    intro c ω hω
+    show dbar_10 (c • ω.1) + del_01 (c • ω.2) = 0
+    rw [dbar_10_smul, del_01_smul, ← smul_add, hω, smul_zero]
+
+/-- Exact 1-forms: df = (∂f, ∂̄f) for ℝ-smooth f.
+    These form a submodule since d is ℂ-linear on functions. -/
+def exactForms1 (RS : RiemannSurface) : Submodule ℂ (Form_10 RS × Form_01 RS) where
+  carrier := { ω | ∃ f : RealSmoothFunction RS, ω.1 = del_real f ∧ ω.2 = dbar_real_hd f }
+  add_mem' := by
+    intro a b ⟨f, hf1, hf2⟩ ⟨g, hg1, hg2⟩
+    refine ⟨f + g, ?_, ?_⟩
+    · show a.1 + b.1 = del_real (f + g)
+      rw [del_real_add, ← hf1, ← hg1]
+    · show a.2 + b.2 = dbar_real_hd (f + g)
+      rw [dbar_real_hd_add, ← hf2, ← hg2]
+  zero_mem' := ⟨0, by show (0 : Form_10 RS) = del_real 0; rw [del_real_zero],
+    by show (0 : Form_01 RS) = dbar_real_hd 0; rw [dbar_real_hd_zero]⟩
+  smul_mem' := by
+    intro c ω ⟨f, hf1, hf2⟩
+    refine ⟨RealSmoothFunction.const c * f, ?_, ?_⟩
+    · show c • ω.1 = del_real (RealSmoothFunction.const c * f)
+      rw [del_real_const_mul, ← hf1]
+    · show c • ω.2 = dbar_real_hd (RealSmoothFunction.const c * f)
+      rw [dbar_real_hd_const_mul, ← hf2]
+
+/-- De Rham cohomology H¹_dR(X, ℂ) = closed 1-forms / exact 1-forms.
+
+    A 1-form ω = α dz + β dz̄ is closed iff ∂̄α + ∂β = 0.
+    It is exact iff (α, β) = (∂f, ∂̄f) for some ℝ-smooth f.
+
+    For a compact Riemann surface of genus g, dim H¹_dR = 2g.
+    By the Hodge theorem, H¹_dR ≅ H^{1,0} ⊕ H^{0,1} (harmonic representatives). -/
+noncomputable def DeRhamH1 (CRS : CompactRiemannSurface) : Type :=
+  closedForms1 CRS.toRiemannSurface ⧸
+    Submodule.comap (closedForms1 CRS.toRiemannSurface).subtype
+      (exactForms1 CRS.toRiemannSurface)
+
 /-- Hodge theorem: Harmonic forms represent de Rham cohomology.
     H^1_dR(X) ≅ H^1_harm(X) for compact X.
 
@@ -589,9 +880,8 @@ theorem dim_harmonic_10_eq_genus (CRS : CompactRiemannSurface) :
 theorem hodge_isomorphism (CRS : CompactRiemannSurface) :
     ∃ (harmonic_to_deRham :
         (Harmonic10Forms CRS.toRiemannSurface ⊕ Harmonic01Forms CRS.toRiemannSurface) →
-        -- Target would be H^1_dR, represented as closed forms mod exact
-        Unit),  -- Placeholder for de Rham cohomology type
-      Function.Surjective harmonic_to_deRham := by
+        DeRhamH1 CRS),
+      Function.Bijective harmonic_to_deRham := by
   -- Every closed form is cohomologous to a unique harmonic form
   -- This requires the Hodge decomposition and elliptic regularity
   sorry
@@ -656,6 +946,28 @@ The Dolbeault theorem identifies:
 where Ω^p is the sheaf of holomorphic p-forms.
 -/
 
+/-- The image of ∂̄ : C^∞(X) → Ω^{0,1}(X) as a ℂ-submodule of (0,1)-forms.
+    Duplicated from DolbeaultCohomology.lean to avoid circular imports.
+    Uses `dbar_real_hd` (the local copy of `dbar_real`). -/
+def dbarImage_hd (RS : RiemannSurface) : Submodule ℂ (Form_01 RS) where
+  carrier := { ω | ∃ f : RealSmoothFunction RS, dbar_real_hd f = ω }
+  add_mem' := by
+    intro a b ⟨f, hf⟩ ⟨g, hg⟩
+    exact ⟨f + g, by rw [dbar_real_hd_add, hf, hg]⟩
+  zero_mem' := ⟨0, dbar_real_hd_zero⟩
+  smul_mem' := by
+    intro c ω ⟨f, hf⟩
+    exact ⟨RealSmoothFunction.const c * f, by rw [dbar_real_hd_const_mul, hf]⟩
+
+/-- Sheaf cohomology H¹(X, O) defined analytically as the Dolbeault quotient
+    Ω^{0,1}(X) / im(∂̄). By the Dolbeault theorem, this is isomorphic to the
+    sheaf cohomology H¹(X, O_X) defined via Čech cohomology or derived functors.
+
+    This is a local copy of `DolbeaultH01` from DolbeaultCohomology.lean,
+    defined here to break the circular import dependency. -/
+noncomputable def SheafH1O (CRS : CompactRiemannSurface) : Type :=
+  Form_01 CRS.toRiemannSurface ⧸ dbarImage_hd CRS.toRiemannSurface
+
 /-- Dolbeault isomorphism: H^{0,1}_∂̄ ≅ H¹(X, O) where O is the structure sheaf.
 
     The Dolbeault cohomology H^{0,1}_∂̄(X) = Ω^{0,1}(X) / im(∂̄)
@@ -668,7 +980,7 @@ where Ω^p is the sheaf of holomorphic p-forms.
     The isomorphism is given by the ∂̄-Poincaré lemma and the
     long exact sequence in sheaf cohomology. -/
 theorem dolbeault_isomorphism_01 (CRS : CompactRiemannSurface) :
-    ∃ (iso : Harmonic01Forms CRS.toRiemannSurface → Unit),  -- Target is H¹(X, O)
+    ∃ (iso : Harmonic01Forms CRS.toRiemannSurface → SheafH1O CRS),
       Function.Bijective iso := by
   -- The Dolbeault isomorphism requires:
   -- 1. ∂̄-Poincaré lemma (local exactness)

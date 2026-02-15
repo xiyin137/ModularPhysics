@@ -874,16 +874,73 @@ with τᵢ = min(tᵢ, u), ΔXᵢ = X(τᵢ₊₁) - X(τᵢ), ΔDᵢ = ∫_{τ�
 
 Each E[Eₖ²] → 0 as mesh → 0. We bound E[error²] ≤ 4Σ E[Eₖ²] via (a+b+c+d)² ≤ 4(a²+b²+c²+d²). -/
 
+/-- Per-summand telescope algebra: S1 + S2 + S3 + S4 + f'·ΔSI = g_{i+1} - g_i,
+    given ΔSI = ΔX - ΔD (from integral form). -/
+private lemma summand_telescope_algebra
+    (ftu_xu ft_xu ft_xi fprime_xi dx dd dsi half_fpp_xi : ℝ)
+    (h_si : dsi = dx - dd) :
+    -- S1          + S2              + S3                  + S4 (= spatial Taylor remainder)           + SI
+    (ftu_xu - ft_xu) + (fprime_xi * dd) + (half_fpp_xi * dx ^ 2) +
+    (ft_xu - ft_xi - fprime_xi * dx - half_fpp_xi * dx ^ 2) +
+    (fprime_xi * dsi) = ftu_xu - ft_xi := by
+  rw [h_si]; ring
+
+/-- When t_i ≤ u, min(t_i, u) = t_i so unclamped = clamped.
+    When t_i > u, both min endpoints equal u so ΔSI = 0.
+    In both cases: f'(unclamped) * ΔSI = f'(clamped) * ΔSI. -/
+private lemma fprime_unclamped_clamped_si
+    {t_i : ℝ} {u : ℝ} (fprime_uc fprime_c dsi : ℝ)
+    (h_eq : t_i ≤ u → fprime_uc = fprime_c)
+    (h_zero : u < t_i → dsi = 0) :
+    fprime_uc * dsi = fprime_c * dsi := by
+  by_cases h : t_i ≤ u
+  · rw [h_eq h]
+  · push_neg at h; rw [h_zero h, mul_zero, mul_zero]
+
+/-- Telescope lemma for sums over Fin: ∑ᵢ (g(i+1) - g(i)) = g(n) - g(0). -/
+private lemma fin_sum_sub_telescope (g : ℕ → ℝ) (n : ℕ) :
+    ∑ i : Fin n, (g (↑i + 1) - g ↑i) = g n - g 0 := by
+  induction n with
+  | zero => simp
+  | succ n ih =>
+    rw [Fin.sum_univ_castSucc]
+    simp only [Fin.val_castSucc, Fin.val_last]
+    linarith
+
+/-- Algebraic identity for Itô error decomposition.
+    Given: integral splitting, remainder definition, and sum decomposition,
+    concludes SI - Rem = (∫a - S1) + (∫b - S2) + (∫c - S3) - S4. -/
+private lemma error_decomp_algebra
+    (SI Rem int_abc int_a int_b int_c S1 S2 S3 S4 gu g0 : ℝ)
+    (h_split : int_abc = int_a + int_b + int_c)
+    (h_rem : Rem = gu - g0 - int_abc)
+    (h_sum : S1 + S2 + S3 + S4 + SI = gu - g0) :
+    SI - Rem = (int_a - S1) + (int_b - S2) + (int_c - S3) - S4 := by
+  linarith
+
 /-- The error identity: siIncrementApprox(u) - itoRemainder(u) equals
     the sum of time-Riemann + drift-Riemann + QV errors minus the Taylor remainder.
 
     This follows from the telescope identity
     f(u,X_u) - f(0,X_0) = Σᵢ [f(τᵢ₊₁,X(τᵢ₊₁)) - f(τᵢ,X(τᵢ))]
-    split into spatial and time changes, with Taylor expansion of the spatial part. -/
+    split into spatial and time changes, with Taylor expansion of the spatial part.
+
+    The bound is a.e. because the proof uses `integral_form` (X = X₀ + ∫drift + SI)
+    which holds a.e. in ω. -/
 private lemma ito_error_decomposition {F : Filtration Ω ℝ}
+    [IsProbabilityMeasure μ]
     (X : ItoProcess F μ) (f : ℝ → ℝ → ℝ)
     (hf_x : ∀ t, ContDiff ℝ 2 (fun x => f t x))
-    (T : ℝ) (hT : 0 < T) (n : ℕ) (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T) (ω : Ω) :
+    (T : ℝ) (hT : 0 < T) (n : ℕ) (u : ℝ) (hu : 0 ≤ u) (huT : u ≤ T)
+    (hint_t : ∀ ω, IntegrableOn
+      (fun s => deriv (fun t => f t (X.process s ω)) s) (Set.Icc 0 u) volume)
+    (hint_d : ∀ ω, IntegrableOn
+      (fun s => deriv (fun x => f s x) (X.process s ω) * X.drift s ω)
+      (Set.Icc 0 u) volume)
+    (hint_σ : ∀ ω, IntegrableOn
+      (fun s => (1 : ℝ) / 2 * deriv (deriv (fun x => f s x)) (X.process s ω) *
+        (X.diffusion s ω) ^ 2) (Set.Icc 0 u) volume) :
+    ∀ᵐ ω ∂μ,
     (siIncrementApprox X f T n u ω - itoRemainder X f u ω)^2 ≤
     4 * ((∫ s in Set.Icc 0 u,
         deriv (fun t => f t (X.process s ω)) s ∂volume -
@@ -922,6 +979,16 @@ private lemma ito_error_decomposition {F : Filtration Ω ℝ}
             (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
           (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
            X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2))^2) := by
+  -- Step 0: Get integral_form at all partition times (a.e.)
+  -- For each partition time τᵢ = min(i·T/(n+1), u), we need X(τᵢ) = X₀ + ∫drift + SI(τᵢ)
+  have h_ae : ∀ᵐ ω ∂μ, ∀ i : Fin (n + 2),
+      X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω =
+      X.process 0 ω +
+      (∫ s in Set.Icc 0 (min (↑(i : ℕ) * T / ↑(n + 1)) u), X.drift s ω ∂volume) +
+      X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω := by
+    rw [ae_all_iff]; intro i
+    exact X.integral_form _ (le_min (by positivity) hu)
+  filter_upwards [h_ae] with ω hω
   -- Name the four error terms
   set E1 := ∫ s in Set.Icc 0 u,
       deriv (fun t => f t (X.process s ω)) s ∂volume -
@@ -929,7 +996,7 @@ private lemma ito_error_decomposition {F : Filtration Ω ℝ}
       (f (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u)
         (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
        f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
-        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω))
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω)) with hE1_def
   set E2 := ∫ s in Set.Icc 0 u,
       deriv (fun x => f s x) (X.process s ω) * X.drift s ω ∂volume -
     ∑ i : Fin (n + 1),
@@ -937,7 +1004,7 @@ private lemma ito_error_decomposition {F : Filtration Ω ℝ}
         (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
       (∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
           (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u),
-        X.drift s ω ∂volume)
+        X.drift s ω ∂volume) with hE2_def
   set E3 := ∫ s in Set.Icc 0 u,
       (1 : ℝ) / 2 * deriv (deriv (fun x => f s x)) (X.process s ω) *
       (X.diffusion s ω) ^ 2 ∂volume -
@@ -945,7 +1012,7 @@ private lemma ito_error_decomposition {F : Filtration Ω ℝ}
       (1 : ℝ) / 2 * deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
         (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
       (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
-       X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2
+       X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2 with hE3_def
   set E4 := ∑ i : Fin (n + 1),
       (f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
         (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
@@ -959,16 +1026,159 @@ private lemma ito_error_decomposition {F : Filtration Ω ℝ}
         deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
           (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
         (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
-         X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2)
+         X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2) with hE4_def
   -- Step 1: The error equals E1 + E2 + E3 - E4
-  -- (From telescope identity + Taylor expansion, see docstring)
+  -- (From telescope identity + Taylor expansion + integral_form)
   suffices h_ident : siIncrementApprox X f T n u ω - itoRemainder X f u ω =
       E1 + E2 + E3 - E4 by
     -- Step 2: Apply four-term Cauchy-Schwarz inequality
     rw [h_ident]
     exact four_sq_sub_bound E1 E2 E3 E4
-  -- The identity proof: telescope + time/space split + Taylor expansion + X = X₀ + D + SI
-  sorry
+  -- Step 1: From integral form (hω), derive ΔSI_i = ΔX_i - (∫₀^{τ_{i+1}} - ∫₀^{τ_i}) drift
+  -- where τ_i = min(i·T/(n+1), u)
+  have h_delta_si : ∀ i : Fin (n + 1),
+      X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+      X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω =
+      (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+      (∫ s in Set.Icc 0 (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u), X.drift s ω ∂volume -
+       ∫ s in Set.Icc 0 (min (↑(i : ℕ) * T / ↑(n + 1)) u), X.drift s ω ∂volume) := by
+    intro i
+    have h1 := hω ⟨i.val + 1, by omega⟩
+    have h0 := hω ⟨i.val, by omega⟩
+    -- Normalize Nat.cast: ↑(i.val + 1) → ↑i.val + 1, ↑(n + 1) → ↑n + 1
+    simp only [Nat.cast_add, Nat.cast_one] at h1 h0 ⊢
+    linarith
+  -- Step 2: Interval splitting: ∫₀^{τ_{i+1}} - ∫₀^{τ_i} = ∫_{τ_i}^{τ_{i+1}} drift
+  have h_drift_split : ∀ i : Fin (n + 1),
+      ∫ s in Set.Icc 0 (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u), X.drift s ω ∂volume -
+      ∫ s in Set.Icc 0 (min (↑(i : ℕ) * T / ↑(n + 1)) u), X.drift s ω ∂volume =
+      ∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u), X.drift s ω ∂volume := by
+    intro i
+    have h_tau_nn : 0 ≤ min (↑(i : ℕ) * T / ↑(n + 1)) u := le_min (by positivity) hu
+    have h_tau_le : min (↑(i : ℕ) * T / ↑(n + 1)) u ≤
+        min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u :=
+      min_le_min_right u (div_le_div_of_nonneg_right
+        (by nlinarith : (↑(i : ℕ) : ℝ) * T ≤ (↑(i : ℕ) + 1) * T) (Nat.cast_nonneg _))
+    linarith [setIntegral_Icc_split h_tau_nn h_tau_le
+      (X.drift_time_integrable ω _ (le_min (by positivity) hu))]
+  -- Step 3: Combined: ΔSI = ΔX - ΔD (drift over [τ_i, τ_{i+1}])
+  have h_si_xd : ∀ i : Fin (n + 1),
+      X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+      X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω =
+      (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) -
+      ∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u), X.drift s ω ∂volume := by
+    intro i; linarith [h_delta_si i, h_drift_split i]
+  -- Step 4: Integral splitting ∫(a+b+c) = ∫a + ∫b + ∫c
+  have h_split : ∫ s in Set.Icc 0 u,
+      (deriv (fun t => f t (X.process s ω)) s +
+       deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
+       (1 / 2) * deriv (deriv (fun x => f s x)) (X.process s ω) *
+         (X.diffusion s ω) ^ 2) ∂volume =
+    (∫ s in Set.Icc 0 u, deriv (fun t => f t (X.process s ω)) s ∂volume) +
+    (∫ s in Set.Icc 0 u, deriv (fun x => f s x) (X.process s ω) *
+       X.drift s ω ∂volume) +
+    (∫ s in Set.Icc 0 u, (1 / 2) * deriv (deriv (fun x => f s x)) (X.process s ω) *
+       (X.diffusion s ω) ^ 2 ∂volume) := by
+    have h12 := integral_add (hint_t ω) (hint_d ω)
+    have h123 := integral_add ((hint_t ω).add (hint_d ω)) (hint_σ ω)
+    simp only [Pi.add_apply] at h12 h123
+    linarith
+  -- Step 5: The identity follows from error_decomp_algebra
+  -- We need: h_rem (itoRemainder unfolds) and h_sum (combined sum telescopes)
+  have h_rem : itoRemainder X f u ω = f u (X.process u ω) - f 0 (X.process 0 ω) -
+    ∫ s in Set.Icc 0 u,
+      (deriv (fun t => f t (X.process s ω)) s +
+       deriv (fun x => f s x) (X.process s ω) * X.drift s ω +
+       (1 / 2) * deriv (deriv (fun x => f s x)) (X.process s ω) *
+         (X.diffusion s ω) ^ 2) ∂volume := rfl
+  -- Prove h_ident via telescope identity + linarith
+  -- Step A: Define telescope function g and prove endpoints
+  let g : ℕ → ℝ := fun j => f (min (↑j * T / ↑(n + 1)) u)
+    (X.process (min (↑j * T / ↑(n + 1)) u) ω)
+  have hg0 : g 0 = f 0 (X.process 0 ω) := by
+    show f (min (↑(0 : ℕ) * T / ↑(n + 1)) u) _ = _
+    simp [zero_mul, zero_div, min_eq_left hu]
+  have hgn : g (n + 1) = f u (X.process u ω) := by
+    show f (min (↑(n + 1) * T / ↑(n + 1)) u) _ = _
+    rw [mul_div_cancel_left₀ T (Nat.cast_ne_zero.mpr (by omega : n + 1 ≠ 0)),
+        min_eq_right huT]
+  -- Step B: Telescope ∑(g(i+1) - g(i)) = f(u,X_u) - f(0,X_0)
+  have h_tele : ∑ i : Fin (n + 1), (g (↑i + 1) - g ↑i) =
+      f u (X.process u ω) - f 0 (X.process 0 ω) := by
+    rw [fin_sum_sub_telescope, hgn, hg0]
+  -- Step C: Per-summand identity (unclamped→clamped + algebra = g(i+1) - g(i))
+  -- After combining all 5 per-summand contributions and rewriting the unclamped f'
+  -- to clamped f', summand_telescope_algebra closes each summand.
+  -- We prove h_sum: the 5 sums combined = f(u,X_u) - f(0,X_0)
+  -- by unfolding E4 and siIncrementApprox, combining, and telescoping.
+  have h_sum : (∑ i : Fin (n + 1),
+      (f (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u)
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω) -
+       f (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+        (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω))) +
+    (∑ i : Fin (n + 1),
+      deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+        (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+      (∫ s in Set.Icc (min (↑(i : ℕ) * T / ↑(n + 1)) u)
+          (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u),
+        X.drift s ω ∂volume)) +
+    (∑ i : Fin (n + 1),
+      (1 : ℝ) / 2 * deriv (deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x))
+        (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+      (X.process (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+       X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) ^ 2) +
+    E4 + siIncrementApprox X f T n u ω =
+    f u (X.process u ω) - f 0 (X.process 0 ω) := by
+    -- Unfold E4 and siIncrementApprox to expose their sums
+    rw [hE4_def, siIncrementApprox]
+    -- Combine all 5 sums into one
+    simp only [← Finset.sum_add_distrib]
+    -- Per-summand identity: rewrite unclamped→clamped, then algebra
+    rw [show ∑ i : Fin (n + 1), _ = ∑ i : Fin (n + 1), (g (↑i + 1) - g ↑i) from
+      Finset.sum_congr rfl fun i _ => by
+        -- Step i: rewrite SI from unclamped to clamped f'
+        have h_fprime : deriv (fun x => f (↑(i : ℕ) * T / ↑(n + 1)) x)
+            (X.process (↑(i : ℕ) * T / ↑(n + 1)) ω) *
+            (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+             X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) =
+          deriv (fun x => f (min (↑(i : ℕ) * T / ↑(n + 1)) u) x)
+            (X.process (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) *
+            (X.stoch_integral (min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u) ω -
+             X.stoch_integral (min (↑(i : ℕ) * T / ↑(n + 1)) u) ω) :=
+          fprime_unclamped_clamped_si _ _ _
+            (fun h => by rw [min_eq_left h])
+            (fun h => by
+              rw [min_eq_right (le_of_lt h),
+                  show min ((↑(i : ℕ) + 1) * T / ↑(n + 1)) u = u from
+                    min_eq_right (by
+                      have : (↑(i : ℕ) + 1) * T / ↑(n + 1) =
+                        ↑(i : ℕ) * T / ↑(n + 1) + T / ↑(n + 1) := by ring
+                      linarith [div_nonneg hT.le (Nat.cast_nonneg (n + 1))]),
+                  sub_self])
+        rw [h_fprime, h_si_xd i]
+        -- Step ii: expand f'*(dx-dd) in SI term to f'*dx - f'*dd, then linarith
+        conv_lhs => arg 2; rw [mul_sub]
+        -- Unfold g at the endpoints so linarith can see the atoms
+        have hgi : g ↑i = f (min (↑↑i * T / ↑(n + 1)) u)
+            (X.process (min (↑↑i * T / ↑(n + 1)) u) ω) := rfl
+        have hgi1 : g (↑i + 1) = f (min ((↑↑i + 1) * T / ↑(n + 1)) u)
+            (X.process (min ((↑↑i + 1) * T / ↑(n + 1)) u) ω) := by
+          change f (min ((↑((i : ℕ) + 1) : ℝ) * T / ↑(n + 1)) u)
+              (X.process (min ((↑((i : ℕ) + 1) : ℝ) * T / ↑(n + 1)) u) ω) = _
+          simp only [Nat.cast_add, Nat.cast_one]
+        linarith]
+    exact h_tele
+  -- Step D: Close h_ident via linarith
+  -- E1 = ∫a - ∑S1, E2 = ∫b - ∑S2, E3 = ∫c - ∑S3 (by definition)
+  -- h_rem: Rem = f_u - f_0 - ∫abc
+  -- h_split: ∫abc = ∫a + ∫b + ∫c
+  -- h_sum: ∑S1 + ∑S2 + ∑S3 + E4 + SI = f_u - f_0
+  -- Goal: SI - Rem = E1 + E2 + E3 - E4
+  linarith [hE1_def, hE2_def, hE3_def, h_rem, h_split, h_sum]
 
 /-- Time-derivative Riemann error → 0 in L². -/
 private lemma time_riemann_L2_convergence {F : Filtration Ω ℝ}

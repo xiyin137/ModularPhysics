@@ -59,35 +59,81 @@ noncomputable def dbar_real (f : RealSmoothFunction RS) : Form_01 RS where
            -- This follows from: wirtingerDerivBar = (1/2)(∂/∂x + i∂/∂y)
            -- and ℝ-smoothness is preserved under real partial derivatives
 
-/-- ∂̄ is ℂ-linear on ℝ-smooth functions (as a map to (0,1)-forms).
+/-- Helper: extract DifferentiableAt from RealSmoothFunction. -/
+private theorem realSmooth_differentiableAt_chart (f : RealSmoothFunction RS) (p : RS.carrier) :
+    letI := RS.topology
+    letI := RS.chartedSpace
+    haveI := RS.isManifold
+    DifferentiableAt ℝ (f.toFun ∘ (chartAt ℂ p).symm) ((chartAt ℂ p) p) := by
+  letI := RS.topology; letI := RS.chartedSpace; haveI := RS.isManifold
+  haveI := isManifold_real_of_complex (M := RS.carrier)
+  exact Infrastructure.differentiableAt_chart_comp f.smooth' p
 
-    Note: RealSmoothFunction is a ℂ-algebra (not just ℝ-algebra), since
-    ℂ-scalar multiplication preserves ℝ-smoothness. -/
 theorem dbar_real_add (f g : RealSmoothFunction RS) :
     dbar_real (f + g) = dbar_real f + dbar_real g := by
-  apply Form_01.ext; funext p
-  -- wirtingerDerivBar is additive (fderiv linearity)
-  sorry
+  ext p
+  show (dbar_real (f + g)).toSection p = ((dbar_real f) + (dbar_real g)).toSection p
+  simp only [Form_01.add_toSection]
+  -- Both sides unfold to wirtingerDerivBar applied to compositions with chart
+  show wirtingerDeriv_zbar ((f + g).toFun ∘ _) _ =
+    wirtingerDeriv_zbar (f.toFun ∘ _) _ + wirtingerDeriv_zbar (g.toFun ∘ _) _
+  simp only [wirtingerDeriv_zbar]
+  -- The composition (f+g) ∘ e.symm = (f ∘ e.symm) + (g ∘ e.symm) pointwise
+  letI := RS.topology; letI := RS.chartedSpace; haveI := RS.isManifold
+  have hcomp : (f + g).toFun ∘ (chartAt ℂ p).symm =
+      (f.toFun ∘ (chartAt ℂ p).symm) + (g.toFun ∘ (chartAt ℂ p).symm) :=
+    funext fun z => by simp [RealSmoothFunction.add_toFun]
+  rw [hcomp]
+  exact Infrastructure.wirtingerDerivBar_add
+    (realSmooth_differentiableAt_chart f p) (realSmooth_differentiableAt_chart g p)
 
 theorem dbar_real_zero : dbar_real (0 : RealSmoothFunction RS) = 0 := by
-  apply Form_01.ext; funext p
-  -- wirtingerDerivBar of 0 is 0
-  sorry
+  ext p
+  show (dbar_real (0 : RealSmoothFunction RS)).toSection p = (0 : Form_01 RS).toSection p
+  simp only [Form_01.zero_toSection]
+  show wirtingerDeriv_zbar ((0 : RealSmoothFunction RS).toFun ∘ _) _ = 0
+  simp only [wirtingerDeriv_zbar]
+  letI := RS.topology; letI := RS.chartedSpace; haveI := RS.isManifold
+  have hcomp : (0 : RealSmoothFunction RS).toFun ∘ (chartAt ℂ p).symm = fun _ => (0 : ℂ) :=
+    funext fun z => by simp [RealSmoothFunction.zero_toFun]
+  rw [hcomp]
+  exact Infrastructure.wirtingerDerivBar_const 0
 
 /-- ∂̄(c · f) = c · ∂̄f for constant c ∈ ℂ and ℝ-smooth f.
     Here scalar multiplication on RealSmoothFunction is via const(c) * f. -/
 theorem dbar_real_const_mul (c : ℂ) (f : RealSmoothFunction RS) :
     dbar_real (RealSmoothFunction.const c * f) = c • dbar_real f := by
-  apply Form_01.ext; funext p
-  -- ∂̄(cf) = (∂̄c)f + c(∂̄f) = 0 + c(∂̄f) since c is constant
-  sorry
+  ext p
+  show (dbar_real (RealSmoothFunction.const c * f)).toSection p = (c • dbar_real f).toSection p
+  simp only [Form_01.smul_toSection]
+  show wirtingerDeriv_zbar ((RealSmoothFunction.const c * f).toFun ∘ _) _ =
+    c * wirtingerDeriv_zbar (f.toFun ∘ _) _
+  simp only [wirtingerDeriv_zbar]
+  letI := RS.topology; letI := RS.chartedSpace; haveI := RS.isManifold
+  -- (const c * f) ∘ e.symm = c • (f ∘ e.symm)
+  have hcomp : (RealSmoothFunction.const c * f).toFun ∘ (chartAt ℂ p).symm =
+      c • (f.toFun ∘ (chartAt ℂ p).symm) :=
+    funext fun z => by
+      simp only [Function.comp_apply, RealSmoothFunction.mul_toFun,
+        Pi.smul_apply, smul_eq_mul, RealSmoothFunction.const]
+  rw [hcomp]
+  exact Infrastructure.wirtingerDerivBar_const_smul c (realSmooth_differentiableAt_chart f p)
 
 /-- Holomorphic functions have ∂̄ = 0 (consistent with dbar_fun). -/
 theorem dbar_real_of_holomorphic (f : SmoothFunction RS) :
     dbar_real f.toRealSmooth = 0 := by
-  apply Form_01.ext; funext p
-  -- f is holomorphic (ℂ-smooth), so wirtingerDerivBar = 0
-  sorry
+  -- dbar_real f.toRealSmooth has the same section as dbar_fun f
+  -- (since f.toRealSmooth.toFun = f.toFun definitionally)
+  have heq : dbar_real f.toRealSmooth = dbar_fun f := by
+    apply Form_01.ext; funext p; rfl
+  -- dbar_fun f = 0 because f is ℂ-smooth hence MDifferentiable hence holomorphic
+  have hzero : dbar_fun f = 0 := by
+    have : f.IsHolomorphic := by
+      rw [isHolomorphic_iff_mDifferentiable]
+      letI := RS.topology; letI := RS.chartedSpace; haveI := RS.isManifold
+      exact f.smooth'.mdifferentiable (by decide : (⊤ : WithTop ℕ∞) ≠ 0)
+    exact this
+  exact heq.trans hzero
 
 /-- A (0,1)-form is ∂̄-exact (in the ℝ-smooth sense) if it's in the image
     of ∂̄ : Ω^{0,0}_ℝ → Ω^{0,1}. -/
@@ -165,5 +211,92 @@ theorem dolbeault_hodge_iso (CRS : CompactRiemannSurface) :
 theorem h1_trivial_eq_genus (CRS : CompactRiemannSurface) :
     h1_dolbeault_trivial CRS = CRS.genus := by
   sorry -- from dolbeault_hodge_iso + conjugate_harmonic_iso_bijective + dim_harmonic_10_eq_genus
+
+/-!
+## Twisted Dolbeault Cohomology H^{0,1}(O(D))
+
+For a holomorphic line bundle O(D) on a compact Riemann surface X, the twisted
+∂̄ operator acts on smooth sections of O(D). Since every line bundle on a surface
+is smoothly trivial, we can identify smooth sections with smooth functions via a
+smooth trivialization. In this trivialization, ∂̄_D becomes ∂̄ + A where
+A ∈ Ω^{0,1}(X) is a (0,1)-connection form encoding the holomorphic structure.
+
+The twisted Dolbeault cohomology is H^{0,1}(O(D)) = Ω^{0,1} / im(∂̄ + A).
+Its dimension h¹(D) = dim_ℂ H^{0,1}(O(D)) is independent of the choice of
+trivialization (different choices of A give isomorphic quotients).
+-/
+
+/-- The twisted ∂̄ operator: ∂̄_A(f) = ∂̄f + A · f, where A ∈ Ω^{0,1} is a
+    connection form for a holomorphic line bundle.
+
+    In a smooth trivialization of the line bundle O(D), the ∂̄ operator on
+    smooth sections becomes ∂̄ + A where A encodes the holomorphic structure.
+    For A = 0, this reduces to the ordinary ∂̄ operator `dbar_real`. -/
+noncomputable def dbar_twisted (A : Form_01 RS) (f : RealSmoothFunction RS) :
+    Form_01 RS where
+  toSection := fun p => (dbar_real f).toSection p + f.toFun p * A.toSection p
+  smooth' := by
+    sorry -- Requires: pointwise product of smooth function and smooth (0,1)-form is smooth
+
+/-- Twisted ∂̄ is additive: ∂̄_A(f+g) = ∂̄_A(f) + ∂̄_A(g). -/
+private theorem dbar_twisted_add (A : Form_01 RS) (f g : RealSmoothFunction RS) :
+    dbar_twisted A (f + g) = dbar_twisted A f + dbar_twisted A g := by
+  apply Form_01.ext; funext p
+  show (dbar_real (f + g)).toSection p + (f + g).toFun p * A.toSection p =
+    ((dbar_real f).toSection p + f.toFun p * A.toSection p) +
+    ((dbar_real g).toSection p + g.toFun p * A.toSection p)
+  have h : (dbar_real (f + g)).toSection p =
+      (dbar_real f).toSection p + (dbar_real g).toSection p := by
+    rw [dbar_real_add]; rfl
+  rw [h, RealSmoothFunction.add_toFun]; ring
+
+/-- Twisted ∂̄ of zero is zero: ∂̄_A(0) = 0. -/
+private theorem dbar_twisted_zero (A : Form_01 RS) :
+    dbar_twisted A 0 = 0 := by
+  apply Form_01.ext; funext p
+  show (dbar_real 0).toSection p + (0 : RealSmoothFunction RS).toFun p * A.toSection p =
+    (0 : Form_01 RS).toSection p
+  have h : (dbar_real 0).toSection p = 0 := by rw [dbar_real_zero]; rfl
+  rw [h, RealSmoothFunction.zero_toFun, Form_01.zero_toSection, zero_mul, add_zero]
+
+/-- Twisted ∂̄ is ℂ-homogeneous: ∂̄_A(c·f) = c · ∂̄_A(f). -/
+private theorem dbar_twisted_const_mul (A : Form_01 RS) (c : ℂ) (f : RealSmoothFunction RS) :
+    dbar_twisted A (RealSmoothFunction.const c * f) = c • dbar_twisted A f := by
+  apply Form_01.ext; funext p
+  show (dbar_real (RealSmoothFunction.const c * f)).toSection p +
+    (RealSmoothFunction.const c * f).toFun p * A.toSection p =
+    c * ((dbar_real f).toSection p + f.toFun p * A.toSection p)
+  have h : (dbar_real (RealSmoothFunction.const c * f)).toSection p =
+      c * (dbar_real f).toSection p := by
+    rw [dbar_real_const_mul]; rfl
+  rw [h, RealSmoothFunction.mul_toFun]
+  simp only [RealSmoothFunction.const]; ring
+
+/-- Image of the twisted ∂̄_A operator as a submodule of Ω^{0,1}. -/
+def twistedDbarImage (RS : RiemannSurface) (A : Form_01 RS) :
+    Submodule ℂ (Form_01 RS) where
+  carrier := { ω | ∃ f : RealSmoothFunction RS, dbar_twisted A f = ω }
+  add_mem' := by
+    intro a b ⟨f, hf⟩ ⟨g, hg⟩
+    exact ⟨f + g, by rw [dbar_twisted_add, hf, hg]⟩
+  zero_mem' := ⟨0, dbar_twisted_zero A⟩
+  smul_mem' := by
+    intro c ω ⟨f, hf⟩
+    exact ⟨RealSmoothFunction.const c * f, by rw [dbar_twisted_const_mul, hf]⟩
+
+/-- Twisted Dolbeault cohomology H^{0,1}(O(D)) = Ω^{0,1} / im(∂̄_A).
+
+    For A = 0, this is the ordinary Dolbeault cohomology `DolbeaultH01`.
+    For general A (encoding a line bundle O(D)), this gives H^{0,1}(O(D)). -/
+noncomputable def TwistedDolbeaultH01 (RS : RiemannSurface) (A : Form_01 RS) :=
+  Form_01 RS ⧸ twistedDbarImage RS A
+
+noncomputable instance twistedDolbeaultAddCommGroup (RS : RiemannSurface) (A : Form_01 RS) :
+    AddCommGroup (TwistedDolbeaultH01 RS A) :=
+  Submodule.Quotient.addCommGroup _
+
+noncomputable instance twistedDolbeaultModule (RS : RiemannSurface) (A : Form_01 RS) :
+    Module ℂ (TwistedDolbeaultH01 RS A) :=
+  Submodule.Quotient.module _
 
 end RiemannSurfaces.Analytic

@@ -1,8 +1,11 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.ChartMeromorphic
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.ChartTransition
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.ConnectedComplement
 import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.AnalyticKthRoot
+import ModularPhysics.StringGeometry.RiemannSurfaces.Analytic.Helpers.AnalyticExtension
 import Mathlib.Analysis.Analytic.IsolatedZeros
 import Mathlib.Analysis.Analytic.Order
+import Mathlib.Topology.LocallyConstant.Basic
 
 /-!
 # Argument Principle for Compact Riemann Surfaces
@@ -598,6 +601,270 @@ noncomputable def totalZeroOrder (CRS : CompactRiemannSurface)
   hzero_fin.toFinset.sum (fun p =>
     (chartOrderAt (RS := CRS.toRiemannSurface) f p).getD 0)
 
+/-!
+## Degree Theory Helpers
+
+These lemmas support the proof that totalZeroOrder = totalPoleOrder, by establishing
+that chartOrderSum(f - c) is locally constant in c and equals 0 for large |c|.
+-/
+
+/-- f - c is chart-meromorphic when f is. -/
+theorem chartMeromorphic_sub_const {f : RS.carrier → ℂ} (c : ℂ)
+    (hf : IsChartMeromorphic f) :
+    IsChartMeromorphic (RS := RS) (fun x => f x - c) := by
+  have : (fun x => f x - c) = fun x => f x + (-c) := by ext x; ring
+  rw [this]; exact chartMeromorphic_add hf (chartMeromorphic_const (-c))
+
+/-- chartOrderSupport(f - c) is finite for chart-meromorphic f on a compact RS
+    when all orders of f are ≠ ⊤. Either all orders of f-c are ⊤ (empty support)
+    or some order ≠ ⊤ (use `chartOrderSupport_finite_general`). -/
+theorem chartOrderSupport_sub_const_finite (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ) (c : ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f) :
+    (chartOrderSupport (RS := CRS.toRiemannSurface) (fun x => f x - c)).Finite := by
+  have hfc := chartMeromorphic_sub_const (RS := CRS.toRiemannSurface) c hf
+  by_cases h : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) (fun x => f x - c) q = ⊤
+  · -- All orders ⊤ → support is empty (since support requires order ≠ ⊤)
+    have : chartOrderSupport (RS := CRS.toRiemannSurface) (fun x => f x - c) = ∅ := by
+      ext p; simp only [chartOrderSupport, Set.mem_setOf_eq, Set.mem_empty_iff_false,
+        iff_false, not_and]; intro _; exact absurd (h p)
+    rw [this]; exact Set.finite_empty
+  · push_neg at h
+    exact chartOrderSupport_finite_general CRS _ hfc h
+
+/-!
+## Extensionality Lemmas for chartOrderSum
+
+The function `chartOrderSum` depends on proof terms. These lemmas ensure
+that extensionally equal functions give the same chartOrderSum.
+-/
+
+/-- chartOrderAt is invariant under extensional equality of functions. -/
+theorem chartOrderAt_congr' {RS : RiemannSurface}
+    {f g : RS.carrier → ℂ} (h : ∀ x, f x = g x) (p : RS.carrier) :
+    chartOrderAt (RS := RS) f p = chartOrderAt (RS := RS) g p := by
+  simp only [chartOrderAt, chartRep]
+  congr 1; ext z; exact h _
+
+/-- chartOrderSupport is invariant under extensional equality. -/
+theorem chartOrderSupport_congr' {RS : RiemannSurface}
+    {f g : RS.carrier → ℂ} (h : ∀ x, f x = g x) :
+    chartOrderSupport (RS := RS) f = chartOrderSupport (RS := RS) g := by
+  ext p; simp only [chartOrderSupport, Set.mem_setOf_eq, chartOrderAt_congr' h]
+
+/-- chartOrderSum is invariant under extensional equality. -/
+theorem chartOrderSum_congr' (CRS : CompactRiemannSurface)
+    {f g : CRS.toRiemannSurface.carrier → ℂ}
+    (h : ∀ x, f x = g x)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hg : IsChartMeromorphic (RS := CRS.toRiemannSurface) g)
+    (hsupp_f : (chartOrderSupport (RS := CRS.toRiemannSurface) f).Finite)
+    (hsupp_g : (chartOrderSupport (RS := CRS.toRiemannSurface) g).Finite) :
+    chartOrderSum CRS f hf hsupp_f = chartOrderSum CRS g hg hsupp_g := by
+  simp only [chartOrderSum]
+  have hset : chartOrderSupport (RS := CRS.toRiemannSurface) f =
+    chartOrderSupport (RS := CRS.toRiemannSurface) g := chartOrderSupport_congr' h
+  have hfin : hsupp_f.toFinset = hsupp_g.toFinset := by
+    ext p; simp [Set.Finite.mem_toFinset, hset]
+  rw [hfin]
+  apply Finset.sum_congr rfl
+  intro p _
+  rw [chartOrderAt_congr' h]
+
+/-- f - 0 = f extensionally. -/
+theorem chartOrderSum_sub_zero (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hsupp : (chartOrderSupport (RS := CRS.toRiemannSurface) f).Finite)
+    (hfc : IsChartMeromorphic (RS := CRS.toRiemannSurface) (fun x => f x - 0))
+    (hsupp_c : (chartOrderSupport (RS := CRS.toRiemannSurface) (fun x => f x - 0)).Finite) :
+    chartOrderSum CRS (fun x => f x - 0) hfc hsupp_c = chartOrderSum CRS f hf hsupp :=
+  chartOrderSum_congr' CRS (fun x => by ring) hfc hf hsupp_c hsupp
+
+/-!
+## Degree Theory: chartOrderSum = 0
+
+The key degree theory result: for nonconstant chart-meromorphic functions on compact
+Riemann surfaces, `chartOrderSum f = 0`. This is proven by:
+1. Showing N(c) = chartOrderSum(f-c) is locally constant (via LMT + compactness)
+2. Showing N(c₀) = 0 for large |c₀|
+3. Using connectedness of ℂ to conclude N is constant, hence N(0) = 0
+-/
+
+/-- **Maximum principle for compact Riemann surfaces**: a chart-meromorphic function with
+    all orders ≥ 0 and ≠ ⊤ has all orders = 0 (i.e., no zeros).
+
+    This is because a holomorphic function on a compact Riemann surface is constant.
+    A nonzero constant has order 0 everywhere. The zero constant has order ⊤, which is
+    excluded by hne_top. -/
+theorem chartOrderAt_eq_zero_of_all_nonneg (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ ⊤)
+    (hno_pole : ∀ q, (0 : WithTop ℤ) ≤ chartOrderAt (RS := CRS.toRiemannSurface) f q) :
+    ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q = 0 := by
+  letI := CRS.toRiemannSurface.topology
+  letI := CRS.toRiemannSurface.chartedSpace
+  haveI := CRS.toRiemannSurface.isManifold
+  haveI := CRS.toRiemannSurface.t2
+  haveI : CompactSpace CRS.toRiemannSurface.carrier := CRS.compact
+  -- Step 1: the corrected function is constant
+  obtain ⟨a, ha⟩ := correctedFn_constant CRS f hf hne_top hno_pole
+  -- Step 2: the constant a is nonzero
+  have ha_ne : a ≠ 0 := by
+    intro ha_zero
+    -- If a = 0, correctedValue = 0 at every point
+    have h_cv_zero : ∀ q, correctedValue (hf q) (hno_pole q) = 0 :=
+      fun q => by rw [show correctedValue (hf q) (hno_pole q) =
+        correctedFn CRS f hf hno_pole q from rfl, ha q, ha_zero]
+    -- By contrapositive of correctedValue_ne_zero_of_eq_zero: order ≠ 0
+    have h_ne_zero : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ 0 :=
+      fun q hq => correctedValue_ne_zero_of_eq_zero (hf q) hq (h_cv_zero q)
+    -- Since order ≥ 0 and ≠ 0, order > 0 at every point
+    have h_pos : ∀ q, (0 : WithTop ℤ) < chartOrderAt (RS := CRS.toRiemannSurface) f q :=
+      fun q => lt_of_le_of_ne (hno_pole q) (Ne.symm (h_ne_zero q))
+    -- But chartOrderAt_eq_zero_near says near any point, order = 0
+    haveI : @ConnectedSpace _ CRS.toRiemannSurface.topology := CRS.toRiemannSurface.connected
+    have ⟨q₀⟩ : Nonempty CRS.toRiemannSurface.carrier := inferInstance
+    haveI := rs_nhdsNE_neBot (RS := CRS.toRiemannSurface) q₀
+    have h_zero_near := chartOrderAt_eq_zero_near f q₀ hf (hne_top q₀)
+    obtain ⟨r, hr⟩ := h_zero_near.exists
+    exact absurd hr (ne_of_gt (h_pos r))
+  -- Step 3: at each q, order = 0 (not > 0)
+  intro q
+  by_contra hq
+  have hpos : (0 : WithTop ℤ) < chartOrderAt (RS := CRS.toRiemannSurface) f q :=
+    lt_of_le_of_ne (hno_pole q) (Ne.symm hq)
+  -- Positive order ⟹ correctedValue = 0
+  have h_cv_zero := correctedValue_eq_zero_of_pos (hf q) hpos
+  -- But correctedValue = a ≠ 0
+  have h_cv_a : correctedValue (hf q) (hno_pole q) = a := ha q
+  -- By proof irrelevance: le_of_lt hpos = hno_pole q (both prove same Prop)
+  rw [show correctedValue (hf q) (le_of_lt hpos) =
+    correctedValue (hf q) (hno_pole q) from rfl] at h_cv_zero
+  rw [h_cv_a] at h_cv_zero
+  exact ha_ne h_cv_zero
+
+/-- At a non-pole point with positive chart order and c₀ ≠ 0, the chart order of (f - c₀) is 0.
+
+    Proof: chartRep f p tends to 0 (positive order), so chartRep(f - c₀) p tends to -c₀ ≠ 0.
+    The constant -c₀ has meromorphic order 0 < positive order, so by
+    `meromorphicOrderAt_add_eq_left_of_lt`, the sum has order 0. -/
+theorem chartOrderAt_sub_const_eq_zero_at_pos_order {RS : RiemannSurface}
+    {f : RS.carrier → ℂ} {p : RS.carrier} {c₀ : ℂ}
+    (hf : IsChartMeromorphic (RS := RS) f)
+    (hc₀ : c₀ ≠ 0)
+    (hpos : (0 : WithTop ℤ) < chartOrderAt (RS := RS) f p)
+    (_hne_top : chartOrderAt (RS := RS) f p ≠ ⊤) :
+    chartOrderAt (RS := RS) (fun x => f x - c₀) p = 0 := by
+  simp only [chartOrderAt, chartRep_sub_const]
+  have hrep : (fun z => chartRep (RS := RS) f p z - c₀) =
+      (fun _ => -c₀) + chartRep (RS := RS) f p := by
+    ext z; simp [Pi.add_apply, sub_eq_add_neg, add_comm]
+  rw [hrep]
+  have hconst_mer : MeromorphicAt (fun _ : ℂ => -c₀) (chartPt (RS := RS) p) :=
+    MeromorphicAt.const (-c₀) _
+  have hconst_ord : meromorphicOrderAt (fun _ : ℂ => -c₀) (chartPt (RS := RS) p) = 0 := by
+    rw [meromorphicOrderAt_const]; simp [hc₀]
+  have hlt : meromorphicOrderAt (fun _ : ℂ => -c₀) (chartPt (RS := RS) p) <
+      meromorphicOrderAt (chartRep (RS := RS) f p) (chartPt (RS := RS) p) := by
+    rw [hconst_ord]; exact hpos
+  rw [meromorphicOrderAt_add_eq_left_of_lt (hf p) hlt, hconst_ord]
+
+/-- chartOrderSum(f - c) is locally constant as a function of c ∈ ℂ.
+
+    This is the hardest part of the degree theory proof. The proof uses:
+    - LMT (local_mapping_theorem, proven) at zeros
+    - Pole invariance (chartOrderAt_sub_const_at_pole, proven) at poles
+    - Normal form (meromorphicOrderAt_ne_top_iff) at regular points
+    - Compactness (CompactSpace) for uniform bounds -/
+theorem chartOrderSum_locally_constant (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ ⊤) :
+    IsLocallyConstant (fun c : ℂ =>
+      chartOrderSum CRS (fun x => f x - c)
+        (chartMeromorphic_sub_const c hf)
+        (chartOrderSupport_sub_const_finite CRS f c hf)) := by
+  sorry
+
+/-- chartOrderSum(f - c) = 0 for sufficiently large |c|.
+
+    Near each pole of f of order -n, LMT on the inverse function 1/f shows
+    that f takes value c exactly n times (each simple), contributing +n to zeros
+    and -n from the pole. Away from poles, f is bounded so f ≠ c for large c.
+    Total: 0. -/
+theorem chartOrderSum_zero_large_c (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ ⊤) :
+    ∃ c₀ : ℂ, chartOrderSum CRS (fun x => f x - c₀)
+      (chartMeromorphic_sub_const c₀ hf)
+      (chartOrderSupport_sub_const_finite CRS f c₀ hf) = 0 := by
+  letI := CRS.toRiemannSurface.topology
+  letI := CRS.toRiemannSurface.chartedSpace
+  haveI := CRS.toRiemannSurface.isManifold
+  haveI := CRS.toRiemannSurface.t2
+  haveI : CompactSpace CRS.toRiemannSurface.carrier := CRS.compact
+  -- Case split: has pole or not
+  by_cases h_has_pole : ∃ q, chartOrderAt (RS := CRS.toRiemannSurface) f q < 0
+  · -- Case 1: f has at least one pole — degree theory via LMT
+    -- For each pole p of order -n_p, the LMT applied to the reciprocal function
+    -- 1/(chartRep f p) shows that for large |c₀|, f takes value c₀ exactly n_p
+    -- times near p (each simple), giving total contribution n_p + (-n_p) = 0.
+    -- Away from poles, f is bounded so f ≠ c₀ for large c₀.
+    sorry
+  · -- Case 2: f has no poles — all orders ≥ 0
+    push_neg at h_has_pole
+    -- By maximum principle: all orders = 0 (holomorphic on compact RS → constant)
+    have h_all_zero := chartOrderAt_eq_zero_of_all_nonneg CRS f hf hne_top h_has_pole
+    -- Take c₀ = 0: chartOrderSum(f - 0) = chartOrderSum(f) = 0 (empty support)
+    use 0
+    simp only [chartOrderSum]
+    -- The support of (f - 0) is empty since all orders of f are 0
+    -- and f - 0 has the same orders as f (by extensionality)
+    have hsupp_empty : (chartOrderSupport_sub_const_finite CRS f 0 hf).toFinset = ∅ :=
+      Finset.eq_empty_iff_forall_notMem.mpr (fun p hp => by
+        rw [Set.Finite.mem_toFinset] at hp
+        have := hp.1
+        rw [chartOrderAt_congr' (fun x => by ring :
+          ∀ x, (fun x => f x - (0 : ℂ)) x = f x)] at this
+        exact this (h_all_zero p))
+    rw [hsupp_empty, Finset.sum_empty]
+
+/-- **Degree theory**: chartOrderSum = 0 for nonconstant chart-meromorphic functions.
+
+    Uses:
+    - `chartOrderSum_locally_constant`: N(c) = chartOrderSum(f-c) is locally constant
+    - `chartOrderSum_zero_large_c`: N(c₀) = 0 for some c₀
+    - ℂ connected: locally constant + connected → constant
+    - N(0) = chartOrderSum(f): by extensionality (f - 0 = f) -/
+theorem chartOrderSum_eq_zero_of_nonconstant (CRS : CompactRiemannSurface)
+    (f : CRS.toRiemannSurface.carrier → ℂ)
+    (hf : IsChartMeromorphic (RS := CRS.toRiemannSurface) f)
+    (hsupp : (chartOrderSupport (RS := CRS.toRiemannSurface) f).Finite)
+    (hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ ⊤) :
+    chartOrderSum CRS f hf hsupp = 0 := by
+  -- Define N(c) = chartOrderSum(f - c)
+  set N : ℂ → ℤ := fun c =>
+    chartOrderSum CRS (fun x => f x - c)
+      (chartMeromorphic_sub_const c hf)
+      (chartOrderSupport_sub_const_finite CRS f c hf) with hN_def
+  -- Step 1: N is locally constant
+  have hN_lc : IsLocallyConstant N :=
+    chartOrderSum_locally_constant CRS f hf hne_top
+  -- Step 2: ∃ c₀ with N(c₀) = 0
+  obtain ⟨c₀, hc₀⟩ := chartOrderSum_zero_large_c CRS f hf hne_top
+  -- Step 3: N is constant (ℂ is connected, N locally constant → N constant on connected sets)
+  have hN_eq : N 0 = N c₀ :=
+    hN_lc.apply_eq_of_isPreconnected isPreconnected_univ
+      (Set.mem_univ _) (Set.mem_univ _)
+  -- Step 4: N(0) = chartOrderSum(f)
+  have hN_zero : N 0 = chartOrderSum CRS f hf hsupp :=
+    chartOrderSum_sub_zero CRS f hf hsupp _ _
+  -- Conclude
+  linarith [hN_eq, hc₀, hN_zero]
+
 /-- **Degree theory**: On a compact RS, the total zero order equals the total pole order
     for any nonconstant chart-meromorphic function. This is the core degree theory statement.
 
@@ -651,11 +918,15 @@ theorem totalZeroOrder_eq_totalPoleOrder (CRS : CompactRiemannSurface)
   obtain ⟨p₀, hp₀⟩ := h_trivial
   have hne_top : ∀ q, chartOrderAt (RS := CRS.toRiemannSurface) f q ≠ ⊤ :=
     fun q => chartOrderAt_ne_top_of_ne_top_somewhere f hf p₀ hp₀ q
-  -- The degree theory argument: N(c) = Σ_{zeros of f-c} ord(f-c, p) is constant on ℂ
-  -- N(0) = TZO(f) and N(c) = TPO(f) for large |c| → TZO = TPO
-  -- This requires the local mapping theorem + compactness (proven but needs wiring)
-  -- + pole analysis for large values (uses meromorphic normal form at poles)
-  sorry
+  -- Reduce to: chartOrderSum = 0 (which gives TZO - TPO = 0 by chartOrderSum_split)
+  suffices hsum0 : chartOrderSum CRS f hf hsupp = 0 by
+    have hsplit := chartOrderSum_split CRS f hf hsupp
+    -- Bridge: totalZeroOrder is definitionally the Finset.sum in chartOrderSum_split
+    have hdef : totalZeroOrder CRS f (zeroSet_finite CRS f hf hsupp) =
+      (zeroSet_finite CRS f hf hsupp).toFinset.sum
+        (fun p => (chartOrderAt (RS := CRS.toRiemannSurface) f p).getD 0) := rfl
+    linarith
+  exact chartOrderSum_eq_zero_of_nonconstant CRS f hf hsupp hne_top
 
 /-- **The argument principle for chart-meromorphic functions.**
 

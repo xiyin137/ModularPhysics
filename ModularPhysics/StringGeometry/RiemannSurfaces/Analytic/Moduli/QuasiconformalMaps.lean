@@ -192,8 +192,12 @@ theorem quasiconformal_comp {U V W : Set ℂ} {K₁ K₂ : ℝ}
 structure BeltramiEquationSolution {U : Set ℂ} (bd : BeltramiDifferential U) where
   /-- The solution f -/
   f : ℂ → ℂ
-  /-- f is a homeomorphism (required for qc maps) -/
-  f_homeomorph : Continuous f
+  /-- f is continuous -/
+  f_continuous : Continuous f
+  /-- f is injective (part of homeomorphism requirement) -/
+  f_injective : Function.Injective f
+  /-- f is surjective (part of homeomorphism requirement) -/
+  f_surjective : Function.Surjective f
   /-- f is ℝ-differentiable on U -/
   f_differentiable : DifferentiableOn ℝ f U
   /-- f solves the Beltrami equation: ∂f/∂z̄ = μ · ∂f/∂z on U -/
@@ -205,14 +209,11 @@ structure BeltramiEquationSolution {U : Set ℂ} (bd : BeltramiDifferential U) w
 /-- The Measurable Riemann Mapping Theorem (Ahlfors-Bers).
 
     For any measurable Beltrami differential μ on ℂ with ‖μ‖_∞ < 1, there exists
-    a unique quasiconformal homeomorphism f : ℂ → ℂ solving the Beltrami equation:
-      ∂f/∂z̄ = μ · ∂f/∂z
-    normalized by f(0) = 0, f(1) = 1.
-
-    This is the fundamental existence theorem for quasiconformal maps.
-    It implies that Teichmüller space is non-empty and has the expected dimension. -/
+    a unique quasiconformal homeomorphism f : ℂ → ℂ solving the Beltrami equation
+    normalized by f(0) = 0, f(1) = 1. -/
 theorem measurable_riemann_mapping (bd : BeltramiDifferential Set.univ) :
-    ∃! sol : BeltramiEquationSolution bd, True := by
+    ∃! sol : BeltramiEquationSolution bd,
+      sol.f 0 = 0 ∧ sol.f 1 = 1 := by
   sorry  -- Deep theorem in complex analysis
 
 end RiemannSurfaces.Analytic

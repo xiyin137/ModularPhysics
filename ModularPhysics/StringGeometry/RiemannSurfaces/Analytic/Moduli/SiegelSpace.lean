@@ -43,12 +43,16 @@ structure SiegelUpperHalfSpace (g : ℕ) where
   Ω : Matrix (Fin g) (Fin g) ℂ
   /-- Symmetric: Ω^T = Ω -/
   symmetric : Ω.transpose = Ω
-  /-- Imaginary part -/
-  imPart : Matrix (Fin g) (Fin g) ℝ := fun i j => (Ω i j).im
   /-- Im(Ω) is symmetric (follows from Ω symmetric) -/
-  imPart_symmetric : imPart.transpose = imPart
+  imPart_symmetric : (Matrix.of fun i j => (Ω i j).im).transpose =
+    Matrix.of fun i j => (Ω i j).im
   /-- Im(Ω) is positive definite -/
-  imPart_posDef : imPart.PosDef
+  imPart_posDef : Matrix.PosDef (Matrix.of fun i j => (Ω i j).im)
+
+/-- The imaginary part of the period matrix, computed from Ω -/
+def SiegelUpperHalfSpace.imPart {g : ℕ} (S : SiegelUpperHalfSpace g) :
+    Matrix (Fin g) (Fin g) ℝ :=
+  Matrix.of fun i j => (S.Ω i j).im
 
 /-- Complex dimension of H_g -/
 def siegelDimension (g : ℕ) : ℕ := g * (g + 1) / 2
@@ -61,9 +65,18 @@ noncomputable def SiegelUpperHalfSpace.canonical (g : ℕ) (_ : g > 0) :
     SiegelUpperHalfSpace g where
   Ω := Complex.I • (1 : Matrix (Fin g) (Fin g) ℂ)
   symmetric := by simp [Matrix.transpose_smul, Matrix.transpose_one]
-  imPart := 1  -- Identity matrix
-  imPart_symmetric := Matrix.transpose_one
-  imPart_posDef := Matrix.PosDef.one
+  imPart_symmetric := by
+    have : (Matrix.of fun i j => ((Complex.I • (1 : Matrix (Fin g) (Fin g) ℂ)) i j).im) =
+           (1 : Matrix (Fin g) (Fin g) ℝ) := by
+      ext i j; simp [Matrix.of_apply, Matrix.smul_apply, Matrix.one_apply]
+      by_cases hij : i = j <;> simp [hij]
+    rw [this]; exact Matrix.transpose_one
+  imPart_posDef := by
+    have : (Matrix.of fun i j => ((Complex.I • (1 : Matrix (Fin g) (Fin g) ℂ)) i j).im) =
+           (1 : Matrix (Fin g) (Fin g) ℝ) := by
+      ext i j; simp [Matrix.of_apply, Matrix.smul_apply, Matrix.one_apply]
+      by_cases hij : i = j <;> simp [hij]
+    rw [this]; exact Matrix.PosDef.one
 
 /-- The diagonal entry of imPart is positive -/
 theorem SiegelUpperHalfSpace.imPart_diag_pos {g : ℕ} (Ω : SiegelUpperHalfSpace g)

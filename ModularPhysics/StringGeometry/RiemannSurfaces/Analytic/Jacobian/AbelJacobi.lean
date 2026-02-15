@@ -63,8 +63,6 @@ The space of holomorphic 1-forms H⁰(Σ, Ω¹) has dimension g.
 structure Holomorphic1Form (RS : RiemannSurfaces.RiemannSurface) where
   /-- The form in local coordinates: f(z) dz -/
   localForm : RS.carrier → ℂ
-  /-- The form is not identically zero (for non-trivial forms) -/
-  nonzero : ∃ p, localForm p ≠ 0
 
 /-- Basis of holomorphic 1-forms.
 
@@ -99,8 +97,13 @@ structure FirstHomology (RS : RiemannSurfaces.RiemannSurface) where
   cycles : Type*
   /-- Abelian group structure -/
   [addCommGroup : AddCommGroup cycles]
-  /-- The rank (number of generators) -/
+  /-- The rank (number of generators) = first Betti number -/
   rankValue : ℕ
+  /-- There exist rankValue generators that span cycles.
+      For a compact surface of genus g, rankValue should be 2g. -/
+  generators_span : ∃ (gens : Fin rankValue → cycles),
+    ∀ c : cycles, ∃ (coeffs : Fin rankValue → ℤ),
+      c = Finset.univ.sum (fun i => coeffs i • gens i)
 
 attribute [instance] FirstHomology.addCommGroup
 
@@ -199,10 +202,13 @@ structure PeriodMatrix (CRS : RiemannSurfaces.CompactRiemannSurface) where
   Ω : Matrix (Fin CRS.genus) (Fin CRS.genus) ℂ
   /-- Symmetric: Ω = Ωᵀ (from Riemann bilinear relations) -/
   symmetric : Ω.transpose = Ω
-  /-- Imaginary part matrix -/
-  imPart : Matrix (Fin CRS.genus) (Fin CRS.genus) ℝ := fun i j => (Ω i j).im
   /-- Im(Ω) is positive definite (Riemann bilinear relations) -/
-  posDefIm : imPart.PosDef
+  posDefIm : Matrix.PosDef (Matrix.of fun i j => (Ω i j).im)
+
+/-- The imaginary part of the period matrix, computed from Ω -/
+def PeriodMatrix.imPart {CRS : RiemannSurfaces.CompactRiemannSurface}
+    (P : PeriodMatrix CRS) : Matrix (Fin CRS.genus) (Fin CRS.genus) ℝ :=
+  fun i j => (P.Ω i j).im
 
 /-- Period matrix lies in Siegel upper half space H_g.
 

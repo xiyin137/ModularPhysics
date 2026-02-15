@@ -5,6 +5,7 @@ Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
 import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaInfrastructure
+import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoIntegralProperties
 import ModularPhysics.RigorousQFT.SPDE.Probability.IndependenceHelpers
 
 /-!
@@ -787,15 +788,34 @@ private lemma clipped_time_total_le {F : Filtration Ω ℝ}
 
 /-! ## Transfer infrastructure -/
 
-/-- For bounded diffusion, the stochastic integral has approximating simple processes
-    with values UNIFORMLY bounded by Mσ.
+/-- Projection contraction: clamping to [-M, M] doesn't increase distance to points in [-M, M]. -/
+private lemma clamp_contraction_sq (M x y : ℝ) (hM : 0 ≤ M) (hy : |y| ≤ M) :
+    (max (-M) (min M x) - x) ^ 2 ≤ (x - y) ^ 2 := by
+  -- Strategy: |clamp(x) - x| ≤ |x - y| when |y| ≤ M, then square both sides
+  obtain ⟨hy_lo, hy_hi⟩ := abs_le.mp hy  -- -M ≤ y ∧ y ≤ M
+  suffices h : |max (-M) (min M x) - x| ≤ |x - y| by
+    calc (max (-M) (min M x) - x) ^ 2
+        = |max (-M) (min M x) - x| ^ 2 := (sq_abs _).symm
+      _ ≤ |x - y| ^ 2 := pow_le_pow_left₀ (abs_nonneg _) h 2
+      _ = (x - y) ^ 2 := sq_abs _
+  by_cases hx_le : x ≤ M
+  · by_cases hx_ge : -M ≤ x
+    · -- |x| ≤ M: clamp(x) = x, so |clamp(x) - x| = 0
+      rw [min_eq_right hx_le, max_eq_right hx_ge, sub_self, abs_zero]
+      exact abs_nonneg _
+    · -- x < -M: clamp(x) = -M, |-M - x| = -M - x, |x - y| = y - x ≥ -M - x
+      push_neg at hx_ge
+      rw [min_eq_right hx_le, max_eq_left (le_of_lt hx_ge)]
+      rw [abs_of_nonneg (by linarith)]  -- -M - x ≥ 0
+      rw [abs_of_nonpos (by linarith)]  -- x - y ≤ 0 (x < -M ≤ y)
+      linarith
+  · -- x > M: clamp(x) = M, |M - x| = x - M, |x - y| = x - y ≥ x - M
+    push_neg at hx_le
+    rw [min_eq_left (le_of_lt hx_le), max_eq_right (by linarith)]
+    rw [abs_of_nonpos (by linarith)]  -- M - x ≤ 0
+    rw [abs_of_nonneg (by linarith)]  -- x - y ≥ 0 (x > M ≥ y)
+    linarith
 
-    This encapsulates the standard Itô integral construction for bounded integrands:
-    approximate σ by piecewise-constant functions σ_n(t,ω) = σ(t_i,ω) on [t_i, t_{i+1}),
-    which inherit the same bound |σ_n| ≤ Mσ.
-
-    This is stronger than `stoch_integral_is_L2_limit` which only provides per-interval
-    existential bounds `∃ C, ∀ ω, |values i ω| ≤ C` where C can vary with n. -/
 theorem stoch_integral_bounded_approx {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
@@ -809,7 +829,306 @@ theorem stoch_integral_bounded_approx {F : Filtration Ω ℝ}
         Filter.Tendsto (fun n => ∫ ω, (SimpleProcess.stochasticIntegral_at (approx n) X.BM t ω -
                                          X.stoch_integral t ω)^2 ∂μ)
           Filter.atTop (nhds 0)) := by
-  sorry
+  -- Step 1: Extract existing approximants from L² limit construction
+  obtain ⟨orig, horig_adapt, horig_bdd, horig_nn, horig_conv, _horig_iso, horig_integrand⟩ :=
+    X.stoch_integral_is_L2_limit
+  -- Step 2: Define clamped approximants with values in [-Mσ, Mσ]
+  set clamp : ℕ → SimpleProcess F := fun n => {
+    n := (orig n).n
+    times := (orig n).times
+    values := fun i ω => max (-Mσ) (min Mσ ((orig n).values i ω))
+    increasing := (orig n).increasing
+    adapted := fun i => by
+      apply Measurable.max measurable_const
+      exact Measurable.min measurable_const ((orig n).adapted i)
+  }
+  refine ⟨clamp, ?_, ?_, ?_, ?_⟩
+  · -- Property 1: BM.F-adapted
+    intro n i
+    show @Measurable Ω ℝ (X.BM.F.σ_algebra ((orig n).times i)) _
+      (fun ω => max (-Mσ) (min Mσ ((orig n).values i ω)))
+    letI : MeasurableSpace Ω := X.BM.F.σ_algebra ((orig n).times i)
+    exact Measurable.max measurable_const
+      (Measurable.min measurable_const (horig_adapt n i))
+  · -- Property 2: Uniform bound |values| ≤ Mσ
+    intro n i ω
+    show |max (-Mσ) (min Mσ ((orig n).values i ω))| ≤ Mσ
+    rw [abs_le]
+    constructor
+    · linarith [le_max_left (-Mσ) (min Mσ ((orig n).values i ω))]
+    · exact le_trans (max_le_max_left _ (min_le_left Mσ _))
+        (le_of_eq (max_eq_right (neg_le_self hMσ_nn)))
+  · -- Property 3: Nonneg times (inherited)
+    intro n i; exact horig_nn n i
+  · -- Property 4: L² convergence of clamped SI → stoch_integral
+    intro t ht
+    -- Strategy: E[|SI(clamp) - SI|²] ≤ 2·E[|SI(clamp) - SI(orig)|²] + 2·E[|SI(orig) - SI|²]
+    -- Second term → 0 by horig_conv. First term → 0 by projection contraction + integrand conv.
+    -- Step A: Construct difference process D with values = clamp(v) - v, same partition
+    -- Step B: SI(clamp)(t) - SI(orig)(t) = SI(D)(t)
+    -- Step C: E[SI(D)(t)²] = E[∫ valueAtTime(D)²] by isometry_at
+    -- Step D: ∫ valueAtTime(D)² ≤ ∫ (valueAtTime(orig) - σ)² by projection contraction
+    -- Step E: E[∫(valueAtTime(orig) - σ)²] → 0 by horig_integrand
+    -- Step F: Triangle inequality gives the result
+    -- Upper bound: 2 * diff_bound(n) + 2 * orig_error(n) where both → 0
+    set diff_bound : ℕ → ℝ := fun n =>
+      ∫ ω, (∫ s in Set.Icc 0 t,
+        (SimpleProcess.valueAtTime (orig n) s ω - X.diffusion s ω) ^ 2 ∂volume) ∂μ
+    set orig_error : ℕ → ℝ := fun n =>
+      ∫ ω, (SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+        X.stoch_integral t ω) ^ 2 ∂μ
+    apply squeeze_zero (g := fun n => 2 * diff_bound n + 2 * orig_error n)
+    · intro n; exact integral_nonneg (fun ω => sq_nonneg _)
+    · -- Bound: E[|SI(clamp) - SI|²] ≤ 2 * diff_bound + 2 * orig_error
+      intro n
+      -- Pointwise triangle: (a - c)² ≤ 2(a-b)² + 2(b-c)²
+      have h_tri : ∀ ω,
+          (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+            X.stoch_integral t ω) ^ 2 ≤
+          2 * (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+            SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2 +
+          2 * (SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+            X.stoch_integral t ω) ^ 2 := fun ω => by
+        nlinarith [sq_nonneg (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+            SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+            (SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+            X.stoch_integral t ω))]
+      -- Construct difference process: values = clamp(v) - v, same partition
+      set diff_n : SimpleProcess F := {
+        n := (orig n).n, times := (orig n).times,
+        values := fun i ω => max (-Mσ) (min Mσ ((orig n).values i ω)) - (orig n).values i ω,
+        increasing := (orig n).increasing,
+        adapted := fun i => (Measurable.max measurable_const
+          (Measurable.min measurable_const ((orig n).adapted i))).sub ((orig n).adapted i)
+      }
+      -- SI(clamp n) - SI(orig n) = SI(diff_n) pointwise
+      have hSI_diff : ∀ ω,
+          SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+          SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω =
+          SimpleProcess.stochasticIntegral_at diff_n X.BM t ω := by
+        intro ω
+        simp only [SimpleProcess.stochasticIntegral_at, clamp, diff_n,
+          ← Finset.sum_sub_distrib]
+        congr 1; ext i
+        by_cases hi : (i : ℕ) + 1 < (orig n).n
+        · simp only [dif_pos hi]
+          by_cases hf : (orig n).times ⟨(i : ℕ) + 1, hi⟩ ≤ t
+          · simp only [if_pos hf]; ring
+          · simp only [if_neg hf]
+            by_cases hs : (orig n).times i ≤ t
+            · simp only [if_pos hs]; ring
+            · simp only [if_neg hs]; ring
+        · simp only [dif_neg hi]; ring
+      -- diff_n properties for isometry_at
+      have hdiff_adapt : ∀ i : Fin diff_n.n,
+          @Measurable Ω ℝ (X.BM.F.σ_algebra (diff_n.times i)) _ (diff_n.values i) := by
+        intro i
+        show @Measurable Ω ℝ (X.BM.F.σ_algebra ((orig n).times i)) _
+          (fun ω => max (-Mσ) (min Mσ ((orig n).values i ω)) - (orig n).values i ω)
+        letI : MeasurableSpace Ω := X.BM.F.σ_algebra ((orig n).times i)
+        exact (Measurable.max measurable_const
+          (Measurable.min measurable_const (horig_adapt n i))).sub (horig_adapt n i)
+      have hdiff_bdd : ∀ i : Fin diff_n.n, ∃ C : ℝ, ∀ ω, |diff_n.values i ω| ≤ C := by
+        intro i; obtain ⟨Ci, hCi⟩ := horig_bdd n i
+        refine ⟨Ci, fun ω => ?_⟩
+        show |max (-Mσ) (min Mσ ((orig n).values i ω)) - (orig n).values i ω| ≤ Ci
+        -- |clamp(x) - x| ≤ |x| since clamp projects onto [-M,M] ∋ 0
+        have habs : |max (-Mσ) (min Mσ ((orig n).values i ω)) - (orig n).values i ω| ≤
+            |(orig n).values i ω| := by
+          set v := (orig n).values i ω
+          by_cases h1 : -Mσ ≤ v
+          · by_cases h2 : v ≤ Mσ
+            · simp [min_eq_right h2, max_eq_right h1]
+            · push_neg at h2
+              rw [min_eq_left (le_of_lt h2), max_eq_right (by linarith)]
+              rw [show Mσ - v = -(v - Mσ) from by ring, abs_neg, abs_of_nonneg (by linarith)]
+              linarith [le_abs_self v]
+          · push_neg at h1
+            rw [min_eq_right (le_trans (le_of_lt h1) (by linarith))]
+            rw [max_eq_left (le_of_lt h1)]
+            rw [show -Mσ - v = -(v + Mσ) from by ring, abs_neg, abs_of_nonpos (by linarith)]
+            rw [abs_of_nonpos (by linarith)]; linarith
+        linarith [habs, hCi ω]
+      have hdiff_nn : ∀ i : Fin diff_n.n, 0 ≤ diff_n.times i := horig_nn n
+      -- Apply isometry: E[SI(diff_n)(t)²] = E[∫₀ᵗ valueAtTime(diff_n)²]
+      have hiso := SimpleProcess.isometry_at diff_n X.BM hdiff_adapt hdiff_bdd hdiff_nn t ht
+      -- valueAtTime(diff_n)(s)² ≤ (valueAtTime(orig n)(s) - σ(s))² by projection contraction
+      have hval_bound : ∀ s' ω',
+          (SimpleProcess.valueAtTime diff_n s' ω') ^ 2 ≤
+          (SimpleProcess.valueAtTime (orig n) s' ω' - X.diffusion s' ω') ^ 2 := by
+        intro s' ω'
+        simp only [SimpleProcess.valueAtTime, diff_n]
+        split
+        · next h => exact clamp_contraction_sq Mσ _ _ hMσ_nn (hMσ s' ω')
+        · simp [sq_nonneg]
+      -- Inner integrability: bounded step functions on [0,t]
+      have hIcc_finite : volume (Set.Icc (0 : ℝ) t) ≠ ⊤ := by
+        rw [Real.volume_Icc]; exact ENNReal.ofReal_ne_top
+      have hinner_diff_int : ∀ ω',
+          IntegrableOn (fun s => (SimpleProcess.valueAtTime diff_n s ω') ^ 2)
+            (Set.Icc 0 t) volume := fun ω' => by
+        obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded diff_n hdiff_bdd
+        exact (integrableOn_const hIcc_finite :
+          IntegrableOn (fun _ : ℝ => C ^ 2) _ _).mono' sorry
+          (ae_of_all _ fun s => by
+            simp only [Real.norm_eq_abs, abs_pow]
+            exact pow_le_pow_left₀ (abs_nonneg _) (hC s ω') 2)
+      have hinner_orig_int : ∀ ω',
+          IntegrableOn (fun s => (SimpleProcess.valueAtTime (orig n) s ω' -
+            X.diffusion s ω') ^ 2) (Set.Icc 0 t) volume := fun ω' => by
+        obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded (orig n) (horig_bdd n)
+        exact (integrableOn_const hIcc_finite :
+          IntegrableOn (fun _ : ℝ => (C + Mσ) ^ 2) _ _).mono' sorry
+          (ae_of_all _ fun s => by
+            simp only [Real.norm_eq_abs, abs_pow]
+            apply pow_le_pow_left₀ (abs_nonneg _)
+            calc |SimpleProcess.valueAtTime (orig n) s ω' - X.diffusion s ω'|
+                ≤ |SimpleProcess.valueAtTime (orig n) s ω'| + |X.diffusion s ω'| := by
+                  simp only [← Real.norm_eq_abs]; exact norm_sub_le _ _
+              _ ≤ C + Mσ := add_le_add (hC s ω') (hMσ s ω'))
+      -- E[SI(diff_n)(t)²] ≤ diff_bound n
+      -- h_diff_L2: E[SI(diff_n)²] ≤ diff_bound n
+      -- By isometry, LHS = E[∫ vT(diff_n)²]. By projection contraction,
+      -- vT(diff_n)² ≤ (vT(orig)-σ)² pointwise. Integrate over [0,t] then over Ω.
+      have h_diff_L2 : ∫ ω, (SimpleProcess.stochasticIntegral_at diff_n X.BM t ω) ^ 2 ∂μ ≤
+          diff_bound n := by
+        rw [hiso]
+        -- Inner integral bound: for each ω, ∫ vT(diff_n)² ≤ ∫ (vT(orig)-σ)²
+        have hinner_le : ∀ ω,
+            ∫ s in Set.Icc 0 t, diff_n.valueAtTime s ω ^ 2 ∂volume ≤
+            ∫ s in Set.Icc 0 t, ((orig n).valueAtTime s ω - X.diffusion s ω) ^ 2 ∂volume :=
+          fun ω => setIntegral_mono_on (hinner_diff_int ω) (hinner_orig_int ω)
+            measurableSet_Icc (fun s' _ => hval_bound s' ω)
+        -- The inner integral for diff_n is a finite sum of bounded terms → integrable in ω
+        have hf_int : Integrable (fun ω =>
+            ∫ s in Set.Icc 0 t, diff_n.valueAtTime s ω ^ 2 ∂volume) μ := by
+          obtain ⟨C_d, hC_d_nn, hC_d⟩ := SimpleProcess.valueAtTime_uniform_bounded diff_n hdiff_bdd
+          apply Integrable.mono' (integrable_const (C_d ^ 2 * t))
+          · -- AEStronglyMeasurable: diff_n valueAtTime is a step function → finite sum
+            -- Each summand is (measurable function)² · indicator → measurable
+            sorry  -- measurability of ω ↦ ∫ vT(diff_n)² (step function inner integral)
+          · exact ae_of_all μ (fun ω => by
+              rw [Real.norm_eq_abs, abs_of_nonneg
+                (setIntegral_nonneg measurableSet_Icc (fun s _ => sq_nonneg _))]
+              calc ∫ s in Set.Icc 0 t, diff_n.valueAtTime s ω ^ 2 ∂volume
+                  ≤ ∫ s in Set.Icc 0 t, C_d ^ 2 ∂volume :=
+                    setIntegral_mono_on (hinner_diff_int ω)
+                      (integrableOn_const hIcc_finite)
+                      measurableSet_Icc (fun s _ => by
+                        rw [← sq_abs]; exact pow_le_pow_left₀ (abs_nonneg _) (hC_d s ω) 2)
+                _ = C_d ^ 2 * t := by
+                    rw [setIntegral_const, smul_eq_mul, mul_comm]
+                    congr 1
+                    show (volume (Set.Icc (0 : ℝ) t)).toReal = t
+                    rw [Real.volume_Icc, ENNReal.toReal_ofReal (by linarith)]
+                    ring)
+        -- g integrable: bounded inner integral
+        have hg_int : Integrable (fun ω =>
+            ∫ s in Set.Icc 0 t, ((orig n).valueAtTime s ω - X.diffusion s ω) ^ 2 ∂volume) μ := by
+          obtain ⟨C, hC_nn, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded (orig n) (horig_bdd n)
+          apply Integrable.mono' (integrable_const ((C + Mσ) ^ 2 * t))
+          · sorry  -- measurability of ω ↦ ∫ (vT(orig)-σ)² (technical)
+          · exact ae_of_all μ (fun ω => by
+              rw [Real.norm_eq_abs, abs_of_nonneg
+                (setIntegral_nonneg measurableSet_Icc (fun s _ => sq_nonneg _))]
+              calc ∫ s in Set.Icc 0 t, ((orig n).valueAtTime s ω -
+                      X.diffusion s ω) ^ 2 ∂volume
+                  ≤ ∫ s in Set.Icc 0 t, (C + Mσ) ^ 2 ∂volume :=
+                    setIntegral_mono_on (hinner_orig_int ω)
+                      (integrableOn_const hIcc_finite)
+                      measurableSet_Icc (fun s _ => by
+                        have h1 : |SimpleProcess.valueAtTime (orig n) s ω - X.diffusion s ω|
+                            ≤ C + Mσ := calc
+                          |SimpleProcess.valueAtTime (orig n) s ω - X.diffusion s ω|
+                              ≤ |SimpleProcess.valueAtTime (orig n) s ω| +
+                                |X.diffusion s ω| := by
+                                simp only [← Real.norm_eq_abs]; exact norm_sub_le _ _
+                            _ ≤ C + Mσ := add_le_add (hC s ω) (hMσ s ω)
+                        exact sq_le_sq' (by linarith [(abs_le.mp h1).1]) (abs_le.mp h1).2)
+                _ = (C + Mσ) ^ 2 * t := by
+                    rw [setIntegral_const, smul_eq_mul, mul_comm]
+                    congr 1
+                    show (volume (Set.Icc (0 : ℝ) t)).toReal = t
+                    rw [Real.volume_Icc, ENNReal.toReal_ofReal (by linarith)]
+                    ring)
+        exact integral_mono hf_int hg_int hinner_le
+      -- Integrability for wiring the triangle inequality
+      have h_clamp_adapt : ∀ i : Fin (clamp n).n,
+          @Measurable Ω ℝ (X.BM.F.σ_algebra ((clamp n).times i)) _ ((clamp n).values i) := by
+        intro i
+        show @Measurable Ω ℝ (X.BM.F.σ_algebra ((orig n).times i)) _
+          (fun ω => max (-Mσ) (min Mσ ((orig n).values i ω)))
+        letI : MeasurableSpace Ω := X.BM.F.σ_algebra ((orig n).times i)
+        exact Measurable.max measurable_const
+          (Measurable.min measurable_const (horig_adapt n i))
+      have h_clamp_bdd : ∀ i : Fin (clamp n).n, ∃ C : ℝ, ∀ ω, |(clamp n).values i ω| ≤ C := by
+        intro i; exact ⟨Mσ, fun ω => by
+          show |max (-Mσ) (min Mσ ((orig n).values i ω))| ≤ Mσ
+          rw [abs_le]; constructor
+          · linarith [le_max_left (-Mσ) (min Mσ ((orig n).values i ω))]
+          · exact le_trans (max_le_max_left _ (min_le_left Mσ _))
+              (le_of_eq (max_eq_right (neg_le_self hMσ_nn)))⟩
+      have h_clamp_nn : ∀ i : Fin (clamp n).n, 0 ≤ (clamp n).times i := horig_nn n
+      have h_diff_sq_int : Integrable (fun ω =>
+          (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+            SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2) μ := by
+        have heq : (fun ω => (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+            SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2) =
+            (fun ω => (SimpleProcess.stochasticIntegral_at diff_n X.BM t ω) ^ 2) := by
+          ext ω; rw [← hSI_diff]
+        rw [heq]
+        have h := SimpleProcess.stochasticIntegral_at_sub_sq_integrable diff_n X.BM
+          hdiff_adapt hdiff_bdd hdiff_nn (fun _ => 0) (integrable_const 0) (by simp) t ht
+        simp only [sub_zero] at h; exact h
+      have h_orig_sub_sq_int : Integrable (fun ω =>
+          (SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+            X.stoch_integral t ω) ^ 2) μ :=
+        SimpleProcess.stochasticIntegral_at_sub_sq_integrable (orig n) X.BM
+          (horig_adapt n) (horig_bdd n) (horig_nn n)
+          (X.stoch_integral t) (X.stoch_integral_integrable t ht)
+          (X.stoch_integral_sq_integrable t ht) t ht
+      -- Calc: ∫(SI(clamp)-SI)² ≤ 2·∫(SI(clamp)-SI(orig))² + 2·∫(SI(orig)-SI)² ≤ 2·diff + 2·orig
+      calc ∫ ω, (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+                  X.stoch_integral t ω) ^ 2 ∂μ
+          ≤ ∫ ω, (2 * (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+                    SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2 +
+                  2 * (SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+                    X.stoch_integral t ω) ^ 2) ∂μ := by
+            apply integral_mono
+              (SimpleProcess.stochasticIntegral_at_sub_sq_integrable (clamp n) X.BM
+                h_clamp_adapt h_clamp_bdd h_clamp_nn
+                (X.stoch_integral t) (X.stoch_integral_integrable t ht)
+                (X.stoch_integral_sq_integrable t ht) t ht)
+              ((h_diff_sq_int.const_mul 2).add (h_orig_sub_sq_int.const_mul 2))
+              h_tri
+        _ = 2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+                    SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2 ∂μ +
+            2 * ∫ ω, (SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω -
+                    X.stoch_integral t ω) ^ 2 ∂μ := by
+            rw [integral_add (h_diff_sq_int.const_mul 2) (h_orig_sub_sq_int.const_mul 2)]
+            simp only [integral_const_mul]
+        _ ≤ 2 * diff_bound n + 2 * orig_error n := by
+            have h1 : ∫ ω, (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+                SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2 ∂μ ≤
+                diff_bound n := by
+              have heq : (fun ω => (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+                  SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2) =
+                  (fun ω => (SimpleProcess.stochasticIntegral_at diff_n X.BM t ω) ^ 2) := by
+                ext ω; rw [← hSI_diff]
+              rw [show ∫ ω, (SimpleProcess.stochasticIntegral_at (clamp n) X.BM t ω -
+                  SimpleProcess.stochasticIntegral_at (orig n) X.BM t ω) ^ 2 ∂μ =
+                  ∫ ω, (SimpleProcess.stochasticIntegral_at diff_n X.BM t ω) ^ 2 ∂μ from by
+                congr 1]
+              exact h_diff_L2
+            linarith
+    · -- RHS → 0: 2 * diff_bound + 2 * orig_error → 0
+      have h1 : Filter.Tendsto diff_bound Filter.atTop (nhds 0) := horig_integrand t ht
+      have h2 : Filter.Tendsto orig_error Filter.atTop (nhds 0) := horig_conv t ht
+      have h3 : Filter.Tendsto (fun n => 2 * diff_bound n + 2 * orig_error n)
+          Filter.atTop (nhds 0) := by
+        have := (h1.const_mul 2).add (h2.const_mul 2)
+        simp only [mul_zero, add_zero] at this; exact this
+      exact h3
 
 /-- Quartic bound for simple process stochastic integral increments.
 

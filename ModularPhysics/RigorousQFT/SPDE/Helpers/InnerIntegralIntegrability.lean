@@ -101,17 +101,38 @@ theorem inner_product_integral_integrable
 
 /-! ## Inner integral splitting (for a.e. ω) -/
 
-/-- For a.e. ω, f(·,ω) is IntegrableOn [0,t] when ∫₀ᵀ f² is integrable over Ω.
+/-- For a.e. ω, f(·,ω)² is IntegrableOn [0,t] when ∫₀ᵀ f² is integrable over Ω.
 
     Proof: By Tonelli, ∫⁻ f² on [0,T] is finite a.e. With joint measurability,
-    this gives IntegrableOn of f² a.e., and L²⊂L¹ on finite measure intervals
-    gives IntegrableOn of f. -/
+    this gives IntegrableOn of f² a.e., and restriction to [0,t] ⊆ [0,T] preserves it. -/
+theorem integrableOn_sq_ae_of_square_integrable
+    {f : ℝ → Ω → ℝ}
+    (_hjm : Measurable (Function.uncurry f))
+    {t T : ℝ} (_ht0 : 0 ≤ t) (_htT : t ≤ T)
+    (_hsq : Integrable (fun ω => ∫ s in Icc 0 T, (f s ω) ^ 2 ∂volume) μ) :
+    ∀ᵐ ω ∂μ, IntegrableOn (fun s => (f s ω) ^ 2) (Icc 0 t) volume := by
+  sorry
+
+/-- For a.e. ω, f(·,ω) is IntegrableOn [0,t] when ∫₀ᵀ f² is integrable over Ω.
+    Follows from f² integrable (L²⊂L¹ on finite measure intervals). -/
 theorem integrableOn_ae_of_square_integrable
     {f : ℝ → Ω → ℝ}
     (hjm : Measurable (Function.uncurry f))
-    {t T : ℝ} (_ht0 : 0 ≤ t) (_htT : t ≤ T)
+    {t T : ℝ} (ht0 : 0 ≤ t) (htT : t ≤ T)
     (hsq : Integrable (fun ω => ∫ s in Icc 0 T, (f s ω) ^ 2 ∂volume) μ) :
     ∀ᵐ ω ∂μ, IntegrableOn (fun s => f s ω) (Icc 0 t) volume := by
+  sorry
+
+/-- For a.e. ω, f(·,ω)·g(·,ω) is IntegrableOn [0,t] when ∫₀ᵀ f² and ∫₀ᵀ g² are integrable.
+    By AM-GM: |fg| ≤ (f²+g²)/2. -/
+theorem integrableOn_product_ae_of_square_integrable
+    {f g : ℝ → Ω → ℝ}
+    (hjm_f : Measurable (Function.uncurry f))
+    (hjm_g : Measurable (Function.uncurry g))
+    {t T : ℝ} (ht0 : 0 ≤ t) (htT : t ≤ T)
+    (hsq_f : Integrable (fun ω => ∫ s in Icc 0 T, (f s ω) ^ 2 ∂volume) μ)
+    (hsq_g : Integrable (fun ω => ∫ s in Icc 0 T, (g s ω) ^ 2 ∂volume) μ) :
+    ∀ᵐ ω ∂μ, IntegrableOn (fun s => f s ω * g s ω) (Icc 0 t) volume := by
   sorry
 
 /-- For a.e. ω, the inner integral of a quadratic expansion splits.
@@ -133,14 +154,15 @@ theorem inner_integral_quadratic_split_ae
       a ^ 2 * ∫ s in Icc 0 t, (f s ω) ^ 2 ∂volume +
       2 * a * b * ∫ s in Icc 0 t, f s ω * g s ω ∂volume +
       b ^ 2 * ∫ s in Icc 0 t, (g s ω) ^ 2 ∂volume := by
-  -- For a.e. ω, f(·,ω) and g(·,ω) are IntegrableOn [0,t]
-  have hion_f := integrableOn_ae_of_square_integrable hjm_f ht0 htT hsq_f
-  have hion_g := integrableOn_ae_of_square_integrable hjm_g ht0 htT hsq_g
-  filter_upwards [hion_f, hion_g] with ω hωf hωg
-  -- IntegrableOn conditions for each term (f², g², fg are integrable from f, g integrable on finite measure)
-  have hf_sq : IntegrableOn (fun s => (f s ω) ^ 2) (Icc 0 t) volume := hωf.norm_sq
-  have hg_sq : IntegrableOn (fun s => (g s ω) ^ 2) (Icc 0 t) volume := hωg.norm_sq
-  have hfg : IntegrableOn (fun s => f s ω * g s ω) (Icc 0 t) volume := hωf.mul hωg
+  -- For a.e. ω, f², g², fg are IntegrableOn [0,t]
+  have hion_fsq := integrableOn_sq_ae_of_square_integrable hjm_f ht0 htT hsq_f
+  have hion_gsq := integrableOn_sq_ae_of_square_integrable hjm_g ht0 htT hsq_g
+  have hion_fg := integrableOn_product_ae_of_square_integrable hjm_f hjm_g ht0 htT hsq_f hsq_g
+  filter_upwards [hion_fsq, hion_gsq, hion_fg] with ω hf_sq' hg_sq' hfg'
+  -- Restore IntegrableOn types
+  have hf_sq : IntegrableOn (fun s => (f s ω) ^ 2) (Icc 0 t) volume := hf_sq'
+  have hg_sq : IntegrableOn (fun s => (g s ω) ^ 2) (Icc 0 t) volume := hg_sq'
+  have hfg : IntegrableOn (fun s => f s ω * g s ω) (Icc 0 t) volume := hfg'
   -- IntegrableOn for scaled terms
   have h1 : IntegrableOn (fun s => a ^ 2 * (f s ω) ^ 2) (Icc 0 t) volume :=
     hf_sq.const_mul _
@@ -148,14 +170,10 @@ theorem inner_integral_quadratic_split_ae
     hfg.const_mul _
   have h3 : IntegrableOn (fun s => b ^ 2 * (g s ω) ^ 2) (Icc 0 t) volume :=
     hg_sq.const_mul _
-  -- Split the integral using congr + integral_add + integral_const_mul
-  have h_eq : ∀ s, a ^ 2 * (f s ω) ^ 2 + 2 * a * b * (f s ω * g s ω) +
-      b ^ 2 * (g s ω) ^ 2 =
-      (fun s => a ^ 2 * (f s ω) ^ 2) s +
-      (fun s => 2 * a * b * (f s ω * g s ω)) s +
-      (fun s => b ^ 2 * (g s ω) ^ 2) s := fun s => rfl
-  simp_rw [h_eq]
-  rw [integral_add (h1.add h2) h3, integral_add h1 h2,
-    integral_const_mul, integral_const_mul, integral_const_mul]
+  -- Split the integral using integral_add + integral_const_mul
+  -- Use `simp only` instead of `rw` to handle beta-equivalence in pattern matching
+  have h12 : IntegrableOn (fun s => a ^ 2 * (f s ω) ^ 2 + 2 * a * b * (f s ω * g s ω))
+      (Icc 0 t) volume := h1.add h2
+  simp only [integral_add h12 h3, integral_add h1 h2, integral_const_mul]
 
 end InnerIntegral
