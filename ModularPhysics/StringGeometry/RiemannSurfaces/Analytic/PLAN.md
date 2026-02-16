@@ -29,7 +29,7 @@ RiemannRoch.lean
 │   └── LineBundles.lean                ✅ 0 sorrys
 ├── DolbeaultCohomology.lean            ❌ 4 sorrys
 │   └── HodgeDecomposition.lean         (same as above)
-├── ArgumentPrinciple.lean              ❌ 3 sorrys
+├── ArgumentPrinciple.lean              ❌ 1 sorry
 │   ├── ChartMeromorphic.lean           ✅ 0 sorrys
 │   ├── ChartTransition.lean            ✅ 0 sorrys
 │   ├── ConnectedComplement.lean        ✅ 0 sorrys
@@ -40,7 +40,7 @@ RiemannRoch.lean
     └── AnalyticBridge.lean             ✅ 0 sorrys
 ```
 
-**Total sorrys in R-R transitive closure: 27** (across 6 files)
+**Total sorrys in R-R transitive closure: 25** (across 6 files)
 
 ### Files NOT in R-R Dependency Chain (lower priority)
 
@@ -53,7 +53,7 @@ These files have sorrys but are NOT imported by `RiemannRoch.lean`:
 
 ---
 
-## Complete R-R Sorry Inventory (27 sorrys, 6 files)
+## Complete R-R Sorry Inventory (25 sorrys, 6 files)
 
 ### RiemannRoch.lean — 6 sorrys
 
@@ -66,13 +66,11 @@ These files have sorrys but are NOT imported by `RiemannRoch.lean`:
 | 5 | `connectionForm_exists` | 1028 | Level 2 (`riemann_roch_classical`) | Smooth triviality of line bundles |
 | 6 | `serre_duality_h1` | 1051 | Level 2 (`riemann_roch_classical`) | Twisted Dolbeault + Hodge theory |
 
-### ArgumentPrinciple.lean — 3 sorrys
+### ArgumentPrinciple.lean — 1 sorry
 
 | # | Sorry | Line | Blocks | Strategy |
 |---|-------|------|--------|----------|
-| 7 | `fiberMultiplicity_constant` | 271 | `totalZeroOrder_eq_totalPoleOrder` | LMT + compactness + connected ℂ |
-| 8 | `chartOrderSum_locally_constant` | 789 | degree theory | LMT at zeros + pole invariance |
-| 9 | `chartOrderSum_zero_large_c` | 816 | degree theory | LMT for 1/f at poles, large |c| |
+| 7 | `fiberMultiplicity_constant` | 315 | `totalZeroOrder_eq_totalPoleOrder` | LMT + compactness + connected ℂ |
 
 ### HodgeDecomposition.lean — 9 sorrys
 
@@ -197,7 +195,7 @@ Analytic/
 │   ├── ChartMeromorphic.lean       # Chart-local meromorphic + identity principle    ✅ 0 sorrys
 │   ├── ChartTransition.lean        # Chart independence, isolated zeros              ✅ 0 sorrys
 │   ├── AnalyticKthRoot.lean        # k-th root of nonvanishing analytic fn           ✅ 0 sorrys
-│   ├── ArgumentPrinciple.lean      # LMT, degree theory, argument principle          3 sorrys  [R-R]
+│   ├── ArgumentPrinciple.lean      # LMT, degree theory, argument principle          1 sorry   [R-R]
 │   ├── ConnectedComplement.lean    # RS \ finite set connected                       ✅ 0 sorrys
 │   ├── AnalyticExtension.lean      # Analytic extension, correctedFn                 ✅ 0 sorrys
 │   └── EvaluationMap.lean          # Evaluation map for L(D+[p])                     1 sorry  [NOT in R-R chain]
@@ -231,9 +229,9 @@ Analytic/
     └── SiegelSpace.lean            # Siegel upper half-space                         ✅ 0 sorrys
 
 Sorry totals:
-  R-R chain:     27 sorrys (6 files)
+  R-R chain:     25 sorrys (6 files)
   Non-R-R chain: 27 sorrys (lower priority)
-  Grand total:   54 sorrys
+  Grand total:   52 sorrys
 ```
 
 ### Sorry Count by Priority
@@ -244,7 +242,7 @@ Sorry totals:
 | **R-R** | HodgeDecomposition.lean | 9 | Hodge theory core |
 | **R-R** | SerreDuality.lean | 4 | Serre duality |
 | **R-R** | DolbeaultCohomology.lean | 4 | Twisted ∂̄, Hodge iso |
-| **R-R** | ArgumentPrinciple.lean | 3 | Degree theory |
+| **R-R** | ArgumentPrinciple.lean | 1 | Degree theory |
 | **R-R** | Dolbeault.lean | 1 | local_dbar_poincare |
 | Lower | Harmonic.lean | 2 | NOT in R-R chain |
 | Lower | HarmonicConjugate.lean | 1 | NOT in R-R chain |
@@ -254,7 +252,7 @@ Sorry totals:
 | Lower | Applications/ | 4 | NOT in R-R chain |
 | Lower | Moduli/ | 2 | NOT in R-R chain |
 
-**Audit Status (2026-02-15)**:
+**Audit Status (2026-02-16)**:
 - ✅ No axiom smuggling in any structures
 - ✅ No placeholder TYPE definitions (previously had 2: DeRhamH1, SheafH1O — both fixed)
 - ✅ No placeholder VALUE definitions (previously had 3: residue, h1_dolbeault, poissonIntegral — all fixed)
@@ -293,9 +291,16 @@ Sorry totals:
 
 6. **`del_real.smooth'` + `dbar_real_hd.smooth'` + `dbar_real.smooth'` + `dbar_twisted.smooth'`**
    (#13, #14, #23, #26)
-   - All need: Wirtinger derivatives preserve ℝ-smoothness
-   - Common infrastructure: `contMDiff_wirtingerDeriv_of_real_smooth` lemma
-   - Likely provable with existing Mathlib `ContDiff.fderiv` machinery
+   - **⚠️ KNOWN ISSUE: These sorrys are UNPROVABLE with the current Form_01/Form_10 definitions.**
+   - Root cause: `toSection(p)` is defined as `wirtingerDeriv(f ∘ (chartAt ℂ p)⁻¹)(chartAt ℂ p p)`,
+     where `chartAt ℂ p` varies discontinuously with `p`. The wirtinger derivative picks up a
+     correction factor `conj(1/T'(z))` where T is the chart transition, making `toSection`
+     discontinuous at chart boundaries.
+   - **Fix needed**: Replace `toSection : RS.carrier → ℂ` with a proper vector bundle formulation
+     (sections of the cotangent/anti-cotangent bundle). This is a significant refactoring of
+     DifferentialForms.lean and all consumers of Form_01/Form_10.
+   - **Impact**: These sorrys block Hodge theory (Level 3 of R-R) but NOT Level 1
+     (`eval_residue_complementarity`) or the argument principle.
 
 7. **`local_dbar_poincare`** (#27, Dolbeault.lean:493)
    - Local exactness of ∂̄ via Cauchy integral formula
@@ -325,13 +330,12 @@ Sorry totals:
 
 ### Tier D: Argument Principle (not on critical path for R-R levels)
 
-15. **`fiberMultiplicity_constant`** (#7), **`chartOrderSum_locally_constant`** (#8),
-    **`chartOrderSum_zero_large_c`** (#9)
+15. **`fiberMultiplicity_constant`** (#7)
     - ArgumentPrinciple.lean degree theory
     - `chartMeromorphic_argument_principle` is already proven (via `totalZeroOrder_eq_totalPoleOrder`
-      which calls these) — but these sorrys propagate
-    - **Strategy**: LMT at zeros + pole invariance + compactness → locally constant;
-      connected ℂ → globally constant
+      which calls this) — but this sorry propagates
+    - **Strategy**: LMT + compactness + connected ℂ
+    - ✅ `chartOrderSum_locally_constant` and `chartOrderSum_zero_large_c` are now fully proven
 
 ---
 
@@ -407,12 +411,13 @@ Sorry totals:
   minus finite set is connected), `preconnected_remove_point` — ALL fully proven
 - **AnalyticExtension.lean** ✅ **0 sorrys**: `correctedFn`, `correctedFn_locally_eq_analytic`,
   `correctedFn_same_order`, `correctedFn_continuous`, `correctedFn_constant` — ALL fully proven
-- **ArgumentPrinciple.lean** (3 sorrys): Degree theory framework.
+- **ArgumentPrinciple.lean** (1 sorry): Degree theory framework.
   - ✅ PROVEN: `local_mapping_theorem` (200+ lines, k-th root + IFT), `fiber_finite`,
     `chartOrderSum_split`, `chartOrderAt_sub_const_at_pole` (pole invariance),
-    `chartRep_sub_const`, `chartOrderSum_eq_zero`, `chartMeromorphic_argument_principle`
-  - SORRY: `fiberMultiplicity_constant` (#7), `chartOrderSum_locally_constant` (#8),
-    `chartOrderSum_zero_large_c` (#9)
+    `chartRep_sub_const`, `chartOrderSum_eq_zero`, `chartMeromorphic_argument_principle`,
+    `chartOrderSum_locally_constant` (locally constant via LMT + identity principle),
+    `chartOrderSum_zero_large_c` (vanishing for large |c|)
+  - SORRY: `fiberMultiplicity_constant` (#7)
 
 ### Differential Forms & Smoothness
 - **DifferentialForms.lean**: `SmoothFunction`, `Form_10/01/11/1`, wedge products,
@@ -476,6 +481,15 @@ LineBundles ──────────────────────�
 ---
 
 ## Recent Progress
+
+### 2026-02-16
+- **`chartOrderSum_locally_constant` FULLY PROVEN** — c ↦ chartOrderSum(f-c) is locally constant
+  - Assembly proof: T2 separation + local chart ball data + compact complement + ε selection
+  - Identity theorem sorrys resolved via `chartOrderAt_ne_top_of_ne_top_somewhere`
+  - K₀=∅ case handles f≡c₀ (constant function) via meromorphicOrderAt of constant functions
+- **`chartOrderSum_zero_large_c` FULLY PROVEN** — chartOrderSum(f-c) = 0 for |c| large
+- ArgumentPrinciple.lean: 3 → **1 sorry** (only `fiberMultiplicity_constant` remains)
+- R-R chain total: 27 → **25 sorrys**
 
 ### 2026-02-15
 - **`correctedFn_same_order` FULLY PROVEN** — chartOrderAt preserved by correctedFn
