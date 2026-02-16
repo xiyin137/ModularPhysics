@@ -1,5 +1,11 @@
 # Wightman QFT Module — TODO
 
+> **DEPRECATED**: This module has been refactored into a separate repository:
+> https://github.com/xiyin137/OSreconstruction
+>
+> The code here is outdated and kept only for reference. All active development
+> continues in the OSreconstruction repo.
+
 ## TOP PRIORITY: OS Reconstruction Theorems
 
 **Key insight**: Nuclear spaces / Minlos are NOT needed for the OS reconstruction theorems.

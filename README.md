@@ -4,17 +4,17 @@ A work-in-progress formalization of physics in Lean 4 with Mathlib.
 
 ## Philosophy
 
-The project explores how physical theories can be expressed in a formal proof assistant. The `Core/` module captures the logical structure of physics using Lean's type system, while `StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, and `Topology/` pursue rigorous mathematical foundations.
+The project has two strictly separate components:
 
-In `Core/`, physical principles are encoded as structure fields, making all assumptions explicit and visible in Lean's type system. The module contains zero Lean `axiom` declarations — every physical assumption is a field in a `structure`, so the reader can see exactly what each framework presupposes. `Core/` is used to parse the logical content of physics papers and to explore the interrelations between different physical frameworks without requiring complete mathematical foundations.
+**Rigorous mathematics** (`StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, `Topology/`): All definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs. `axiom` is strictly forbidden.
 
-In `StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, and `Topology/`, the goal is different: all definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs. Here too, `axiom` is strictly forbidden.
+**Physics paper parsing** (`PhysicsLogic/`): Encodes the logical structure of physics using Lean's type system — making all assumptions explicit and visible as structure fields. This is NOT rigorous mathematical formalization; it is a tool for parsing the logical content of physics papers and exploring interrelations between different physical frameworks. The module contains zero Lean `axiom` declarations — every physical assumption is a field in a `structure`, so the reader can see exactly what each framework presupposes.
 
 ## Structure
 
 ```
 ModularPhysics/
-├── Core/
+├── PhysicsLogic/                    # NOT rigorous math — physics paper parsing
 │   ├── ClassicalFieldTheory/
 │   ├── ClassicalMechanics/
 │   ├── FluidMechanics/
@@ -35,42 +35,31 @@ ModularPhysics/
 │   ├── Quantum/
 │   ├── QuantumInformation/
 │   ├── SpaceTime/
-│   └── Symmetries/
-├── Papers/
-│   └── GlimmJaffe/
-│       ├── ClusterExpansion/
-│       ├── Griffiths/
-│       ├── Hypercontractivity/
-│       └── ReflectionPositivity/
-├── RigorousQFT/
-│   ├── SPDE/
-│   │   ├── EKMS/
-│   │   ├── Examples/
-│   │   ├── Helpers/
-│   │   ├── Nonstandard/
-│   │   │   ├── Anderson/
-│   │   │   ├── Foundation/
-│   │   │   └── LoebMeasure/
-│   │   ├── Probability/
-│   │   └── RegularityStructures/
-│   │       ├── Models/
-│   │       └── Trees/
-│   ├── Wightman/
-│   │   ├── Groups/
-│   │   ├── NuclearSpaces/
-│   │   ├── Reconstruction/
-│   │   └── Spacetime/
-│   └── vNA/
-│       ├── Bochner/
-│       ├── MeasureTheory/
-│       ├── Spectral/
-│       │   └── Helpers/
-│       └── Unbounded/
-├── StringAlgebra/
+│   ├── Symmetries/
+│   └── Papers/                      # Physics paper formalizations (non-rigorous)
+│       └── GlimmJaffe/
+│           ├── ClusterExpansion/
+│           ├── Griffiths/
+│           ├── Hypercontractivity/
+│           └── ReflectionPositivity/
+├── RigorousQFT/                     # Rigorous formalization
+│   └── SPDE/
+│       ├── EKMS/
+│       ├── Examples/
+│       ├── Helpers/
+│       ├── Nonstandard/
+│       │   ├── Anderson/
+│       │   ├── Foundation/
+│       │   └── LoebMeasure/
+│       ├── Probability/
+│       └── RegularityStructures/
+│           ├── Models/
+│           └── Trees/
+├── StringAlgebra/                   # Rigorous formalization
 │   ├── Linfinity/
 │   ├── MZV/
 │   └── VOA/
-├── StringGeometry/
+├── StringGeometry/                  # Rigorous formalization
 │   ├── RiemannSurfaces/
 │   │   ├── Analytic/
 │   │   │   ├── Applications/
@@ -104,11 +93,13 @@ ModularPhysics/
 │   │   ├── Helpers/
 │   │   └── Sheaves/
 │   └── SuperRiemannSurfaces/
-└── Topology/
+└── Topology/                        # Rigorous formalization
     ├── Homotopy/
     ├── Sheaves/
     └── Spectra/
 ```
+
+**Note:** The `RigorousQFT/Wightman/` and `RigorousQFT/vNA/` subfolders have been refactored into a separate repository: [OSreconstruction](https://github.com/xiyin137/OSreconstruction). The copies in this repo are outdated and kept only for reference.
 
 ### StringGeometry
 
@@ -120,4 +111,8 @@ At a beginning stage with many placeholder definitions. Covers L-infinity algebr
 
 ### RigorousQFT
 
-Covers the Wightman axioms, von Neumann algebras, and stochastic PDE methods for constructive QFT. Current focus is on developing functional analysis infrastructure, stochastic differential equations, and establishing the Osterwalder-Schrader reconstruction theorem.
+Stochastic PDE methods for constructive QFT. The Wightman axioms, Osterwalder-Schrader reconstruction, and von Neumann algebra infrastructure have been moved to [OSreconstruction](https://github.com/xiyin137/OSreconstruction).
+
+### PhysicsLogic
+
+Encodes the logical architecture of theoretical physics — what each framework assumes and how different frameworks relate. This is for parsing physics papers, not for rigorous mathematical proof. Includes `Papers/` subfolder with formalizations of specific physics papers (Glimm-Jaffe, AMPS, Bell, etc.).

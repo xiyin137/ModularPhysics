@@ -1,5 +1,11 @@
 # vNA Module TODO
 
+> **DEPRECATED**: This module has been refactored into a separate repository:
+> https://github.com/xiyin137/OSreconstruction
+>
+> The code here is outdated and kept only for reference. All active development
+> continues in the OSreconstruction repo.
+
 ## Overview
 
 This module develops von Neumann algebra foundations for rigorous QFT, including:

@@ -1,2 +1,2 @@
-import ModularPhysics.Core.Quantum
-import ModularPhysics.Papers.AMPS
+import ModularPhysics.PhysicsLogic.Quantum
+import ModularPhysics.PhysicsLogic.Papers.AMPS
