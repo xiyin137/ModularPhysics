@@ -951,7 +951,7 @@ to avoid repeating the enormous Taylor/QV expressions. -/
     concludes ∫fₖ → 0.
 
     Proof: Fatou squeeze with gₖ = 2Cf(Sₖ-QV)² + 2Cf·QV² → G = 2Cf·QV². -/
-private theorem abstract_fatou_squeeze_L2 [IsProbabilityMeasure μ]
+theorem abstract_fatou_squeeze_L2 [IsProbabilityMeasure μ]
     {fk Sk : ℕ → Ω → ℝ} {QV : Ω → ℝ} {Cf : ℝ} (hCf : 0 ≤ Cf)
     (hfk_nn : ∀ k ω, 0 ≤ fk k ω)
     (hfk_dom : ∀ k ω, fk k ω ≤ Cf * (Sk k ω) ^ 2)
@@ -1013,7 +1013,7 @@ Helper lemmas providing integrability of discrete QV sums squared, QV², etc.
 Needed for the abstract Fatou squeeze in `taylor_remainder_L2_convergence`. -/
 
 /-- Process values are AEStronglyMeasurable (from adapted + sub-σ-algebra). -/
-private lemma process_aesm {F : Filtration Ω ℝ}
+lemma process_aesm {F : Filtration Ω ℝ}
     (X : ItoProcess F μ) (t : ℝ) :
     AEStronglyMeasurable (X.process t) μ :=
   ((X.process_adapted t).mono (F.le_ambient t) le_rfl).aestronglyMeasurable
@@ -1027,7 +1027,7 @@ private lemma si_aesm {F : Filtration Ω ℝ}
 /-- (X(t) - X(s))⁴ is integrable for bounded-coefficient Itô processes.
     Proof: decompose ΔX = D + S a.e., then (D+S)⁴ ≤ 8(D⁴ + S⁴) where
     D⁴ is bounded and S⁴ is integrable from quartic bound. -/
-private lemma process_increment_fourth_integrable {F : Filtration Ω ℝ}
+lemma process_increment_fourth_integrable {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
     {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
@@ -1111,7 +1111,7 @@ private lemma process_increment_fourth_integrable {F : Filtration Ω ℝ}
     _ = 8 * ((fun ω => D ω ^ 4 + S ω ^ 4) ω) := by ring_nf
 
 /-- Discrete QV sum is AEStronglyMeasurable. -/
-private lemma discrete_qv_aesm {F : Filtration Ω ℝ}
+lemma discrete_qv_aesm {F : Filtration Ω ℝ}
     (X : ItoProcess F μ) (t : ℝ) (n : ℕ) :
     AEStronglyMeasurable (fun ω =>
       ∑ i : Fin (n + 1),
@@ -1125,13 +1125,13 @@ private lemma discrete_qv_aesm {F : Filtration Ω ℝ}
   exact h.congr (ae_of_all _ fun ω => Finset.sum_apply ω Finset.univ _)
 
 /-- QV is AEStronglyMeasurable (from integrability of diffusion_sq_integral). -/
-private lemma qv_aesm {F : Filtration Ω ℝ} [IsProbabilityMeasure μ]
+lemma qv_aesm {F : Filtration Ω ℝ} [IsProbabilityMeasure μ]
     (X : ItoProcess F μ) (t : ℝ) (ht : 0 ≤ t) :
     AEStronglyMeasurable (fun ω => X.quadraticVariation t ω) μ :=
   (X.diffusion_sq_integral_integrable t ht).aestronglyMeasurable
 
 /-- QV² is integrable when diffusion is bounded (bounded + AEStronglyMeasurable on prob space). -/
-private lemma qv_sq_integrable {F : Filtration Ω ℝ}
+lemma qv_sq_integrable {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
     {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
@@ -1148,7 +1148,7 @@ private lemma qv_sq_integrable {F : Filtration Ω ℝ}
 /-- Discrete QV sum squared is integrable: (∑(ΔXᵢ)²)² ∈ L¹.
     Proof: Cauchy-Schwarz gives (∑aᵢ)² ≤ (n+1)·∑aᵢ², then each (ΔXᵢ)⁴ is
     integrable from quartic bounds. -/
-private lemma discrete_qv_sq_integrable {F : Filtration Ω ℝ}
+lemma discrete_qv_sq_integrable {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
     {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)
@@ -1200,7 +1200,7 @@ private lemma discrete_qv_sq_integrable {F : Filtration Ω ℝ}
 
 /-- (discrete_QV - QV)² is integrable.
     Proof: (S-Q)² ≤ 2S² + 2Q², both integrable. -/
-private lemma qv_diff_sq_integrable {F : Filtration Ω ℝ}
+lemma qv_diff_sq_integrable {F : Filtration Ω ℝ}
     [IsProbabilityMeasure μ]
     (X : ItoProcess F μ)
     {Mμ : ℝ} (hMμ : ∀ t ω, |X.drift t ω| ≤ Mμ)

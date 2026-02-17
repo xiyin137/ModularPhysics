@@ -287,6 +287,47 @@ theorem fatou_squeeze_tendsto_zero [IsProbabilityMeasure μ]
     show (ENNReal.ofReal (∫ ω, G ω ∂μ)).toReal = ∫ ω, G ω ∂μ from
       ENNReal.toReal_ofReal (integral_nonneg_of_ae hG_nn)] at h_toReal
 
+/-- A.e. version of `fatou_squeeze_tendsto_zero`: domination need only hold a.e.
+    Uses the min trick: `min(f, g)` satisfies pointwise domination, equals `f` a.e. -/
+theorem fatou_squeeze_tendsto_zero_ae [IsProbabilityMeasure μ]
+    {f g : ℕ → Ω → ℝ} {G : Ω → ℝ}
+    (hf_nn : ∀ n, ∀ ω, 0 ≤ f n ω)
+    (hg_nn : ∀ n, ∀ ω, 0 ≤ g n ω)
+    (hfg : ∀ᵐ ω ∂μ, ∀ n, f n ω ≤ g n ω)
+    (hf_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun n => f n ω) atTop (nhds 0))
+    (hg_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun n => g n ω) atTop (nhds (G ω)))
+    (hf_int : ∀ n, Integrable (f n) μ) (hg_int : ∀ n, Integrable (g n) μ)
+    (hG_int : Integrable G μ)
+    (hg_tend : Filter.Tendsto (fun n => ∫ ω, g n ω ∂μ)
+      atTop (nhds (∫ ω, G ω ∂μ))) :
+    Filter.Tendsto (fun n => ∫ ω, f n ω ∂μ) atTop (nhds 0) := by
+  -- Define f' = min(f, g), which equals f a.e. but satisfies pointwise domination
+  set f' : ℕ → Ω → ℝ := fun n ω => min (f n ω) (g n ω)
+  -- f' = f a.e. for each n
+  have hf'_eq : ∀ n, (fun ω => f' n ω) =ᵐ[μ] f n := by
+    intro n; filter_upwards [hfg] with ω hω; exact min_eq_left (hω n)
+  -- f' satisfies pointwise hypotheses of fatou_squeeze_tendsto_zero
+  have hf'_nn : ∀ n ω, 0 ≤ f' n ω := fun n ω => le_min (hf_nn n ω) (hg_nn n ω)
+  have hf'g : ∀ n ω, f' n ω ≤ g n ω := fun n ω => min_le_right _ _
+  have hf'_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun n => f' n ω) atTop (nhds 0) := by
+    filter_upwards [hfg, hf_ae] with ω hω hf_ω
+    have heq : ∀ n, f' n ω = f n ω := fun n => min_eq_left (hω n)
+    simp_rw [heq]; exact hf_ω
+  have hf'_int : ∀ n, Integrable (f' n) μ := by
+    intro n
+    -- 0 ≤ f' ≤ g and g integrable → f' integrable
+    -- f' = min(f, g) is measurable since f, g are measurable
+    have : ∀ ω, ‖f' n ω‖ ≤ g n ω := fun ω => by
+      rw [Real.norm_eq_abs, abs_of_nonneg (hf'_nn n ω)]
+      exact min_le_right _ _
+    exact Integrable.mono' (hg_int n)
+      ((hf_int n).aestronglyMeasurable.inf (hg_int n).aestronglyMeasurable)
+      (ae_of_all _ this)
+  -- Apply pointwise version
+  have h := fatou_squeeze_tendsto_zero hf'_nn hf'g hf'_ae hg_ae hf'_int hg_int hG_int hg_tend
+  -- Transfer: ∫ f' = ∫ f since f' = f a.e.
+  exact h.congr (fun n => integral_congr_ae (hf'_eq n))
+
 /-! ## Taylor remainder a.e. convergence -/
 
 /-- Along an a.e.-convergent subsequence for QV, the Taylor remainders

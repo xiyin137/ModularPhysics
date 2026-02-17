@@ -1,25 +1,31 @@
 # SPDE Standard Approach - Status and TODO
 
-## Current Sorry Count (as of 2026-02-15)
+## Current Sorry Count (as of 2026-02-17)
 
 | File | Sorrys | Key Items |
 |------|--------|-----------|
 | **StochasticIntegration.lean** | **8** | quadratic_variation, bdg_inequality, sde_existence, sde_uniqueness_law, stratonovich, semimartingale_integral, girsanov, martingale_representation |
 | **BrownianMotion.lean** | **5** | time_inversion, eval_unit_is_brownian, Q-Wiener continuous_paths, Q-Wiener regularity_from_trace, levy_characterization |
-| **SPDE.lean** | **4** | Generator/semigroup infrastructure |
+| **SPDE.lean** | **5** | Generator/semigroup infrastructure |
 | **Basic.lean** | **1** | is_martingale_of_bounded (needs uniform integrability) |
 | **RegularityStructures.lean** | **1** | Abstract approach (complementary to folder) |
 | **Probability/Basic.lean** | **2** | condexp_jensen, doob_maximal_L2 |
-| **Helpers/ItoFormulaProof.lean** | **5** | 4 convergence lemmas + si_increment_L2_convergence wiring |
+| **Helpers/ItoFormulaProof.lean** | **1** | a.e. convergence in si_increment_L2_convergence (line 2103) |
 | **Helpers/IsometryTheorems.lean** | **1** | stoch_integral_squared_orthogonal |
-| **Helpers/QuarticBound.lean** | **4** | stoch_integral_bounded_approx (4 internal sorrys) |
+| **Helpers/QuarticBound.lean** | **0** | FULLY PROVEN |
+| **Helpers/QVConvergence.lean** | **0** | FULLY PROVEN |
+| **Helpers/ItoFormulaDecomposition.lean** | **0** | FULLY PROVEN |
+| **Helpers/QuadraticVariation.lean** | **0** | FULLY PROVEN |
 | **Helpers/InnerIntegralIntegrability.lean** | **5** | Tonelli/Fubini infrastructure (NOT on ito_formula critical path) |
-| **Helpers/** (all other 13 files) | **0** | Fully proven |
+| **Helpers/** (all other files) | **0** | Fully proven |
 | **Probability/IndependenceHelpers.lean** | **0** | Fully proven |
 | **Probability/Pythagoras.lean** | **0** | Fully proven |
-| **RegularityStructures/** | **38** | See RegularityStructures/TODO.md |
+| **EKMS/** | **16** | Hyperbolicity, InvariantMeasure, TwoSidedMinimizers, OneSidedMinimizers, Basic |
+| **Examples/** | **15** | YangMills2D, Phi4, KPZ |
+| **Nonstandard/Anderson/** | **10** | ItoCorrespondence, ExplicitSolutions, LocalCLT, AndersonTheorem, CylinderConvergenceHelpers |
+| **RegularityStructures/** | **41** | See RegularityStructures/TODO.md |
 
-**Total: ~74 sorrys** (36 SPDE core + 38 RegularityStructures)
+**Total: ~110 sorrys** (29 SPDE core + 41 RegularityStructures + 16 EKMS + 15 Examples + 10 Nonstandard)
 
 ---
 
@@ -72,12 +78,11 @@ See `RegularityStructures/TODO.md` for full sorry-dependency audit.
 
 ---
 
-## Ito Formula — Complete Sorry Dependency Audit (2026-02-15)
+## Ito Formula — Complete Sorry Dependency Audit (updated 2026-02-17)
 
-### The theorem: `ito_formula` at ItoFormulaProof.lean:1416
+### The theorem: `ito_formula` at ItoFormulaProof.lean
 
-**Status**: Top-level proof term is COMPLETE. The theorem calls `ito_formula_martingale` (proved),
-which calls `si_increment_L2_convergence` (sorry). All wiring is done — only leaf sorrys remain.
+**Status**: Top-level proof term is COMPLETE. Only **2 sorrys** remain on the critical path.
 
 **Statement:**
 For C^{1,2} function f and Ito process dX_t = mu_t dt + sigma_t dW_t:
@@ -86,36 +91,49 @@ f(t, X_t) = f(0, X_0) + int_0^t [d_t f + d_x f * mu + 1/2 d^2_x f * sigma^2] ds 
 ```
 where M_t is a martingale (the stochastic integral int_0^t d_x f * sigma dW).
 
-### Critical Path: 10 sorrys blocking `ito_formula`
+### Critical Path: 2 sorrys blocking `ito_formula`
 
 ```
-ito_formula (ItoFormulaProof.lean:1416) -- PROVED, wires to:
-  ito_formula_martingale (line 1338) -- PROVED, wires to:
-    si_increment_L2_convergence (line 1297) -- SORRY [wiring, line 1322]
-      ito_error_decomposition (line 920) -- PROVED ✓
-      time_riemann_L2_convergence (line 1184) -- SORRY [line 1205]
-      drift_riemann_L2_convergence (line 1208) -- SORRY [line 1230]
-      qv_error_L2_convergence (line 1233) -- SORRY [line 1254]
-      taylor_truncated_L2_convergence (line 1259) -- SORRY [line 1286]
+ito_formula -- PROVED, wires to:
+  ito_formula_martingale -- PROVED, wires to:
+    si_increment_L2_convergence (ItoFormulaProof.lean:1365)
+      ito_error_decomposition -- PROVED ✓
+      fatou_squeeze_tendsto_zero_ae -- PROVED ✓
+      Error bound: 0 ≤ error² ≤ 4*(E1²+E2²+E3²+E4²) -- PROVED ✓
+        |E1| ≤ 2*Mft*T (time Riemann) -- PROVED ✓
+        |E2| ≤ 2*Mf'*Mμ*T (drift Riemann) -- PROVED ✓
+        |E3| ≤ ½Mf''*(Mσ²T+Sk) (QV weighted) -- PROVED ✓
+        |E4| ≤ 2*Mf''*Sk (Taylor remainder) -- PROVED ✓
+      Dominator g_k → G a.e. -- PROVED ✓
+      *** a.e. convergence: error²(k) → 0 (line 2103) -- SORRY ***
         [transitively needs QV convergence, which needs:]
         stoch_integral_squared_orthogonal (IsometryTheorems.lean:309) -- SORRY
-        stoch_integral_bounded_approx (QuarticBound.lean) -- 4 SORRYS [lines 972,981,1009,1030]
 ```
 
-#### Layer 1: ItoFormulaProof.lean (5 sorrys)
+#### Layer 1: ItoFormulaProof.lean (1 sorry, line 2103)
 
-| Line | Lemma | Description | Difficulty |
-|------|-------|-------------|------------|
-| 1205 | `time_riemann_L2_convergence` | E1 -> 0 in L^2 (time-derivative Riemann sum error) | Medium |
-| 1230 | `drift_riemann_L2_convergence` | E2 -> 0 in L^2 (drift Riemann sum error) | Medium |
-| 1254 | `qv_error_L2_convergence` | E3 -> 0 in L^2 (QV approximation error) | Medium-High |
-| 1286 | `taylor_truncated_L2_convergence` | E4 -> 0 in L^2 (Taylor remainder) | Medium |
-| 1322 | `si_increment_L2_convergence` | Wires above 4 via squeeze theorem + ito_error_decomposition | Wiring |
+| Line | Goal | Description | Difficulty |
+|------|------|-------------|------------|
+| 2103 | a.e. convergence | `∀ᵐ ω, error²(k,ω) → 0` in `si_increment_L2_convergence` | High |
 
-**Approach for convergence lemmas (all 4 similar):**
-1. For a.e. ω, by `ItoProcess.process_continuous` + continuity of f's derivatives: error → 0 pointwise
-2. |error| ≤ C uniformly (from boundedness hypotheses)
-3. Dominated convergence: E[error²] → 0
+**What's proved in si_increment_L2_convergence:**
+- Subsequence extraction (tendsto_of_subseq_tendsto + QV a.e. sub-subsequence)
+- Error decomposition: error² ≤ 4*(E1²+E2²+E3²+E4²) a.e. ∀ k
+- Absolute value bounds on E1, E2, E3, E4 (for domination)
+- Dominator g_k defined, g_k ≥ 0, f_k ≤ g_k a.e., g_k → G a.e.
+- **Missing**: f_k → 0 a.e. (error² → 0 pointwise for continuous paths)
+
+**Approach for the remaining sorry:**
+Need to show each E_i(k,ω) → 0 for a.e. ω (continuous path + QV convergence):
+- E1 → 0: Use FTC + uniform continuity of ∂_tf on compact set + path UC
+- E2 → 0: Use uniform continuity of f' + path UC + bounded drift
+- E3 → 0: Decompose into Riemann error (UC) + QV discrepancy (a.e. convergence)
+- E4 → 0: Adapt `taylor_remainders_ae_tendsto_zero` pattern (UC of f'' + QV bounded)
+
+**Available infrastructure:**
+- `riemann_sum_L2_convergence` (ItoFormulaDecomposition.lean:559) — L² Riemann convergence
+- `taylor_remainders_ae_tendsto_zero` (QuadraticVariation.lean:344) — Taylor a.e. convergence
+- Both use `Metric.tendsto_atTop` + `isCompact_Icc.uniformContinuousOn_of_continuous` pattern
 
 #### Layer 2: IsometryTheorems.lean (1 sorry)
 
@@ -125,14 +143,13 @@ ito_formula (ItoFormulaProof.lean:1416) -- PROVED, wires to:
 
 **Used by**: QVConvergence.lean:215 (in `si_compensated_orthogonal_partition`)
 
-#### Layer 3: QuarticBound.lean (4 sorrys in `stoch_integral_bounded_approx`)
+#### Layer 3: QuarticBound.lean — FULLY PROVEN ✓
 
-| Line | Description | Difficulty |
-|------|-------------|------------|
-| 972 | IntegrableOn bound for bounded step function squared | Easy |
-| 981 | IntegrableOn bound for (orig - σ) squared | Easy |
-| 1009 | Measurability: ω ↦ ∫ valueAtTime(diff_n)² is strongly measurable | Easy-Medium |
-| 1030 | Measurability: ω ↦ ∫ (valueAtTime(orig) - σ)² is strongly measurable | Easy-Medium |
+#### Layer 3: QVConvergence.lean — FULLY PROVEN ✓
+
+#### Layer 3: ItoFormulaDecomposition.lean — FULLY PROVEN ✓
+
+#### Layer 3: QuadraticVariation.lean — FULLY PROVEN ✓
 
 **Used by**: QuarticBound.lean:1260 (`stoch_integral_increment_L4_integrable_proof`)
 -> QVConvergence.lean:276,296,347 -> ito_qv_L2_bound -> ito_process_discrete_qv_L2_convergence

@@ -1394,6 +1394,11 @@ structure ItoProcess (F : Filtration Ω ℝ) (μ : Measure Ω) where
       convention for non-integrable functions), making the drift contribution vacuous. -/
   drift_time_integrable : ∀ ω (t : ℝ), 0 ≤ t →
     IntegrableOn (fun s => drift s ω) (Set.Icc 0 t) volume
+  /-- The diffusion coefficient is jointly measurable in (t, ω).
+      This is a standard requirement in stochastic analysis: σ(t, ω) must be
+      progressively measurable (adapted + jointly measurable). Joint measurability
+      is needed for Fubini/Tonelli arguments and for inner integral measurability. -/
+  diffusion_jointly_measurable : Measurable (Function.uncurry diffusion)
   /-- The squared diffusion is integrable in time for each ω.
       This is a pathwise regularity condition for the diffusion coefficient:
       σ(·, ω) is locally L² in time, which is necessary for the stochastic

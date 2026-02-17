@@ -84,9 +84,9 @@ theorem quartic_step
     (hS_meas : @Measurable Ω ℝ (W.F.σ_algebra s_time) _ S)
     (hH_meas : @Measurable Ω ℝ (W.F.σ_algebra s_time) _ H_k)
     -- Boundedness
-    {M : ℝ} (hM_nn : 0 ≤ M) (hH_bdd : ∀ ω, |H_k ω| ≤ M)
+    {M : ℝ} (_hM_nn : 0 ≤ M) (hH_bdd : ∀ ω, |H_k ω| ≤ M)
     -- Time parameter
-    (T : ℝ) (hT_nn : 0 ≤ T)
+    (T : ℝ) (_hT_nn : 0 ≤ T)
     -- Integrability
     (hS2_int : Integrable (fun ω => (S ω) ^ 2) μ)
     (hS4_int : Integrable (fun ω => (S ω) ^ 4) μ)
@@ -468,7 +468,7 @@ See the module docstring for the full proof.
 
     Proof by induction on k (see module docstring). -/
 theorem quartic_sum_bound
-    {F : Filtration Ω ℝ} [IsProbabilityMeasure μ]
+    {_F : Filtration Ω ℝ} [IsProbabilityMeasure μ]
     (W : BrownianMotion Ω μ)
     {n : ℕ}
     (times : Fin (n + 1) → ℝ)
@@ -506,9 +506,9 @@ theorem quartic_sum_bound
     refine ⟨?_, ?_, ?_, ?_⟩
     · -- S_0 = 0, (0)² = 0 is integrable
       exact (integrable_const (0 : ℝ)).congr
-        (ae_of_all _ fun ω => by simp [Fin.sum_univ_zero])
+        (ae_of_all _ fun ω => by simp)
     · exact (integrable_const (0 : ℝ)).congr
-        (ae_of_all _ fun ω => by simp [Fin.sum_univ_zero])
+        (ae_of_all _ fun ω => by simp)
     · simp
     · simp
   | succ j ih =>
@@ -969,7 +969,9 @@ theorem stoch_integral_bounded_approx {F : Filtration Ω ℝ}
             (Set.Icc 0 t) volume := fun ω' => by
         obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded diff_n hdiff_bdd
         exact (integrableOn_const hIcc_finite :
-          IntegrableOn (fun _ : ℝ => C ^ 2) _ _).mono' sorry
+          IntegrableOn (fun _ : ℝ => C ^ 2) _ _).mono'
+          (((SimpleProcess.valueAtTime_jointly_measurable diff_n).comp
+            (measurable_id.prodMk measurable_const)).pow_const 2).aestronglyMeasurable
           (ae_of_all _ fun s => by
             simp only [Real.norm_eq_abs, abs_pow]
             exact pow_le_pow_left₀ (abs_nonneg _) (hC s ω') 2)
@@ -978,7 +980,11 @@ theorem stoch_integral_bounded_approx {F : Filtration Ω ℝ}
             X.diffusion s ω') ^ 2) (Set.Icc 0 t) volume := fun ω' => by
         obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded (orig n) (horig_bdd n)
         exact (integrableOn_const hIcc_finite :
-          IntegrableOn (fun _ : ℝ => (C + Mσ) ^ 2) _ _).mono' sorry
+          IntegrableOn (fun _ : ℝ => (C + Mσ) ^ 2) _ _).mono'
+          ((((SimpleProcess.valueAtTime_jointly_measurable (orig n)).comp
+            (measurable_id.prodMk measurable_const)).sub
+            (X.diffusion_jointly_measurable.comp (measurable_id.prodMk measurable_const))).pow_const 2
+            ).aestronglyMeasurable
           (ae_of_all _ fun s => by
             simp only [Real.norm_eq_abs, abs_pow]
             apply pow_le_pow_left₀ (abs_nonneg _)
@@ -1004,9 +1010,10 @@ theorem stoch_integral_bounded_approx {F : Filtration Ω ℝ}
             ∫ s in Set.Icc 0 t, diff_n.valueAtTime s ω ^ 2 ∂volume) μ := by
           obtain ⟨C_d, hC_d_nn, hC_d⟩ := SimpleProcess.valueAtTime_uniform_bounded diff_n hdiff_bdd
           apply Integrable.mono' (integrable_const (C_d ^ 2 * t))
-          · -- AEStronglyMeasurable: diff_n valueAtTime is a step function → finite sum
-            -- Each summand is (measurable function)² · indicator → measurable
-            sorry  -- measurability of ω ↦ ∫ vT(diff_n)² (step function inner integral)
+          · have hsm := ((SimpleProcess.valueAtTime_jointly_measurable diff_n).pow_const 2
+                ).stronglyMeasurable.integral_prod_left'
+                (μ := volume.restrict (Set.Icc 0 t))
+            exact hsm.aestronglyMeasurable
           · exact ae_of_all μ (fun ω => by
               rw [Real.norm_eq_abs, abs_of_nonneg
                 (setIntegral_nonneg measurableSet_Icc (fun s _ => sq_nonneg _))]
@@ -1027,7 +1034,11 @@ theorem stoch_integral_bounded_approx {F : Filtration Ω ℝ}
             ∫ s in Set.Icc 0 t, ((orig n).valueAtTime s ω - X.diffusion s ω) ^ 2 ∂volume) μ := by
           obtain ⟨C, hC_nn, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded (orig n) (horig_bdd n)
           apply Integrable.mono' (integrable_const ((C + Mσ) ^ 2 * t))
-          · sorry  -- measurability of ω ↦ ∫ (vT(orig)-σ)² (technical)
+          · have hsm := ((SimpleProcess.valueAtTime_jointly_measurable (orig n)).sub
+                X.diffusion_jointly_measurable).pow_const 2
+                |>.stronglyMeasurable.integral_prod_left'
+                (μ := volume.restrict (Set.Icc 0 t))
+            exact hsm.aestronglyMeasurable
           · exact ae_of_all μ (fun ω => by
               rw [Real.norm_eq_abs, abs_of_nonneg
                 (setIntegral_nonneg measurableSet_Icc (fun s _ => sq_nonneg _))]
@@ -1144,7 +1155,7 @@ theorem simple_integral_increment_quartic_bound
     (hH_adapted : ∀ i : Fin H.n,
       @Measurable Ω ℝ (W.F.σ_algebra (H.times i)) _ (H.values i))
     {M : ℝ} (hM : 0 ≤ M) (hH_bdd : ∀ i : Fin H.n, ∀ ω, |H.values i ω| ≤ M)
-    (hH_times_nn : ∀ i : Fin H.n, 0 ≤ H.times i)
+    (_hH_times_nn : ∀ i : Fin H.n, 0 ≤ H.times i)
     (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
     Integrable (fun ω => (H.stochasticIntegral_at W t ω -
       H.stochasticIntegral_at W s ω)^4) μ ∧
@@ -1458,7 +1469,7 @@ theorem integrable_pow4_of_L2_convergence
     (hg_meas : AEStronglyMeasurable g μ)
     (hL2 : Filter.Tendsto (fun n => ∫ ω, (f n ω - g ω)^2 ∂μ) atTop (nhds 0))
     (hL2_int : ∀ n, Integrable (fun ω => (f n ω - g ω)^2) μ)
-    {C : ℝ} (hC : 0 ≤ C)
+    {C : ℝ} (_hC : 0 ≤ C)
     (hbound : ∀ n, ∫ ω, (f n ω)^4 ∂μ ≤ C)
     (hf4_int : ∀ n, Integrable (fun ω => (f n ω)^4) μ) :
     Integrable (fun ω => (g ω)^4) μ := by
