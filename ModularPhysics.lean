@@ -1,2 +1,2 @@
-import ModularPhysics.PhysicsLogic.Quantum
-import ModularPhysics.PhysicsLogic.Papers.AMPS
+-- ModularPhysics root import
+-- PhysicsLogic has been moved to https://github.com/xiyin137/PhysicsLogic

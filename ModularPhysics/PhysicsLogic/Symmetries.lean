@@ -1,6 +1,0 @@
--- Legacy aggregator file
-import ModularPhysics.PhysicsLogic.Symmetries.Lorentz
-import ModularPhysics.PhysicsLogic.Symmetries.Poincare
-import ModularPhysics.PhysicsLogic.Symmetries.LieAlgebras
-import ModularPhysics.PhysicsLogic.Symmetries.Representations
-import ModularPhysics.PhysicsLogic.Symmetries.Discrete

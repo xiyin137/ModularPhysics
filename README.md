@@ -1,48 +1,17 @@
 # ModularPhysics
 
-A work-in-progress formalization of physics in Lean 4 with Mathlib.
+A work-in-progress rigorous formalization of mathematical physics in Lean 4 with Mathlib. All definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs. `axiom` is strictly forbidden.
 
-## Philosophy
+## Related Repositories
 
-The project has two strictly separate components:
-
-**Rigorous mathematics** (`StringGeometry/`, `StringAlgebra/`, `RigorousQFT/`, `Topology/`): All definitions and proofs build purely on Mathlib's foundations, with `sorry` used for incomplete proofs. `axiom` is strictly forbidden.
-
-**Physics paper parsing** (`PhysicsLogic/`): Encodes the logical structure of physics using Lean's type system — making all assumptions explicit and visible as structure fields. This is NOT rigorous mathematical formalization; it is a tool for parsing the logical content of physics papers and exploring interrelations between different physical frameworks. The module contains zero Lean `axiom` declarations — every physical assumption is a field in a `structure`, so the reader can see exactly what each framework presupposes.
+- [PhysicsLogic](https://github.com/xiyin137/PhysicsLogic) — Encodes the logical architecture of theoretical physics in Lean's type system. For parsing physics papers, not rigorous formalization.
+- [OSreconstruction](https://github.com/xiyin137/OSreconstruction) — Wightman axioms, Osterwalder-Schrader reconstruction, and von Neumann algebra infrastructure.
 
 ## Structure
 
 ```
 ModularPhysics/
-├── PhysicsLogic/                    # NOT rigorous math — physics paper parsing
-│   ├── ClassicalFieldTheory/
-│   ├── ClassicalMechanics/
-│   ├── FluidMechanics/
-│   ├── GeneralRelativity/
-│   ├── QFT/
-│   │   ├── AQFT/
-│   │   ├── BV/
-│   │   ├── CFT/
-│   │   │   ├── Bootstrap/
-│   │   │   └── TwoDimensional/
-│   │   ├── Euclidean/
-│   │   ├── KontsevichSegal/
-│   │   ├── PathIntegral/
-│   │   ├── RG/
-│   │   ├── Smatrix/
-│   │   ├── TQFT/
-│   │   └── Wightman/
-│   ├── Quantum/
-│   ├── QuantumInformation/
-│   ├── SpaceTime/
-│   ├── Symmetries/
-│   └── Papers/                      # Physics paper formalizations (non-rigorous)
-│       └── GlimmJaffe/
-│           ├── ClusterExpansion/
-│           ├── Griffiths/
-│           ├── Hypercontractivity/
-│           └── ReflectionPositivity/
-├── RigorousQFT/                     # Rigorous formalization
+├── RigorousQFT/
 │   └── SPDE/
 │       ├── EKMS/
 │       ├── Examples/
@@ -55,11 +24,11 @@ ModularPhysics/
 │       └── RegularityStructures/
 │           ├── Models/
 │           └── Trees/
-├── StringAlgebra/                   # Rigorous formalization
+├── StringAlgebra/
 │   ├── Linfinity/
 │   ├── MZV/
 │   └── VOA/
-├── StringGeometry/                  # Rigorous formalization
+├── StringGeometry/
 │   ├── RiemannSurfaces/
 │   │   ├── Analytic/
 │   │   │   ├── Applications/
@@ -93,13 +62,13 @@ ModularPhysics/
 │   │   ├── Helpers/
 │   │   └── Sheaves/
 │   └── SuperRiemannSurfaces/
-└── Topology/                        # Rigorous formalization
+└── Topology/
     ├── Homotopy/
     ├── Sheaves/
     └── Spectra/
 ```
 
-**Note:** The `RigorousQFT/Wightman/` and `RigorousQFT/vNA/` subfolders have been refactored into a separate repository: [OSreconstruction](https://github.com/xiyin137/OSreconstruction). The copies in this repo are outdated and kept only for reference.
+**Note:** The `RigorousQFT/Wightman/` and `RigorousQFT/vNA/` subfolders are outdated copies kept for reference. Active development is in [OSreconstruction](https://github.com/xiyin137/OSreconstruction).
 
 ### StringGeometry
 
@@ -112,7 +81,3 @@ At a beginning stage with many placeholder definitions. Covers L-infinity algebr
 ### RigorousQFT
 
 Stochastic PDE methods for constructive QFT. The Wightman axioms, Osterwalder-Schrader reconstruction, and von Neumann algebra infrastructure have been moved to [OSreconstruction](https://github.com/xiyin137/OSreconstruction).
-
-### PhysicsLogic
-
-Encodes the logical architecture of theoretical physics — what each framework assumes and how different frameworks relate. This is for parsing physics papers, not for rigorous mathematical proof. Includes `Papers/` subfolder with formalizations of specific physics papers (Glimm-Jaffe, AMPS, Bell, etc.).
