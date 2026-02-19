@@ -28,8 +28,6 @@ ModularPhysics/
             └── Trees/
 ```
 
-**Note:** The `RigorousQFT/Wightman/` and `RigorousQFT/vNA/` subfolders are outdated copies kept for reference. Active development is in [OSreconstruction](https://github.com/xiyin137/OSreconstruction).
-
 ### RigorousQFT
 
-Stochastic PDE methods for constructive QFT, including Itô calculus, regularity structures, and nonstandard analysis approaches.
+Stochastic PDE methods for constructive QFT, including Itô calculus, regularity structures, and nonstandard analysis approaches. The von Neumann algebra and Wightman axiom infrastructure has been moved to [OSreconstruction](https://github.com/xiyin137/OSreconstruction).

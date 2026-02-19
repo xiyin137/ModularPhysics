@@ -771,6 +771,50 @@ private lemma simple_QV_eq_clamped_sum {F : Filtration Ω ℝ}
     linarith
   · simp only [dif_neg hi, sub_self]
 
+/-! ## Set-integral Pythagoras -/
+
+/-- Set-integral Pythagoras: ∫_A (Σ aᵢ)² = Σ ∫_A aᵢ² when set-integral cross terms vanish.
+    Proved via indicator trick reducing to the full-integral Pythagoras. -/
+private theorem set_sum_sq_integral_eq {n : ℕ}
+    (a : Fin n → Ω → ℝ) {A : Set Ω} (hA : MeasurableSet A)
+    (h_cross_int_on : ∀ i j : Fin n, IntegrableOn (fun ω => a i ω * a j ω) A μ)
+    (h_orthog : ∀ i j : Fin n, i ≠ j → ∫ ω in A, a i ω * a j ω ∂μ = 0) :
+    ∫ ω in A, (∑ i : Fin n, a i ω) ^ 2 ∂μ =
+    ∑ i : Fin n, ∫ ω in A, (a i ω) ^ 2 ∂μ := by
+  -- Indicator trick: define a'_i = 1_A · a_i
+  set a' : Fin n → Ω → ℝ := fun i => A.indicator (a i) with ha'_def
+  -- Key pointwise identity: indicator product = indicator of product
+  have h_ind_mul : ∀ i j, ∀ ω,
+      a' i ω * a' j ω = A.indicator (fun ω => a i ω * a j ω) ω := by
+    intro i j ω; simp only [ha'_def, Set.indicator]
+    split_ifs <;> simp
+  -- Cross-product integrability
+  have h_cross_int : ∀ i j : Fin n, Integrable (fun ω => a' i ω * a' j ω) μ := by
+    intro i j
+    have hrw : (fun ω => a' i ω * a' j ω) = A.indicator (fun ω => a i ω * a j ω) := by
+      ext ω; exact h_ind_mul i j ω
+    rw [hrw, integrable_indicator_iff hA]; exact h_cross_int_on i j
+  -- Cross-term vanishing
+  have h_orthog' : ∀ i j : Fin n, i ≠ j → ∫ ω, a' i ω * a' j ω ∂μ = 0 := by
+    intro i j hij; simp_rw [h_ind_mul i j, integral_indicator hA]
+    exact h_orthog i j hij
+  -- Apply full-integral Pythagoras
+  have hpyth := SPDE.Probability.sum_sq_integral_eq_sum_integral_sq a' h_cross_int h_orthog'
+  -- Convert LHS: ∫ (Σ a'_i)² = ∫_A (Σ a_i)²
+  have h_sum_ind : ∀ ω, ∑ i, a' i ω = A.indicator (fun ω => ∑ i, a i ω) ω := by
+    intro ω; simp only [ha'_def, Set.indicator]
+    split_ifs <;> simp
+  have h_sq_ind : ∀ ω, (A.indicator (fun ω => ∑ i, a i ω) ω) ^ 2 =
+      A.indicator (fun ω => (∑ i, a i ω) ^ 2) ω := by
+    intro ω; simp only [Set.indicator]; split_ifs <;> simp
+  simp_rw [h_sum_ind, h_sq_ind, integral_indicator hA] at hpyth
+  -- Convert RHS: Σ ∫ (a'_i)² = Σ ∫_A a_i²
+  have h_sq_ind' : ∀ i, ∀ ω, (a' i ω) ^ 2 = A.indicator (fun ω => (a i ω) ^ 2) ω := by
+    intro i ω; simp only [ha'_def, Set.indicator]; split_ifs <;> simp
+  have hRHS : ∑ i : Fin n, ∫ ω, (a' i ω) ^ 2 ∂μ = ∑ i : Fin n, ∫ ω in A, (a i ω) ^ 2 ∂μ := by
+    congr 1; ext i; simp_rw [h_sq_ind' i, integral_indicator hA]
+  rw [hRHS] at hpyth; exact hpyth
+
 /-! ## Simple process compensated square set-integral -/
 
 /-- For a simple process H, the compensated square set-integral vanishes:
