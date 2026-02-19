@@ -61,11 +61,11 @@ ModularPhysics/
 │   │   ├── FPS/
 │   │   ├── Helpers/
 │   │   └── Sheaves/
-│   └── SuperRiemannSurfaces/
-└── Topology/
-    ├── Homotopy/
-    ├── Sheaves/
-    └── Spectra/
+│   ├── SuperRiemannSurfaces/
+│   └── Topology/
+│       ├── Homotopy/
+│       ├── Sheaves/
+│       └── Spectra/
 ```
 
 **Note:** The `RigorousQFT/Wightman/` and `RigorousQFT/vNA/` subfolders are outdated copies kept for reference. Active development is in [OSreconstruction](https://github.com/xiyin137/OSreconstruction).

@@ -3,8 +3,8 @@ Copyright (c) 2025. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
-import ModularPhysics.Topology.Homotopy.Suspension
-import ModularPhysics.Topology.Homotopy.WeakEquivalence
+import ModularPhysics.StringGeometry.Topology.Homotopy.Suspension
+import ModularPhysics.StringGeometry.Topology.Homotopy.WeakEquivalence
 import Mathlib.Topology.Homotopy.HomotopyGroup
 
 /-!

@@ -1,4 +1,4 @@
-import ModularPhysics.Topology.Sheaves.CechCohomology
+import ModularPhysics.StringGeometry.Topology.Sheaves.CechCohomology
 
 /-!
 # Long Exact Sequence in Čech Cohomology

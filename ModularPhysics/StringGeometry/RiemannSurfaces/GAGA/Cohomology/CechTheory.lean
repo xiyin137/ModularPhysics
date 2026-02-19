@@ -1,5 +1,5 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.GAGA.Cohomology.GeneralCechBridge
-import ModularPhysics.Topology.Sheaves.LongExactSequence
+import ModularPhysics.StringGeometry.Topology.Sheaves.LongExactSequence
 import ModularPhysics.StringGeometry.RiemannSurfaces.GAGA.Cohomology.Basic
 import Mathlib.LinearAlgebra.Dimension.Finrank
 import Mathlib.GroupTheory.QuotientGroup.Defs

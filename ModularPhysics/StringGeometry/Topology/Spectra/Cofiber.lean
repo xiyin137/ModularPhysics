@@ -3,9 +3,9 @@ Copyright (c) 2025. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
-import ModularPhysics.Topology.Spectra.Basic
-import ModularPhysics.Topology.Spectra.HomotopyGroups
-import ModularPhysics.Topology.Homotopy.Sequences
+import ModularPhysics.StringGeometry.Topology.Spectra.Basic
+import ModularPhysics.StringGeometry.Topology.Spectra.HomotopyGroups
+import ModularPhysics.StringGeometry.Topology.Homotopy.Sequences
 
 /-!
 # Cofiber Spectra and Long Exact Sequences

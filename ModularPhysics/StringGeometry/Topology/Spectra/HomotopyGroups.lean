@@ -3,9 +3,9 @@ Copyright (c) 2025. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
-import ModularPhysics.Topology.Spectra.Basic
-import ModularPhysics.Topology.Homotopy.WeakEquivalence
-import ModularPhysics.Topology.Homotopy.LoopSpaceIso
+import ModularPhysics.StringGeometry.Topology.Spectra.Basic
+import ModularPhysics.StringGeometry.Topology.Homotopy.WeakEquivalence
+import ModularPhysics.StringGeometry.Topology.Homotopy.LoopSpaceIso
 import Mathlib.Topology.Homotopy.HomotopyGroup
 
 /-!

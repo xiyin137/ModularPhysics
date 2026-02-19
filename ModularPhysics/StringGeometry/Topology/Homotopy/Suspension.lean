@@ -7,7 +7,7 @@ import Mathlib.Topology.Homotopy.HomotopyGroup
 import Mathlib.Topology.Connected.PathConnected
 import Mathlib.Topology.CompactOpen
 import Mathlib.Topology.Constructions
-import ModularPhysics.Topology.Homotopy.Pointed
+import ModularPhysics.StringGeometry.Topology.Homotopy.Pointed
 
 /-!
 # Loop Space and Reduced Suspension

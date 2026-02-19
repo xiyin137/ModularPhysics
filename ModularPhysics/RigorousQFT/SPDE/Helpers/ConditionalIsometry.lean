@@ -620,6 +620,157 @@ private lemma simple_stochasticIntegral_at_sq_integrable {F : Filtration Ω ℝ}
     ((integrable_zero _ _ _).congr (ae_of_all _ fun _ => (zero_pow two_ne_zero).symm)) t ht
   simp only [sub_zero] at h; exact h
 
+/-! ## Simple process filtration measurability -/
+
+/-- Simple stochastic integrals at time s are measurable w.r.t. the filtration at time s.
+    This is a local copy of the proof from `ItoFormulaDecomposition.lean` to avoid circular imports. -/
+private lemma si_at_filt_meas {F : Filtration Ω ℝ}
+    (H : SimpleProcess F) (W : BrownianMotion Ω μ)
+    (hH_adapted : ∀ i : Fin H.n,
+      @Measurable Ω ℝ (W.F.σ_algebra (H.times i)) _ (H.values i))
+    (hH_times_nn : ∀ i : Fin H.n, 0 ≤ H.times i)
+    (s : ℝ) (_hs : 0 ≤ s) :
+    @Measurable Ω ℝ (W.F.σ_algebra s) _ (H.stochasticIntegral_at W s) := by
+  have heq : H.stochasticIntegral_at W s = fun ω =>
+      ∑ i : Fin H.n, if h : (i : ℕ) + 1 < H.n then
+        H.values i ω * (W.process (min (H.times ⟨i + 1, h⟩) s) ω -
+                         W.process (min (H.times i) s) ω)
+      else 0 := by
+    ext ω; exact H.stochasticIntegral_at_eq_min W s ω
+  rw [heq]
+  apply Finset.measurable_sum
+  intro i _
+  by_cases hi : (i : ℕ) + 1 < H.n
+  · simp only [dif_pos hi]
+    by_cases hts : H.times i ≤ s
+    · exact ((hH_adapted i).mono (W.F.mono _ _ hts) le_rfl).mul
+        (((W.toAdapted.adapted _).mono (W.F.mono _ _ (min_le_right _ _)) le_rfl).sub
+         ((W.toAdapted.adapted _).mono (W.F.mono _ _ (min_le_right _ _)) le_rfl))
+    · push_neg at hts
+      have h1 : min (H.times i) s = s := min_eq_right (le_of_lt hts)
+      have h2 : min (H.times ⟨i + 1, hi⟩) s = s :=
+        min_eq_right (le_trans (le_of_lt hts)
+          (le_of_lt (H.increasing i ⟨i + 1, hi⟩ (by simp [Fin.lt_def]))))
+      have : (fun ω => H.values i ω * (W.process (min (H.times ⟨i + 1, hi⟩) s) ω -
+                         W.process (min (H.times i) s) ω)) = fun _ => 0 := by
+        ext ω; rw [h1, h2, sub_self, mul_zero]
+      rw [this]; exact measurable_const
+  · simp only [dif_neg hi]; exact measurable_const
+
+/-! ## Algebraic identity: 4-point → 2-point for clamped BM endpoints -/
+
+/-- For s ≤ t, the 4-point BM expression W(min b t) - W(min a t) - W(min b s) + W(min a s)
+    simplifies to W(min(max b s) t) - W(min(max a s) t), i.e., a 2-point expression with
+    clamped endpoints. This is the key algebraic identity for the conditional Itô isometry. -/
+private lemma four_point_to_two_point
+    (f : ℝ → ℝ) (a b s t : ℝ) (hab : a ≤ b) (hst : s ≤ t) :
+    (f (min b t) - f (min a t)) - (f (min b s) - f (min a s)) =
+    f (min (max b s) t) - f (min (max a s) t) := by
+  -- Case analysis on relative position of a, b vs s, t
+  by_cases hbs : b ≤ s
+  · -- Both a, b ≤ s: LHS = (f b - f a) - (f b - f a) = 0
+    have has : a ≤ s := le_trans hab hbs
+    rw [min_eq_left (le_trans hbs hst), min_eq_left (le_trans has hst),
+        min_eq_left hbs, min_eq_left has,
+        max_eq_right hbs, max_eq_right has, min_eq_left hst]
+    ring
+  · push_neg at hbs -- s < b
+    by_cases has : a ≤ s
+    · -- a ≤ s < b: "straddling" case
+      rw [min_eq_left has, max_eq_right has, min_eq_left hst,
+          min_eq_right (le_of_lt hbs), max_eq_left (le_of_lt hbs)]
+      by_cases hbt : b ≤ t
+      · rw [min_eq_left hbt, min_eq_left (le_trans has hst)]
+        ring
+      · push_neg at hbt
+        rw [min_eq_right (le_of_lt hbt), min_eq_left (le_trans has hst)]
+        ring
+    · -- s < a ≤ b: both a, b > s
+      push_neg at has
+      rw [max_eq_left (le_of_lt has), max_eq_left (le_of_lt hbs),
+          min_eq_right (le_of_lt has), min_eq_right (le_of_lt hbs)]
+      ring
+
+/-- The clamped lower endpoint is ≤ the clamped upper endpoint. -/
+private lemma clamp_le_clamp (a b s t : ℝ) (hab : a ≤ b) (hst : s ≤ t) :
+    min (max a s) t ≤ min (max b s) t :=
+  min_le_min_right t (max_le_max_right s hab)
+
+/-- The clamped endpoint is ≥ s. -/
+private lemma clamp_ge_lo (a s t : ℝ) (hst : s ≤ t) :
+    s ≤ min (max a s) t :=
+  le_min (le_max_right a s) hst
+
+/-- The clamped endpoint is ≤ t. -/
+private lemma clamp_le_hi (a s t : ℝ) :
+    min (max a s) t ≤ t :=
+  min_le_right _ t
+
+/-- Clamped endpoints from consecutive partition points are ordered:
+    for i < j, clamp(t_{i+1}, s, t) ≤ clamp(t_j, s, t). -/
+private lemma clamp_partition_ordered {F : Filtration Ω ℝ}
+    (H : SimpleProcess F) (s t : ℝ)
+    (i j : Fin H.n) (hi : (i : ℕ) + 1 < H.n) (hij : (i : ℕ) < (j : ℕ)) :
+    min (max (H.times ⟨(i : ℕ) + 1, hi⟩) s) t ≤ min (max (H.times j) s) t := by
+  apply min_le_min_right
+  apply max_le_max_right
+  have hij1 : (⟨(i : ℕ) + 1, hi⟩ : Fin H.n) ≤ j := by
+    rw [Fin.le_def]; exact Nat.succ_le_of_lt hij
+  rcases hij1.eq_or_lt with h | h
+  · exact le_of_eq (congrArg H.times h)
+  · exact le_of_lt (H.increasing ⟨(i : ℕ) + 1, hi⟩ j h)
+
+/-! ## QV sum identity for intervals [s, t] -/
+
+/-- The quadratic variation ∫_{[s,t]} H²(u,ω) du equals a sum of clamped interval contributions.
+    Each term is H_i(ω)² × (clamp(t_{i+1},s,t) - clamp(t_i,s,t)). -/
+private lemma simple_QV_eq_clamped_sum {F : Filtration Ω ℝ}
+    (H : SimpleProcess F)
+    (hH_bdd : ∀ i : Fin H.n, ∃ C : ℝ, ∀ ω, |(H.values i ω)| ≤ C)
+    (hH_times_nn : ∀ i : Fin H.n, 0 ≤ H.times i)
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) (ω : Ω) :
+    ∫ u in Set.Icc s t, (H.valueAtTime u ω) ^ 2 ∂volume =
+    ∑ i : Fin H.n, if h : (i : ℕ) + 1 < H.n then
+      (H.values i ω) ^ 2 * (min (max (H.times ⟨(i : ℕ) + 1, h⟩) s) t -
+                              min (max (H.times i) s) t)
+    else 0 := by
+  have ht : 0 ≤ t := le_trans hs hst
+  -- Step 1: Integrability of valueAtTime² on [0,t]
+  obtain ⟨C, _, hC⟩ := SimpleProcess.valueAtTime_uniform_bounded H hH_bdd
+  have hf_intOn : IntegrableOn (fun u => (H.valueAtTime u ω) ^ 2) (Set.Icc 0 t) volume := by
+    haveI : IsFiniteMeasure (volume.restrict (Set.Icc (0:ℝ) t)) :=
+      ⟨by rw [Measure.restrict_apply_univ]; exact measure_Icc_lt_top⟩
+    have h_val_meas : Measurable (fun u => H.valueAtTime u ω) :=
+      (SimpleProcess.valueAtTime_jointly_measurable H).comp
+        (measurable_id.prodMk measurable_const)
+    exact (integrable_const (C ^ 2)).mono'
+      ((h_val_meas.pow_const 2).stronglyMeasurable.aestronglyMeasurable)
+      (ae_of_all _ fun u => by
+        rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+        calc (H.valueAtTime u ω) ^ 2
+            = |H.valueAtTime u ω| ^ 2 := (sq_abs _).symm
+          _ ≤ C ^ 2 := pow_le_pow_left₀ (abs_nonneg _) (hC u ω) 2)
+  -- Step 2: Splitting ∫_{[0,t]} = ∫_{[0,s]} + ∫_{[s,t]}
+  have hsplit := setIntegral_Icc_split' hs hst hf_intOn
+  -- Step 3: Apply sum formula for [0,t] and [0,s]
+  have h_t := SimpleProcess.valueAtTime_sq_integral_eq_sum H hH_times_nn t ht ω
+  have h_s := SimpleProcess.valueAtTime_sq_integral_eq_sum H hH_times_nn s hs ω
+  -- Step 4: QV = ∫_{[0,t]} - ∫_{[0,s]}
+  have hQV_diff : ∫ u in Set.Icc s t, (H.valueAtTime u ω) ^ 2 ∂volume =
+      ∫ u in Set.Icc 0 t, (H.valueAtTime u ω) ^ 2 ∂volume -
+      ∫ u in Set.Icc 0 s, (H.valueAtTime u ω) ^ 2 ∂volume := by linarith
+  rw [hQV_diff, h_t, h_s, ← Finset.sum_sub_distrib]
+  congr 1; ext i
+  by_cases hi : (i : ℕ) + 1 < H.n
+  · simp only [dif_pos hi, ← mul_sub]
+    congr 1
+    -- Apply four_point_to_two_point with f = id
+    have := four_point_to_two_point id (H.times i) (H.times ⟨(i : ℕ) + 1, hi⟩) s t
+      (le_of_lt (H.increasing i ⟨(i : ℕ) + 1, hi⟩ (by simp [Fin.lt_def]))) hst
+    simp only [id] at this
+    linarith
+  · simp only [dif_neg hi, sub_self]
+
 /-! ## Simple process compensated square set-integral -/
 
 /-- For a simple process H, the compensated square set-integral vanishes:
@@ -644,7 +795,113 @@ theorem simple_compensated_sq_setIntegral_zero {F : Filtration Ω ℝ}
     ∫ ω in A, ((H.stochasticIntegral_at W t₂ ω)^2 -
                (H.stochasticIntegral_at W s₂ ω)^2 -
                ∫ u in Icc s₂ t₂, (H.valueAtTime u ω)^2 ∂volume) ∂μ = 0 := by
-  sorry -- Key infrastructure: will prove via telescoping + one-step argument
+  -- Abbreviations
+  set SI := H.stochasticIntegral_at W
+  set QV : Ω → ℝ := fun ω => ∫ u in Icc s₂ t₂, (H.valueAtTime u ω)^2 ∂volume
+  have ht₂ : 0 ≤ t₂ := le_trans hs₂ hst₂
+  -- Filtration measurability
+  have hSI_filt : ∀ τ, 0 ≤ τ → @Measurable Ω ℝ (W.F.σ_algebra τ) _ (SI τ) :=
+    fun τ hτ => si_at_filt_meas H W hH_adapted hH_times_nn τ hτ
+  -- Integrability of SI(t) for simple processes
+  have hSI_sq_int : ∀ τ, 0 ≤ τ → Integrable (fun ω => (SI τ ω) ^ 2) μ := fun τ hτ =>
+    simple_stochasticIntegral_at_sq_integrable H W hH_adapted hH_bdd hH_times_nn τ hτ
+  have hSI_int : ∀ τ, 0 ≤ τ → Integrable (SI τ) μ := by
+    intro τ hτ
+    have hasm : AEStronglyMeasurable (SI τ) μ :=
+      ((hSI_filt τ hτ).mono (W.F.le_ambient τ) le_rfl).stronglyMeasurable.aestronglyMeasurable
+    exact ((hSI_sq_int τ hτ).add (integrable_const 1)).mono' hasm
+      (ae_of_all _ fun ω => by
+        simp only [Real.norm_eq_abs, Pi.add_apply]
+        nlinarith [sq_abs (SI τ ω), abs_nonneg (SI τ ω)])
+  have hQV_int : Integrable QV μ :=
+    simple_process_sq_interval_integrable H W hH_adapted hH_bdd hH_times_nn s₂ t₂ hs₂ hst₂
+  -- SI(s₂) is F_{s₂}-measurable
+  have hSI_s₂_meas : @Measurable Ω ℝ (W.F.σ_algebra s₂) _ (SI s₂) := hSI_filt s₂ hs₂
+  -- === PART A: Cross-term vanishing ===
+  -- ∫_A SI(s₂)·(SI(t₂)-SI(s₂)) = 0
+  have h_cross : ∫ ω in A, SI s₂ ω * (SI t₂ ω - SI s₂ ω) ∂μ = 0 := by
+    -- Use indicator trick: ∫_A f·g = ∫ (1_A·f)·g
+    rw [← integral_indicator (W.F.le_ambient s₂ A hA)]
+    simp_rw [Set.indicator_mul_left]
+    apply integral_mul_eq_zero_of_setIntegral_eq_zero' (W.F.le_ambient s₂)
+    · -- 1_A · SI(s₂) is F_{s₂}-measurable
+      exact hSI_s₂_meas.indicator hA
+    · -- SI(t₂) - SI(s₂) is integrable
+      exact (hSI_int t₂ ht₂).sub (hSI_int s₂ hs₂)
+    · -- Product integrability: (1_A·SI(s₂))·(SI(t₂)-SI(s₂)) is integrable
+      -- Use AM-GM: |ab| ≤ a²+b²
+      apply Integrable.mono' ((hSI_sq_int s₂ hs₂).add
+        ((hSI_sq_int t₂ ht₂).add (hSI_sq_int s₂ hs₂)))
+      · exact ((hSI_int s₂ hs₂).indicator
+          (W.F.le_ambient s₂ A hA)).aestronglyMeasurable.mul
+          ((hSI_int t₂ ht₂).sub (hSI_int s₂ hs₂)).aestronglyMeasurable
+      · filter_upwards with ω
+        simp only [Pi.add_apply, Real.norm_eq_abs, Set.indicator_mul_left]
+        by_cases hω : ω ∈ A
+        · simp only [Set.indicator_of_mem hω]
+          rw [abs_mul]
+          set a := |SI s₂ ω|
+          set b := |SI t₂ ω - SI s₂ ω|
+          nlinarith [sq_nonneg (a - b), sq_abs (SI s₂ ω),
+            sq_abs (SI t₂ ω - SI s₂ ω), sq_abs (SI t₂ ω)]
+        · simp only [Set.indicator_of_notMem hω, zero_mul, abs_zero]
+          positivity
+    · -- ∀ B ∈ F_{s₂}, ∫_B (SI(t₂)-SI(s₂)) = 0
+      intro B hB
+      have h_mart := SimpleProcess.stochasticIntegral_at_martingale H W hH_adapted hH_bdd
+        hH_times_nn s₂ t₂ hs₂ hst₂ B hB
+      have h_split : ∫ ω in B, (SI t₂ ω - SI s₂ ω) ∂μ =
+          ∫ ω in B, SI t₂ ω ∂μ - ∫ ω in B, SI s₂ ω ∂μ :=
+        integral_sub (hSI_int t₂ ht₂).integrableOn (hSI_int s₂ hs₂).integrableOn
+      linarith
+  -- === PART B: Set-integral isometry for increment ===
+  -- ∫_A [(SI(t₂)-SI(s₂))² - QV] = 0
+  -- This is the hard part: uses BM increment simplification, Pythagoras on sets,
+  -- and set-integral compensated square computation.
+  have h_iso : ∫ ω in A, ((SI t₂ ω - SI s₂ ω) ^ 2 - QV ω) ∂μ = 0 := by
+    sorry -- Will prove via min-capped increment expansion + BM simplification
+  -- === COMBINE ===
+  -- SI(t₂)² - SI(s₂)² - QV = 2·SI(s₂)·(SI(t₂)-SI(s₂)) + ((SI(t₂)-SI(s₂))² - QV)
+  -- Rewrite integrand via algebraic identity
+  suffices hsuff : ∫ ω in A, (2 * (SI s₂ ω * (SI t₂ ω - SI s₂ ω)) +
+      ((SI t₂ ω - SI s₂ ω) ^ 2 - QV ω)) ∂μ = 0 by
+    have hrw : ∀ ω, SI t₂ ω ^ 2 - SI s₂ ω ^ 2 -
+        ∫ u in Icc s₂ t₂, (H.valueAtTime u ω)^2 ∂volume =
+        2 * (SI s₂ ω * (SI t₂ ω - SI s₂ ω)) +
+        ((SI t₂ ω - SI s₂ ω) ^ 2 - QV ω) := fun ω => by ring
+    simp_rw [hrw]; exact hsuff
+  -- Now prove the decomposed form
+  have h_prod_int : Integrable (fun ω => SI s₂ ω * (SI t₂ ω - SI s₂ ω)) μ := by
+    apply Integrable.mono' (((hSI_sq_int s₂ hs₂).add (hSI_sq_int t₂ ht₂)).add (hSI_sq_int s₂ hs₂))
+    · exact (hSI_int s₂ hs₂).aestronglyMeasurable.mul
+        ((hSI_int t₂ ht₂).sub (hSI_int s₂ hs₂)).aestronglyMeasurable
+    · filter_upwards with ω
+      simp only [Pi.add_apply, Real.norm_eq_abs]
+      rw [abs_mul]
+      set a := |SI s₂ ω|
+      set b := |SI t₂ ω - SI s₂ ω|
+      nlinarith [sq_nonneg (a - b), sq_abs (SI s₂ ω),
+        sq_abs (SI t₂ ω - SI s₂ ω), sq_abs (SI t₂ ω)]
+  have h_int1 : IntegrableOn (fun ω => 2 * (SI s₂ ω * (SI t₂ ω - SI s₂ ω))) A μ :=
+    (h_prod_int.const_mul 2).integrableOn
+  have hΔSI_sq_int : Integrable (fun ω => (SI t₂ ω - SI s₂ ω) ^ 2) μ := by
+    -- (x-y)² ≤ 2(x²+y²), so dominate by 2*(SI_t² + SI_s²)
+    exact (((hSI_sq_int t₂ ht₂).add (hSI_sq_int s₂ hs₂)).add
+      ((hSI_sq_int t₂ ht₂).add (hSI_sq_int s₂ hs₂))).mono'
+      (((hSI_int t₂ ht₂).sub (hSI_int s₂ hs₂)).aestronglyMeasurable.pow 2)
+      (ae_of_all _ fun ω => by
+        simp only [Pi.add_apply, Real.norm_eq_abs]
+        rw [abs_of_nonneg (sq_nonneg _)]
+        nlinarith [sq_nonneg (SI t₂ ω + SI s₂ ω)])
+  have h_int2 : IntegrableOn (fun ω => (SI t₂ ω - SI s₂ ω) ^ 2 - QV ω) A μ :=
+    (hΔSI_sq_int.sub hQV_int).integrableOn
+  rw [integral_add h_int1 h_int2]
+  -- Factor out 2 and use h_cross
+  have h_cross_A : ∫ ω in A, 2 * (SI s₂ ω * (SI t₂ ω - SI s₂ ω)) ∂μ =
+      2 * ∫ ω in A, SI s₂ ω * (SI t₂ ω - SI s₂ ω) ∂μ := by
+    rw [integral_const_mul]
+  rw [h_cross_A, h_cross, mul_zero, zero_add]
+  exact h_iso
 
 /-! ## Main conditional isometry theorem -/
 

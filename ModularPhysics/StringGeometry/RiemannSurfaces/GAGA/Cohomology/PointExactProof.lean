@@ -1,6 +1,6 @@
 import ModularPhysics.StringGeometry.RiemannSurfaces.GAGA.Cohomology.CechTheory
 import ModularPhysics.StringGeometry.RiemannSurfaces.GAGA.Cohomology.ExactSequence
-import ModularPhysics.Topology.Sheaves.LongExactSequence
+import ModularPhysics.StringGeometry.Topology.Sheaves.LongExactSequence
 
 /-!
 # Proof of the Point Exact Sequence Formula
