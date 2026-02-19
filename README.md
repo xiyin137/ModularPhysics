@@ -5,38 +5,31 @@ A work-in-progress rigorous formalization of mathematical physics in Lean 4 with
 ## Related Repositories
 
 - [StringGeometry](https://github.com/xiyin137/StringGeometry) — Riemann surfaces, supermanifolds, super Riemann surfaces, and topology infrastructure.
-- [PhysicsLogic](https://github.com/xiyin137/PhysicsLogic) — Encodes the logical architecture of theoretical physics in Lean's type system. For parsing physics papers, not rigorous formalization.
+- [StringAlgebra](https://github.com/xiyin137/StringAlgebra) — L-infinity algebras, multiple zeta values, and vertex operator algebras.
 - [OSreconstruction](https://github.com/xiyin137/OSreconstruction) — Wightman axioms, Osterwalder-Schrader reconstruction, and von Neumann algebra infrastructure.
+- [PhysicsLogic](https://github.com/xiyin137/PhysicsLogic) — Logical architecture of theoretical physics. For parsing physics papers, not rigorous formalization.
 
 ## Structure
 
 ```
 ModularPhysics/
-├── RigorousQFT/
-│   └── SPDE/
-│       ├── EKMS/
-│       ├── Examples/
-│       ├── Helpers/
-│       ├── Nonstandard/
-│       │   ├── Anderson/
-│       │   ├── Foundation/
-│       │   └── LoebMeasure/
-│       ├── Probability/
-│       └── RegularityStructures/
-│           ├── Models/
-│           └── Trees/
-└── StringAlgebra/
-    ├── Linfinity/
-    ├── MZV/
-    └── VOA/
+└── RigorousQFT/
+    └── SPDE/
+        ├── EKMS/
+        ├── Examples/
+        ├── Helpers/
+        ├── Nonstandard/
+        │   ├── Anderson/
+        │   ├── Foundation/
+        │   └── LoebMeasure/
+        ├── Probability/
+        └── RegularityStructures/
+            ├── Models/
+            └── Trees/
 ```
 
 **Note:** The `RigorousQFT/Wightman/` and `RigorousQFT/vNA/` subfolders are outdated copies kept for reference. Active development is in [OSreconstruction](https://github.com/xiyin137/OSreconstruction).
 
 ### RigorousQFT
 
-Stochastic PDE methods for constructive QFT. The Wightman axioms, Osterwalder-Schrader reconstruction, and von Neumann algebra infrastructure have been moved to [OSreconstruction](https://github.com/xiyin137/OSreconstruction).
-
-### StringAlgebra
-
-At a beginning stage with many placeholder definitions. Covers L-infinity algebras, multiple zeta values, and vertex operator algebras. Current focus is on developing L-infinity algebra and the Batalin-Vilkovisky formalism.
+Stochastic PDE methods for constructive QFT, including Itô calculus, regularity structures, and nonstandard analysis approaches.
