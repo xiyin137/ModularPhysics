@@ -4,6 +4,7 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: ModularPhysics Contributors
 -/
 import ModularPhysics.RigorousQFT.SPDE.StochasticIntegration
+import ModularPhysics.RigorousQFT.SPDE.Helpers.QuarticBound
 import Mathlib.MeasureTheory.Function.ConditionalExpectation.PullOut
 
 /-!
@@ -23,8 +24,9 @@ as theorems derived from the L² limit construction, not as structure fields.
 * `ItoProcess.stoch_integral_isometry` — Increment isometry:
     E[|SI(t)-SI(s)|²] = E[∫_s^t σ² du]
 
-* `ItoProcess.stoch_integral_squared_orthogonal` — Orthogonality of
-    compensated squared increments on disjoint intervals
+* Integrability infrastructure (`si_increment_sq_integrable'`, `compensated_sq_integrable'`,
+    `compensated_sq_sq_integrable'`, `diffusion_sq_integral_bound`) used by
+    `ConditionalIsometry.lean` for the squared orthogonality proof.
 -/
 
 noncomputable section
@@ -88,7 +90,7 @@ theorem ItoProcess.stoch_integral_isometry_base {F : Filtration Ω ℝ}
 
 /-- Martingale orthogonality: if ∫_A Y = 0 for all A ∈ m, X is m-measurable,
     and X·Y is integrable, then ∫ X·Y = 0. -/
-private theorem integral_mul_eq_zero_of_setIntegral_eq_zero'
+theorem integral_mul_eq_zero_of_setIntegral_eq_zero'
     {m : MeasurableSpace Ω}
     (hm : m ≤ instΩ)
     {X Y : Ω → ℝ}
@@ -189,7 +191,7 @@ theorem ItoProcess.stoch_integral_cross_term {F : Filtration Ω ℝ}
 
 /-- For Lebesgue measure, ∫_{Icc 0 b} f = ∫_{Icc 0 a} f + ∫_{Icc a b} f when 0 ≤ a ≤ b
     and f is integrable on [0,b]. -/
-private lemma setIntegral_Icc_split' {f : ℝ → ℝ} {a b : ℝ} (ha : 0 ≤ a) (hab : a ≤ b)
+lemma setIntegral_Icc_split' {f : ℝ → ℝ} {a b : ℝ} (ha : 0 ≤ a) (hab : a ≤ b)
     (hf : IntegrableOn f (Icc 0 b) volume) :
     ∫ x in Icc 0 b, f x ∂volume =
     ∫ x in Icc 0 a, f x ∂volume + ∫ x in Icc a b, f x ∂volume := by
@@ -293,19 +295,109 @@ theorem ItoProcess.stoch_integral_isometry {F : Filtration Ω ℝ}
       simp only []; linarith [h_pw_split ω]))
   linarith
 
-/-! ## Squared Orthogonality -/
+/-! ## Integrability Infrastructure for Orthogonality -/
 
-/-- Compensated squared SI increments on disjoint intervals are orthogonal:
-    E[((SI(t₁)-SI(s₁))² - ∫σ²₁) · ((SI(t₂)-SI(s₂))² - ∫σ²₂)] = 0
-    for t₁ ≤ s₂. -/
-theorem ItoProcess.stoch_integral_squared_orthogonal {F : Filtration Ω ℝ}
+/-- ω ↦ ∫_{s}^{t} σ(u,ω)² du is integrable over Ω. -/
+lemma diffusion_sq_interval_integrable {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    Integrable (fun ω => ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume) μ := by
+  have ht : 0 ≤ t := le_trans hs hst
+  have heq : (fun ω => ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume) =
+      (fun ω => ∫ u in Icc 0 t, (X.diffusion u ω) ^ 2 ∂volume) -
+      (fun ω => ∫ u in Icc 0 s, (X.diffusion u ω) ^ 2 ∂volume) := by
+    ext ω; simp only [Pi.sub_apply]
+    linarith [setIntegral_Icc_split' hs hst (X.diffusion_sq_time_integrable ω t ht)]
+  rw [heq]
+  exact (X.diffusion_sq_integral_integrable t ht).sub
+    (X.diffusion_sq_integral_integrable s hs)
+
+/-- (SI(t)-SI(s))² is integrable. -/
+lemma si_increment_sq_integrable' {F : Filtration Ω ℝ}
     (X : ItoProcess F μ) [IsProbabilityMeasure μ]
-    (s₁ t₁ s₂ t₂ : ℝ)
-    (hs₁ : 0 ≤ s₁) (hst₁ : s₁ ≤ t₁) (ht₁s₂ : t₁ ≤ s₂) (hst₂ : s₂ ≤ t₂) :
-    ∫ ω, ((X.stoch_integral t₁ ω - X.stoch_integral s₁ ω) ^ 2 -
-           ∫ u in Icc s₁ t₁, (X.diffusion u ω) ^ 2 ∂volume) *
-          ((X.stoch_integral t₂ ω - X.stoch_integral s₂ ω) ^ 2 -
-           ∫ u in Icc s₂ t₂, (X.diffusion u ω) ^ 2 ∂volume) ∂μ = 0 := by
-  sorry
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    Integrable (fun ω => (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2) μ := by
+  have ht : 0 ≤ t := le_trans hs hst
+  have ha := X.stoch_integral_sq_integrable t ht
+  have hb := X.stoch_integral_sq_integrable s hs
+  -- AEStronglyMeasurable via Measurable (adapted → measurable)
+  have hasm : AEStronglyMeasurable
+      (fun ω => (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2) μ :=
+    (((X.stoch_integral_adapted t).mono (F.le_ambient t) le_rfl).sub
+      ((X.stoch_integral_adapted s).mono (F.le_ambient s) le_rfl)).pow_const 2
+      |>.aestronglyMeasurable
+  -- (a-b)² ≤ 2a² + 2b²
+  exact ((ha.const_mul 2).add (hb.const_mul 2)).mono' hasm
+    (ae_of_all _ fun ω => by
+      simp only [Real.norm_eq_abs, Pi.add_apply]
+      have h1 := sq_abs (X.stoch_integral t ω)
+      have h2 := sq_abs (X.stoch_integral s ω)
+      have h3 := sq_nonneg (X.stoch_integral t ω + X.stoch_integral s ω)
+      rw [abs_of_nonneg (sq_nonneg _)]
+      nlinarith)
+
+/-- The compensated squared increment Z = Δ² - ∫σ² is integrable. -/
+lemma compensated_sq_integrable' {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) [IsProbabilityMeasure μ]
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    Integrable (fun ω =>
+      (X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 -
+      ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume) μ :=
+  (si_increment_sq_integrable' X s t hs hst).sub
+    (diffusion_sq_interval_integrable X s t hs hst)
+
+/-- ∫σ² is bounded: |∫_{s}^{t} σ²| ≤ Mσ²(t-s). -/
+lemma diffusion_sq_integral_bound {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ)
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t)
+    (ω : Ω) :
+    |∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume| ≤ Mσ ^ 2 * (t - s) := by
+  rw [abs_of_nonneg (integral_nonneg_of_ae (ae_of_all _ fun u => sq_nonneg (X.diffusion u ω)))]
+  calc ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume
+      ≤ ∫ u in Icc s t, Mσ ^ 2 ∂volume := by
+        apply integral_mono_of_nonneg
+        · exact ae_of_all _ fun _ => sq_nonneg _
+        · exact integrable_const _
+        · exact ae_of_all _ fun u => by
+            calc (X.diffusion u ω) ^ 2 = |X.diffusion u ω| ^ 2 := by rw [sq_abs]
+              _ ≤ Mσ ^ 2 := by exact pow_le_pow_left₀ (abs_nonneg _) (hMσ u ω) 2
+    _ = Mσ ^ 2 * (t - s) := by
+        rw [setIntegral_const, smul_eq_mul, Real.volume_real_Icc_of_le hst, mul_comm]
+
+/-- Z² is integrable with bounded diffusion.
+    Uses: Z = Δ² - Q, so Z² ≤ 2Δ⁴ + 2Q². Δ⁴ integrable from QuarticBound, Q bounded. -/
+lemma compensated_sq_sq_integrable' {F : Filtration Ω ℝ}
+    (X : ItoProcess F μ) [IsProbabilityMeasure μ]
+    {Mσ : ℝ} (hMσ : ∀ t ω, |X.diffusion t ω| ≤ Mσ)
+    (s t : ℝ) (hs : 0 ≤ s) (hst : s ≤ t) :
+    Integrable (fun ω =>
+      ((X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 -
+       ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume) ^ 2) μ := by
+  -- (a-b)² ≤ 2a² + 2b², so Z² ≤ 2·Δ⁴ + 2·Q²
+  have hΔ4 := stoch_integral_increment_L4_integrable_proof X hMσ s t hs hst
+  have hQ_bdd := diffusion_sq_integral_bound X hMσ s t hs hst
+  set C := Mσ ^ 2 * (t - s)
+  -- AEStronglyMeasurable
+  have hasm : AEStronglyMeasurable
+      (fun ω => ((X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 -
+       ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume) ^ 2) μ :=
+    (compensated_sq_integrable' X s t hs hst).aestronglyMeasurable.pow 2
+  -- Dominator: 2Δ⁴ + 2C², explicitly defined
+  have hdom : Integrable
+      (fun ω => 2 * (X.stoch_integral t ω - X.stoch_integral s ω) ^ 4 + 2 * C ^ 2) μ :=
+    (hΔ4.const_mul 2).add (integrable_const _)
+  exact hdom.mono' hasm (ae_of_all _ fun ω => by
+    rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+    -- Rewrite Δ⁴ = (Δ²)² for nlinarith
+    have h4eq : (X.stoch_integral t ω - X.stoch_integral s ω) ^ 4 =
+        ((X.stoch_integral t ω - X.stoch_integral s ω) ^ 2) ^ 2 := by ring
+    rw [h4eq]
+    have hQ_nn : 0 ≤ ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume :=
+      integral_nonneg_of_ae (ae_of_all _ fun u => sq_nonneg (X.diffusion u ω))
+    have hQ_le : ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume ≤ C := by
+      have := hQ_bdd ω; rwa [abs_of_nonneg hQ_nn] at this
+    nlinarith [sq_nonneg ((X.stoch_integral t ω - X.stoch_integral s ω) ^ 2 +
+        ∫ u in Icc s t, (X.diffusion u ω) ^ 2 ∂volume),
+      pow_le_pow_left₀ hQ_nn hQ_le 2])
 
 end SPDE

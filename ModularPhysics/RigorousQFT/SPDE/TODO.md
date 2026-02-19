@@ -1,6 +1,47 @@
 # SPDE Standard Approach - Status and TODO
 
-## Current Sorry Count (as of 2026-02-17)
+## PRIORITY: Complete Itô Formula Proof
+
+**3 sorry groups remain on the Itô formula critical path:**
+
+1. **Conditional Itô isometry** (`compensated_sq_setIntegral_zero`)
+   - Private sorry in IsometryTheorems.lean:316, also ConditionalIsometry.lean
+   - Blocks `stoch_integral_squared_orthogonal` (IsometryTheorems.lean:432)
+   - Approach: L² limit from simple processes + abstract compensated square martingale
+   - Sub-dependencies in ConditionalIsometry.lean:
+     - `simple_compensated_sq_setIntegral_zero` — simple process case via BM independence — **SORRY**
+     - `compensated_sq_setIntegral_zero` Step 4 (limit passing) — **SORRY**
+     - `sq_L1_tendsto_of_L2` — L¹ convergence of SI² via Cauchy-Schwarz — **PROVEN** ✓
+     - `diffusion_integral_L1_tendsto` — L¹ convergence of ∫H² via Cauchy-Schwarz — **PROVEN** ✓
+
+2. **E[Q₁·Z₂] = 0** (`h_part2` in IsometryTheorems.lean:507)
+   - Also blocks `stoch_integral_squared_orthogonal`
+   - Approach: Approximate Q₁ by F_{s₂}-measurable Q₁_n, use conditional isometry (#1)
+   - Depends on #1 being solved
+
+3. **E3 a.e. convergence** (ItoFormulaProof.lean:2672)
+   - `∀ᵐ ω, error²(k,ω) → 0` — the last sorry in `si_increment_L2_convergence`
+   - E1, E2, E4 convergence PROVEN; only E3 (weighted QV error) remains
+   - E3 = Riemann error (UC pattern, same as E1/E2) + weighted QV fluctuation
+   - Depends on `stoch_integral_squared_orthogonal` (#1 + #2) via QVConvergence
+
+**Dependency chain:**
+```
+simple_compensated_sq_setIntegral_zero (CI:221)
+  → compensated_sq_setIntegral_zero (IT:316)
+  → stoch_integral_squared_orthogonal (IT:432, also needs h_part2 at IT:507)
+  → si_compensated_orthogonal_partition (QVC:215)
+  → ito_qv_L2_bound (QVC:672)
+  → ito_process_discrete_qv_L2_convergence (QVC:984)
+  → E3 a.e. convergence (IFP:2672)
+  → ito_formula (IFP:1416)
+```
+
+**Everything else is NOT on the Itô formula critical path.** Do not work on InnerIntegralIntegrability, BDG, SDE existence, etc. until these sorrys are closed.
+
+---
+
+## Current Sorry Count (as of 2026-02-18)
 
 | File | Sorrys | Key Items |
 |------|--------|-----------|
@@ -10,8 +51,9 @@
 | **Basic.lean** | **1** | is_martingale_of_bounded (needs uniform integrability) |
 | **RegularityStructures.lean** | **1** | Abstract approach (complementary to folder) |
 | **Probability/Basic.lean** | **2** | condexp_jensen, doob_maximal_L2 |
-| **Helpers/ItoFormulaProof.lean** | **1** | a.e. convergence in si_increment_L2_convergence (line 2103) |
-| **Helpers/IsometryTheorems.lean** | **1** | stoch_integral_squared_orthogonal |
+| **Helpers/ItoFormulaProof.lean** | **1** | a.e. convergence in si_increment_L2_convergence (line 2672) |
+| **Helpers/IsometryTheorems.lean** | **2** | compensated_sq_setIntegral_zero (line 316), h_part2 (line 507) |
+| **Helpers/ConditionalIsometry.lean** | **3** | simple_compensated_sq_setIntegral_zero, compensated_sq_setIntegral_zero Step 4, h_part2 (stoch_integral_squared_orthogonal) |
 | **Helpers/QuarticBound.lean** | **0** | FULLY PROVEN |
 | **Helpers/QVConvergence.lean** | **0** | FULLY PROVEN |
 | **Helpers/ItoFormulaDecomposition.lean** | **0** | FULLY PROVEN |
@@ -25,7 +67,8 @@
 | **Nonstandard/Anderson/** | **10** | ItoCorrespondence, ExplicitSolutions, LocalCLT, AndersonTheorem, CylinderConvergenceHelpers |
 | **RegularityStructures/** | **41** | See RegularityStructures/TODO.md |
 
-**Total: ~110 sorrys** (29 SPDE core + 41 RegularityStructures + 16 EKMS + 15 Examples + 10 Nonstandard)
+**Total: ~114 sorrys** (33 SPDE core + 41 RegularityStructures + 16 EKMS + 15 Examples + 10 Nonstandard)
+**Critical path: 5 sorrys** (1 in IsometryTheorems + 3 in ConditionalIsometry + 1 in ItoFormulaProof)
 
 ---
 
@@ -78,11 +121,11 @@ See `RegularityStructures/TODO.md` for full sorry-dependency audit.
 
 ---
 
-## Ito Formula — Complete Sorry Dependency Audit (updated 2026-02-17)
+## Ito Formula — Complete Sorry Dependency Audit (updated 2026-02-18)
 
 ### The theorem: `ito_formula` at ItoFormulaProof.lean
 
-**Status**: Top-level proof term is COMPLETE. Only **2 sorrys** remain on the critical path.
+**Status**: Top-level proof term is COMPLETE. **7 sorrys** remain on the critical path (across 3 files).
 
 **Statement:**
 For C^{1,2} function f and Ito process dX_t = mu_t dt + sigma_t dW_t:
@@ -91,7 +134,7 @@ f(t, X_t) = f(0, X_0) + int_0^t [d_t f + d_x f * mu + 1/2 d^2_x f * sigma^2] ds 
 ```
 where M_t is a martingale (the stochastic integral int_0^t d_x f * sigma dW).
 
-### Critical Path: 2 sorrys blocking `ito_formula`
+### Critical Path: 5 sorrys blocking `ito_formula`
 
 ```
 ito_formula -- PROVED, wires to:
@@ -105,16 +148,25 @@ ito_formula -- PROVED, wires to:
         |E3| ≤ ½Mf''*(Mσ²T+Sk) (QV weighted) -- PROVED ✓
         |E4| ≤ 2*Mf''*Sk (Taylor remainder) -- PROVED ✓
       Dominator g_k → G a.e. -- PROVED ✓
-      *** a.e. convergence: error²(k) → 0 (line 2103) -- SORRY ***
-        [transitively needs QV convergence, which needs:]
-        stoch_integral_squared_orthogonal (IsometryTheorems.lean:309) -- SORRY
+      *** a.e. convergence: error²(k) → 0 (line 2672) -- SORRY [1] ***
+        E1,E2,E4 → 0: UC pattern (same as proven cases)
+        E3 → 0: Riemann UC error + QV fluctuation
+          [needs stoch_integral_squared_orthogonal:]
+          stoch_integral_squared_orthogonal (IsometryTheorems.lean)
+            compensated_sq_setIntegral_zero (CI) -- uses:
+              simple_compensated_sq_setIntegral_zero (CI) -- SORRY [2]
+              sq_L1_tendsto_of_L2 (CI) -- PROVED ✓
+              diffusion_integral_L1_tendsto (CI) -- PROVED ✓
+              Step 4 limit passing (CI) -- SORRY [3]
+            h_part2: E[Q₁·Z₂] = 0 (CI) -- SORRY [4]
+          [also needs IT:316 private copy] -- SORRY [5]
 ```
 
-#### Layer 1: ItoFormulaProof.lean (1 sorry, line 2103)
+#### Layer 1: ItoFormulaProof.lean (1 sorry, line 2672)
 
 | Line | Goal | Description | Difficulty |
 |------|------|-------------|------------|
-| 2103 | a.e. convergence | `∀ᵐ ω, error²(k,ω) → 0` in `si_increment_L2_convergence` | High |
+| 2672 | a.e. convergence | `∀ᵐ ω, error²(k,ω) → 0` in `si_increment_L2_convergence` | High |
 
 **What's proved in si_increment_L2_convergence:**
 - Subsequence extraction (tendsto_of_subseq_tendsto + QV a.e. sub-subsequence)
@@ -135,11 +187,25 @@ Need to show each E_i(k,ω) → 0 for a.e. ω (continuous path + QV convergence)
 - `taylor_remainders_ae_tendsto_zero` (QuadraticVariation.lean:344) — Taylor a.e. convergence
 - Both use `Metric.tendsto_atTop` + `isCompact_Icc.uniformContinuousOn_of_continuous` pattern
 
-#### Layer 2: IsometryTheorems.lean (1 sorry)
+#### Layer 2: IsometryTheorems.lean (2 sorrys) + ConditionalIsometry.lean (4 sorrys)
 
-| Line | Lemma | Description | Difficulty |
-|------|-------|-------------|------------|
-| 309 | `stoch_integral_squared_orthogonal` | E[((SI_1)^2 - int sigma^2_1) * ((SI_2)^2 - int sigma^2_2)] = 0 for disjoint intervals | Medium |
+| File | Line | Lemma | Description | Status |
+|------|------|-------|-------------|--------|
+| IT | 316 | `compensated_sq_setIntegral_zero` | ∫_A [Δ² - ∫σ²] = 0 for A ∈ F_s (private) | SORRY |
+| CI | ~635 | `simple_compensated_sq_setIntegral_zero` | Simple process conditional isometry | SORRY |
+| CI | ~660 | `compensated_sq_setIntegral_zero` Step 4 | Limit passing from simple to general | SORRY |
+| CI | ~738 | `h_part2` | E[Q₁·Z₂] = 0 (approx Q₁ F_{s₂}-measurable) | SORRY |
+| CI | 164 | `sq_L1_tendsto_of_L2` | SI_n² → SI² in L¹ (Cauchy-Schwarz) | **PROVEN** ✓ |
+| CI | 275 | `diffusion_integral_L1_tendsto` | ∫H_n² → ∫σ² in L¹ (Cauchy-Schwarz) | **PROVEN** ✓ |
+
+**NOTE**: IT:316 and CI:240 are the same result; IT:316 is a private copy used in the orthogonality proof. Architecture needs restructuring — either prove IT:316 directly or move `stoch_integral_squared_orthogonal` to CI.
+
+**Key approach for simple_compensated_sq_setIntegral_zero (CI:221)**:
+Inductive/telescoping on partition: M_k = S_k² - V_k where S_k is partial sum of adapted×ΔW terms.
+- M_{k+1} - M_k = 2·S_k·h_k·ΔW_k + h_k²·[(ΔW_k)² - Δt_k]
+- Both terms have zero set-integral over F_s ⊂ F_{r_k}:
+  - First: `setIntegral_adapted_mul_increment_zero` (proven, SimpleIntegralMartingale.lean:53)
+  - Second: `setIntegral_sq_of_indep_eq_measure_mul_integral` + `increment_variance` (proven)
 
 **Used by**: QVConvergence.lean:215 (in `si_compensated_orthogonal_partition`)
 

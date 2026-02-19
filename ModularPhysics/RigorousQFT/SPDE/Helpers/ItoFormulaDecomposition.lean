@@ -987,7 +987,7 @@ theorem abstract_fatou_squeeze_L2 [IsProbabilityMeasure μ]
       simp only [sub_self, zero_pow (by norm_num : 2 ≠ 0)] at h; exact h
     have h2 := h1.const_mul (2 * Cf)
     rw [mul_zero] at h2
-    convert h2.add tendsto_const_nhds using 1 <;> ring_nf
+    convert h2.add tendsto_const_nhds using 1; ring_nf
   -- hf_int
   · exact hfk_int
   -- hg_int

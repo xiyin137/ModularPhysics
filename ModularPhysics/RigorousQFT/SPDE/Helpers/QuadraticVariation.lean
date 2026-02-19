@@ -8,6 +8,7 @@ import ModularPhysics.RigorousQFT.SPDE.Helpers.ItoFormulaInfrastructure
 import ModularPhysics.RigorousQFT.SPDE.Helpers.QuarticBound
 import ModularPhysics.RigorousQFT.SPDE.Helpers.TaylorRemainder
 import Mathlib.MeasureTheory.Integral.Prod
+import Mathlib.MeasureTheory.Function.ConvergenceInMeasure
 
 /-!
 # Quadratic Variation Infrastructure for Itô Processes
@@ -58,7 +59,7 @@ noncomputable def ItoProcess.quadraticVariation {F : Filtration Ω ℝ}
 theorem ItoProcess.quadraticVariation_nonneg {F : Filtration Ω ℝ}
     (X : ItoProcess F μ) (t : ℝ) (ω : Ω) :
     0 ≤ X.quadraticVariation t ω :=
-  MeasureTheory.setIntegral_nonneg measurableSet_Icc (fun s _ => sq_nonneg _)
+  MeasureTheory.setIntegral_nonneg measurableSet_Icc (fun _s _ => sq_nonneg _)
 
 /-- QV is bounded when diffusion is bounded: [X]_t ≤ Mσ² · t. -/
 theorem ItoProcess.quadraticVariation_le {F : Filtration Ω ℝ}
@@ -327,6 +328,111 @@ theorem fatou_squeeze_tendsto_zero_ae [IsProbabilityMeasure μ]
   have h := fatou_squeeze_tendsto_zero hf'_nn hf'g hf'_ae hg_ae hf'_int hg_int hG_int hg_tend
   -- Transfer: ∫ f' = ∫ f since f' = f a.e.
   exact h.congr (fun n => integral_congr_ae (hf'_eq n))
+
+/-- Measure-convergence version of `fatou_squeeze_tendsto_zero_ae`:
+    Instead of requiring `f → 0` a.e., it suffices that `f → 0` in measure.
+    The conclusion `∫ f_n → 0` still follows by subsequence extraction
+    and the a.e. version. -/
+theorem fatou_squeeze_tendsto_zero_measure [IsProbabilityMeasure μ]
+    {f g : ℕ → Ω → ℝ} {G : Ω → ℝ}
+    (hf_nn : ∀ n, ∀ ω, 0 ≤ f n ω)
+    (hg_nn : ∀ n, ∀ ω, 0 ≤ g n ω)
+    (hfg : ∀ᵐ ω ∂μ, ∀ n, f n ω ≤ g n ω)
+    (hf_meas : TendstoInMeasure μ f atTop (fun _ => (0 : ℝ)))
+    (hg_ae : ∀ᵐ ω ∂μ, Filter.Tendsto (fun n => g n ω) atTop (nhds (G ω)))
+    (hf_int : ∀ n, Integrable (f n) μ) (hg_int : ∀ n, Integrable (g n) μ)
+    (hG_int : Integrable G μ)
+    (hg_tend : Filter.Tendsto (fun n => ∫ ω, g n ω ∂μ)
+      atTop (nhds (∫ ω, G ω ∂μ))) :
+    Filter.Tendsto (fun n => ∫ ω, f n ω ∂μ) atTop (nhds 0) := by
+  -- Use the subsequence characterization: every subsequence has a further
+  -- subsequence along which ∫f → 0.
+  apply tendsto_of_subseq_tendsto
+  intro ns hns
+  -- TendstoInMeasure along ns
+  have h_tim_ns : TendstoInMeasure μ (fun k => f (ns k)) atTop
+      (fun _ => (0 : ℝ)) := by
+    intro ε hε; exact (hf_meas ε hε).comp hns
+  -- Extract a.e.-convergent sub-subsequence from measure convergence
+  obtain ⟨ms, hms, hms_ae⟩ := h_tim_ns.exists_seq_tendsto_ae
+  refine ⟨ms, ?_⟩
+  -- Apply fatou_squeeze_tendsto_zero_ae along ns ∘ ms
+  exact fatou_squeeze_tendsto_zero_ae
+    (fun k ω => hf_nn (ns (ms k)) ω)
+    (fun k ω => hg_nn (ns (ms k)) ω)
+    (hfg.mono fun ω hω => fun k => hω (ns (ms k)))
+    hms_ae
+    (hg_ae.mono fun ω hω => hω.comp (hns.comp hms.tendsto_atTop))
+    (fun k => hf_int (ns (ms k)))
+    (fun k => hg_int (ns (ms k)))
+    hG_int
+    (hg_tend.comp (hns.comp hms.tendsto_atTop))
+
+/-! ## L² to a.e. extraction -/
+
+/-- L² convergence implies existence of an a.e.-convergent subsequence.
+    Proof: L² → 0 implies TendstoInMeasure via Chebyshev, then
+    `TendstoInMeasure.exists_seq_tendsto_ae` extracts the a.e. subsequence. -/
+theorem L2_to_ae_subseq [IsProbabilityMeasure μ]
+    {f : ℕ → Ω → ℝ} {g : Ω → ℝ}
+    (hL2 : Filter.Tendsto (fun n => ∫ ω, (f n ω - g ω) ^ 2 ∂μ) atTop (nhds 0))
+    (hint : ∀ n, Integrable (fun ω => (f n ω - g ω) ^ 2) μ)
+    (hf_asm : ∀ n, AEStronglyMeasurable (f n) μ)
+    (hg_asm : AEStronglyMeasurable g μ) :
+    ∃ (ms : ℕ → ℕ), StrictMono ms ∧
+      ∀ᵐ ω ∂μ, Filter.Tendsto (fun k => f (ms k) ω) atTop (nhds (g ω)) := by
+  -- Step 1: Show TendstoInMeasure via Chebyshev inequality
+  have h_tim : TendstoInMeasure μ f atTop g := by
+    rw [tendstoInMeasure_iff_norm]
+    intro ε hε
+    have hε_sq_pos : (0 : ℝ) < ε ^ 2 := by positivity
+    have hL2_int := hint
+    -- Convert Bochner integral to lintegral for Chebyshev
+    have h_lint_eq : ∀ n, ∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ =
+        ENNReal.ofReal (∫ ω, (f n ω - g ω) ^ 2 ∂μ) :=
+      fun n => (ofReal_integral_eq_lintegral_ofReal (hint n)
+        (ae_of_all _ fun ω => sq_nonneg _)).symm
+    have h_tend_lint : Filter.Tendsto
+        (fun n => ∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ)
+        atTop (nhds 0) := by
+      simp_rw [h_lint_eq]
+      have : Filter.Tendsto (fun n => ENNReal.ofReal (∫ ω, (f n ω - g ω) ^ 2 ∂μ))
+          atTop (nhds (ENNReal.ofReal 0)) :=
+        (ENNReal.continuous_ofReal.tendsto 0).comp hL2
+      rwa [ENNReal.ofReal_zero] at this
+    have hε2_pos : ENNReal.ofReal (ε ^ 2) ≠ 0 := by positivity
+    have hε2_top : ENNReal.ofReal (ε ^ 2) ≠ ⊤ := ENNReal.ofReal_ne_top
+    have h_div_tend : Filter.Tendsto
+        (fun n => (∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ) /
+          ENNReal.ofReal (ε ^ 2)) atTop (nhds 0) := by
+      have h := ENNReal.Tendsto.div_const h_tend_lint (Or.inr hε2_pos)
+      rwa [ENNReal.zero_div] at h
+    apply tendsto_of_tendsto_of_tendsto_of_le_of_le tendsto_const_nhds h_div_tend
+    · intro n; exact zero_le _
+    · intro n
+      have h_subset : {ω | (ε : ℝ) ≤ ‖f n ω - g ω‖} ⊆
+          {ω | ε ^ 2 ≤ (f n ω - g ω) ^ 2} := by
+        intro ω (hω : ε ≤ ‖f n ω - g ω‖)
+        show ε ^ 2 ≤ (f n ω - g ω) ^ 2
+        rw [Real.norm_eq_abs] at hω
+        nlinarith [abs_nonneg (f n ω - g ω), sq_abs (f n ω - g ω)]
+      have h_aem : AEMeasurable (fun ω => ENNReal.ofReal ((f n ω - g ω) ^ 2)) μ :=
+        ENNReal.measurable_ofReal.comp_aemeasurable
+          ((continuous_pow 2).measurable.comp_aemeasurable
+            ((hf_asm n).sub hg_asm).aemeasurable)
+      have h_cheb := mul_meas_ge_le_lintegral₀ h_aem (ENNReal.ofReal (ε ^ 2))
+      have h_set_eq : {ω | ENNReal.ofReal (ε ^ 2) ≤ ENNReal.ofReal ((f n ω - g ω) ^ 2)} =
+          {ω | ε ^ 2 ≤ (f n ω - g ω) ^ 2} := by
+        ext ω; simp only [Set.mem_setOf_eq]
+        exact ENNReal.ofReal_le_ofReal_iff (by positivity)
+      rw [h_set_eq] at h_cheb
+      calc μ {ω | (ε : ℝ) ≤ ‖f n ω - g ω‖}
+          ≤ μ {ω | ε ^ 2 ≤ (f n ω - g ω) ^ 2} := measure_mono h_subset
+        _ ≤ (∫⁻ ω, ENNReal.ofReal ((f n ω - g ω) ^ 2) ∂μ) / ENNReal.ofReal (ε ^ 2) :=
+            ENNReal.le_div_iff_mul_le (Or.inl hε2_pos) (Or.inl hε2_top) |>.mpr <| by
+              rw [mul_comm]; exact h_cheb
+  -- Step 2: Extract a.e.-convergent subsequence
+  exact h_tim.exists_seq_tendsto_ae
 
 /-! ## Taylor remainder a.e. convergence -/
 
